@@ -3,29 +3,22 @@ import Layout from '../components/Layout';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
-import { Plus, UserCheck, Phone, CreditCard } from 'lucide-react';
+import { Plus, UserCheck, Phone, DollarSign } from 'lucide-react';
+import { formatCurrency } from '../utils/formatters';
 
 const Agents = () => {
     const { data, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/agents');
-    useEffect(() => { fetchData(); }, [fetchData]);
-
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('create');
     const [currentItem, setCurrentItem] = useState(null);
-    
-    // Form disesuaikan untuk kebutuhan bisnis (Komisi & Bank)
-    const initialForm = { 
-        name: '', email: '', phone: '', 
-        agency_name: '', // Nama Travel/Biro jika agen korporat
-        level: 'silver', // silver, gold, platinum
-        commission_rate: 0, // dalam Rupiah atau Persen
-        bank_name: '', bank_number: '', bank_holder: '',
-        status: 'active'
-    };
+
+    const initialForm = { name: '', phone: '', email: '', commission_rate: 0, status: 'active' };
     const [formData, setFormData] = useState(initialForm);
 
+    useEffect(() => { fetchData(); }, [fetchData]);
+
     const handleOpenModal = (mode, item = null) => {
-        setModalMode(mode); 
+        setModalMode(mode);
         setCurrentItem(item);
         setFormData(item || initialForm);
         setIsModalOpen(true);
@@ -38,92 +31,72 @@ const Agents = () => {
     };
 
     const columns = [
-        { header: 'Nama Agen', accessor: 'name', render: r => (
-            <div>
-                <div className="font-bold text-gray-900">{r.name}</div>
-                <div className="text-xs text-gray-500">{r.agency_name || 'Perorangan'}</div>
-            </div>
-        )},
+        { header: 'Nama Agen', accessor: 'name', render: r => <div className="font-bold text-gray-900">{r.name}</div> },
         { header: 'Kontak', accessor: 'phone', render: r => (
-            <div className="text-sm">
+            <div className="text-sm text-gray-600">
                 <div className="flex items-center gap-1"><Phone size={12}/> {r.phone}</div>
-                <div className="text-gray-500 text-xs">{r.email}</div>
+                <div className="text-xs text-gray-400">{r.email}</div>
             </div>
         )},
-        { header: 'Level', accessor: 'level', render: r => (
-            <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase 
-                ${r.level === 'platinum' ? 'bg-purple-100 text-purple-700' : 
-                  r.level === 'gold' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'}`}>
-                {r.level}
-            </span>
+        { header: 'Komisi', accessor: 'commission_rate', render: r => (
+            <div className="flex items-center gap-1 font-semibold text-green-700">
+                <DollarSign size={14}/> {formatCurrency(r.commission_rate)}
+            </div>
         )},
         { header: 'Status', accessor: 'status', render: r => (
-            <span className={`text-xs font-medium ${r.status === 'active' ? 'text-green-600' : 'text-red-600'}`}>
-                {r.status === 'active' ? 'Aktif' : 'Non-Aktif'}
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${r.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                {r.status}
             </span>
         )}
     ];
 
     return (
         <Layout title="Manajemen Agen & Mitra">
-            <div className="mb-4 flex justify-end">
-                <button onClick={() => handleOpenModal('create')} className="btn-primary flex gap-2">
-                    <Plus size={18}/> Tambah Agen Baru
+            <div className="mb-6 flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div>
+                    <h2 className="font-bold text-gray-800">Data Agen</h2>
+                    <p className="text-xs text-gray-500">Mitra marketing yang membawa jemaah.</p>
+                </div>
+                <button onClick={() => handleOpenModal('create')} className="btn-primary flex items-center gap-2">
+                    <Plus size={18} /> Tambah Agen
                 </button>
             </div>
-            
-            <CrudTable columns={columns} data={data} loading={loading} onEdit={i => handleOpenModal('edit', i)} onDelete={deleteItem} />
-            
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Registrasi Agen" : "Edit Data Agen"} size="max-w-3xl">
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <CrudTable columns={columns} data={data} loading={loading} onEdit={i => handleOpenModal('edit', i)} onDelete={deleteItem} />
+            </div>
+
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Registrasi Agen" : "Edit Agen"}>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Data Personal */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label className="label">Nama Lengkap</label><input className="input-field" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} required /></div>
-                        <div><label className="label">Nama Travel/Agency (Opsional)</label><input className="input-field" value={formData.agency_name} onChange={e=>setFormData({...formData, agency_name: e.target.value})} /></div>
-                        <div><label className="label">No. WhatsApp</label><input className="input-field" value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})} required /></div>
-                        <div><label className="label">Email</label><input type="email" className="input-field" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} /></div>
+                    <div>
+                        <label className="label">Nama Lengkap</label>
+                        <input className="input-field" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
                     </div>
-
-                    {/* Data Kemitraan */}
-                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                        <h4 className="font-bold text-blue-800 mb-2 flex items-center gap-2"><UserCheck size={16}/> Status Kemitraan</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="label">Level Agen</label>
-                                <select className="input-field" value={formData.level} onChange={e=>setFormData({...formData, level: e.target.value})}>
-                                    <option value="silver">Silver (Standard)</option>
-                                    <option value="gold">Gold</option>
-                                    <option value="platinum">Platinum</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="label">Fee / Komisi (Rp)</label>
-                                <input type="number" className="input-field" value={formData.commission_rate} onChange={e=>setFormData({...formData, commission_rate: e.target.value})} placeholder="Contoh: 500000" />
-                            </div>
-                            <div>
-                                <label className="label">Status Akun</label>
-                                <select className="input-field" value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})}>
-                                    <option value="active">Aktif</option>
-                                    <option value="inactive">Non-Aktif</option>
-                                    <option value="suspended">Suspended</option>
-                                </select>
-                            </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="label">No. WhatsApp</label>
+                            <input className="input-field" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} required />
+                        </div>
+                        <div>
+                            <label className="label">Email</label>
+                            <input className="input-field" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                         </div>
                     </div>
-
-                    {/* Data Bank */}
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        <h4 className="font-bold text-gray-700 mb-2 flex items-center gap-2"><CreditCard size={16}/> Rekening Pencairan Komisi</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div><label className="label">Nama Bank</label><input className="input-field" value={formData.bank_name} onChange={e=>setFormData({...formData, bank_name: e.target.value})} placeholder="BCA, Mandiri, dll" /></div>
-                            <div><label className="label">Nomor Rekening</label><input className="input-field" value={formData.bank_number} onChange={e=>setFormData({...formData, bank_number: e.target.value})} /></div>
-                            <div><label className="label">Atas Nama</label><input className="input-field" value={formData.bank_holder} onChange={e=>setFormData({...formData, bank_holder: e.target.value})} /></div>
-                        </div>
+                    <div>
+                        <label className="label">Komisi per Jemaah (Rp)</label>
+                        <input className="input-field" type="number" value={formData.commission_rate} onChange={e => setFormData({...formData, commission_rate: e.target.value})} />
                     </div>
-
+                    <div>
+                        <label className="label">Status Kemitraan</label>
+                        <select className="input-field" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                            <option value="active">Aktif</option>
+                            <option value="inactive">Tidak Aktif</option>
+                            <option value="suspended">Ditangguhkan</option>
+                        </select>
+                    </div>
                     <div className="flex justify-end gap-2 pt-4 border-t">
-                        <button type="button" onClick={()=>setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary">Simpan Data Agen</button>
+                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
+                        <button type="submit" className="btn-primary">Simpan</button>
                     </div>
                 </form>
             </Modal>

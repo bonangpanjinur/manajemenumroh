@@ -4,21 +4,20 @@ import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Plus, Package, Clock, Plane, Hotel, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Clock, Plane, Hotel, CheckCircle, XCircle } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
+import toast from 'react-hot-toast';
 
 const Packages = () => {
-    // CRUD Hook
     const { data, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/packages');
     
-    // Load Referensi Data (Kategori, Hotel, Maskapai)
     const [categories, setCategories] = useState([]);
     const [hotels, setHotels] = useState([]);
     const [airlines, setAirlines] = useState([]);
 
     useEffect(() => {
         fetchData();
-        // Load data penunjang untuk dropdown
+        // Load data penunjang
         api.get('umh/v1/package-categories').then(setCategories).catch(() => {});
         api.get('umh/v1/hotels').then(setHotels).catch(() => {});
         api.get('umh/v1/flights').then(setAirlines).catch(() => {});
@@ -28,7 +27,7 @@ const Packages = () => {
     const [modalMode, setModalMode] = useState('create');
     const [currentItem, setCurrentItem] = useState(null);
 
-    // Initial State - Disesuaikan dengan kebutuhan Enterprise
+    // Initial State sesuai dengan field API baru
     const initialForm = {
         name: '', 
         category_id: '',
@@ -36,9 +35,9 @@ const Packages = () => {
         airline_id: '',
         hotel_makkah_id: '',
         hotel_madinah_id: '',
-        base_price: 0, // Harga dasar (misal Quad)
+        base_price: 0, 
         description: '',
-        included_features: '', // Simpan sebagai text area baris baru
+        included_features: '',
         excluded_features: ''
     };
     const [formData, setFormData] = useState(initialForm);
@@ -46,17 +45,35 @@ const Packages = () => {
     const handleOpenModal = (mode, item = null) => {
         setModalMode(mode);
         setCurrentItem(item);
-        setFormData(item || initialForm);
+        // Reset form saat buka modal
+        setFormData(item ? {
+            ...item,
+            // Pastikan nilai null dikonversi jadi string kosong agar input controlled
+            category_id: item.category_id || '',
+            airline_id: item.airline_id || '',
+            hotel_makkah_id: item.hotel_makkah_id || '',
+            hotel_madinah_id: item.hotel_madinah_id || '',
+            base_price: item.base_price || 0,
+            included_features: item.included_features || '',
+            excluded_features: item.excluded_features || ''
+        } : initialForm);
         setIsModalOpen(true);
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const success = modalMode === 'create' ? await createItem(formData) : await updateItem(currentItem.id, formData);
-        if (success) { setIsModalOpen(false); fetchData(); }
+        const success = modalMode === 'create' 
+            ? await createItem(formData) 
+            : await updateItem(currentItem.id, formData);
+        
+        if (success) { 
+            setIsModalOpen(false); 
+            toast.success(modalMode === 'create' ? 'Paket berhasil dibuat' : 'Paket berhasil diperbarui');
+            fetchData(); 
+        }
     };
 
-    // Helper untuk menampilkan Hotel
+    // Helper untuk menampilkan nama dari ID
     const getHotelName = (id) => hotels.find(h => String(h.id) === String(id))?.name || '-';
     const getAirlineName = (id) => airlines.find(a => String(a.id) === String(id))?.name || '-';
 

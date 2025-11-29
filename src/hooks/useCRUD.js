@@ -12,24 +12,20 @@ const useCRUD = (endpoint, initialParams = {}) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // 1. Fetch Data
+    // 1. Fetch Data dengan Debounce dan Error Handling
     const fetchData = useCallback(async (params = {}) => {
         setLoading(true);
         setError(null);
         try {
-            // Merge initial params dengan params baru
+            // Merge params baru dengan initial params
             const queryParams = { ...initialParams, ...params };
             const response = await api.get(endpoint, { params: queryParams });
             
-            // DEBUG: Cek di console apa isi response sebenarnya
-            console.log(`[useCRUD] Fetch ${endpoint}:`, response);
-
-            // Handle berbagai format response dari WP REST API
+            // Normalisasi Data (Handle berbagai format response WP REST API)
             if (response && Array.isArray(response)) {
-                // Format 1: Langsung array
                 setData(response);
             } else if (response && response.items && Array.isArray(response.items)) {
-                // Format 2: Object dengan properti items (Standard Controller kita)
+                // Format standar controller dengan pagination
                 setData(response.items);
                 setPagination({
                     current_page: parseInt(response.current_page || 1),
@@ -37,32 +33,28 @@ const useCRUD = (endpoint, initialParams = {}) => {
                     total_items: parseInt(response.total_items || 0)
                 });
             } else if (response && response.data && Array.isArray(response.data)) {
-                 // Format 3: Terbungkus properti data
                  setData(response.data);
             } else {
-                // Fallback: Data kosong atau format tidak dikenal
-                console.warn("[useCRUD] Format data tidak dikenali, set ke array kosong.");
                 setData([]); 
             }
 
         } catch (err) {
             const errMsg = err.response?.data?.message || err.message || 'Gagal memuat data';
             setError(errMsg);
-            console.error("Fetch Error:", err);
-            // Jangan toast error saat fetch awal agar tidak spammy, cukup log/state
+            console.error(`[useCRUD Error] ${endpoint}:`, err);
         } finally {
             setLoading(false);
         }
     }, [endpoint, JSON.stringify(initialParams)]);
 
-    // 2. Create Item
+    // 2. Create Item (Tambah Data)
     const createItem = async (newItem) => {
         setLoading(true);
         const toastId = toast.loading('Menyimpan data...');
         try {
             await api.post(endpoint, newItem);
             toast.success('Data berhasil disimpan!', { id: toastId });
-            await fetchData(); // Refresh data
+            await fetchData(); // Auto refresh
             return true;
         } catch (err) {
             const errMsg = err.message || 'Gagal menyimpan data';
@@ -73,12 +65,11 @@ const useCRUD = (endpoint, initialParams = {}) => {
         }
     };
 
-    // 3. Update Item
+    // 3. Update Item (Edit Data)
     const updateItem = async (id, updatedItem) => {
         setLoading(true);
         const toastId = toast.loading('Memperbarui data...');
         try {
-            // Support endpoint/id atau endpoint?id=...
             await api.post(`${endpoint}/${id}`, updatedItem); 
             toast.success('Data berhasil diperbarui!', { id: toastId });
             await fetchData();
@@ -92,16 +83,16 @@ const useCRUD = (endpoint, initialParams = {}) => {
         }
     };
 
-    // 4. Delete Item
+    // 4. Delete Item (Hapus Data)
     const deleteItem = async (id) => {
-        if (!window.confirm('Apakah Anda yakin ingin menghapus data ini?')) return false;
+        if (!window.confirm('Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.')) return false;
         
         setLoading(true);
         const toastId = toast.loading('Menghapus data...');
         try {
             await api.delete(`${endpoint}/${id}`);
-            toast.success('Data dihapus', { id: toastId });
-            // Optimistic update: Hapus dari state lokal dulu biar cepat
+            toast.success('Data berhasil dihapus', { id: toastId });
+            // Optimistic update UI
             setData((prev) => prev.filter((item) => item.id !== id));
             await fetchData(); 
             return true;
@@ -114,6 +105,10 @@ const useCRUD = (endpoint, initialParams = {}) => {
         }
     };
 
+    // Fungsi helper untuk pagination
+    const changePage = (page) => fetchData({ page });
+    const changeLimit = (limit) => fetchData({ per_page: limit, page: 1 });
+
     return {
         data,
         pagination,
@@ -122,7 +117,9 @@ const useCRUD = (endpoint, initialParams = {}) => {
         fetchData,
         createItem,
         updateItem,
-        deleteItem
+        deleteItem,
+        changePage,
+        changeLimit
     };
 };
 

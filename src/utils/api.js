@@ -1,96 +1,74 @@
-/**
- * Utility untuk menangani request ke WordPress REST API
- * Menggunakan global variable 'umhData' yang di-inject dari PHP
- */
+import axios from 'axios';
 
-// Pastikan object global tersedia untuk mencegah error saat build/test
-const umhConfig = window.umhData || {
-    root: '',
-    nonce: '',
-    user: null
-};
+// Konfigurasi Base URL dari Localized Script WordPress
+// Pastikan di file PHP utama (admin-dashboard.php/enqueue) sudah melokalisasi 'umhData'
+const siteUrl = window.umhData?.siteUrl || '';
+const nonce = window.umhData?.nonce || '';
+const root = window.umhData?.root || `${siteUrl}/wp-json/`;
 
-/**
- * Helper untuk melakukan fetch dengan Header WP Nonce otomatis
- */
-const apiFetch = async (endpoint, options = {}) => {
-    const { root, nonce } = umhConfig;
-    
-    // Hapus slash di awal endpoint jika ada, agar url rapi
-    const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
-    const url = `${root}umh/v1/${cleanEndpoint.replace('umh/v1/', '')}`; // Normalisasi path
-
-    const headers = {
-        'X-WP-Nonce': nonce, // KUNCI KEAMANAN
-        ...options.headers,
-    };
-
-    // Jangan set Content-Type jika body adalah FormData (untuk upload)
-    if (!(options.body instanceof FormData)) {
-        headers['Content-Type'] = 'application/json';
-    }
-
-    const config = {
-        ...options,
-        headers,
-    };
-
-    try {
-        const response = await fetch(url, config);
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || data.code || 'Terjadi kesalahan pada server.');
-        }
-
-        return data;
-    } catch (error) {
-        console.error(`API Error [${endpoint}]:`, error);
-        throw error;
-    }
-};
-
-export const setupApiErrorInterceptor = (callback) => {
-    // Implementasi sederhana untuk menangkap error 401/403 global jika diperlukan
-    // Saat ini apiFetch melempar error yang bisa ditangkap di component
-};
-
-export default {
-    // GET Requests
-    get: (endpoint, params = {}) => {
-        const queryString = new URLSearchParams(params.params).toString();
-        const url = queryString ? `${endpoint}?${queryString}` : endpoint;
-        return apiFetch(url, { method: 'GET' });
+const client = axios.create({
+    baseURL: root,
+    headers: {
+        'X-WP-Nonce': nonce,
+        'Content-Type': 'application/json',
     },
-    
-    // POST Requests (Create)
-    post: (endpoint, body) => apiFetch(endpoint, {
-        method: 'POST',
-        body: body instanceof FormData ? body : JSON.stringify(body)
-    }),
-    
-    // PUT Requests (Update)
-    put: (endpoint, body) => apiFetch(endpoint, {
-        method: 'PUT',
-        body: JSON.stringify(body)
-    }),
-    
-    // DELETE Requests
-    delete: (endpoint) => apiFetch(endpoint, { method: 'DELETE' }),
-    
-    // Helper Khusus Upload
-    upload: async (file, type, jamaahId = null) => {
+});
+
+const api = {
+    // Standard GET
+    get: async (endpoint, config = {}) => {
+        try {
+            const response = await client.get(endpoint, config);
+            return response.data;
+        } catch (error) {
+            throw error.response?.data || error;
+        }
+    },
+
+    // Standard POST (Create/Update)
+    post: async (endpoint, data, config = {}) => {
+        try {
+            const response = await client.post(endpoint, data, config);
+            return response.data;
+        } catch (error) {
+            throw error.response?.data || error;
+        }
+    },
+
+    // Standard DELETE
+    delete: async (endpoint, config = {}) => {
+        try {
+            const response = await client.delete(endpoint, config);
+            return response.data;
+        } catch (error) {
+            throw error.response?.data || error;
+        }
+    },
+
+    // KHUSUS UPLOAD FILE (Digunakan di Halaman Jemaah)
+    upload: async (file, type = 'file', relatedId = 0) => {
+        if (!file) return null;
+
         const formData = new FormData();
         formData.append('file', file);
-        if (type) formData.append('upload_type', type);
-        if (jamaahId) formData.append('jamaah_id', jamaahId);
+        formData.append('type', type); // cth: 'ktp', 'passport'
+        formData.append('ref_id', relatedId); // ID Jemaah
 
-        return apiFetch('uploads', {
-            method: 'POST',
-            body: formData
-        });
-    },
-
-    // Getter untuk info user saat ini
-    getCurrentUser: () => umhConfig.user
+        try {
+            // Menggunakan endpoint khusus media WordPress atau endpoint custom plugin
+            // Disini kita asumsi pakai endpoint custom umh/v1/uploads
+            const response = await client.post('umh/v1/uploads', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data', // Wajib untuk upload
+                    'X-WP-Nonce': nonce
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Upload Error:", error);
+            throw error.response?.data || { message: 'Gagal upload file' };
+        }
+    }
 };
+
+export default api;

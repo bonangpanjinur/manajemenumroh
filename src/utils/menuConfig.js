@@ -1,51 +1,39 @@
-import React from 'react';
 import { 
-    LayoutDashboard, Users, Briefcase, Calendar, Wallet, Megaphone, 
-    ClipboardList, UserCog, Settings, Box, Plane, Building, UserCheck 
+    LayoutDashboard, Users, Plane, Calendar, Package, 
+    CreditCard, Hotel, Briefcase, Settings, FileText, 
+    Box, UserCheck, Shield
 } from 'lucide-react';
 
-export const MENUS = [
+export const menuItems = [
     {
-        header: 'Utama',
+        section: 'Utama',
         items: [
-            { path: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, roles: ['all'] },
-            { path: 'jamaah', label: 'Data Jemaah', icon: <Users size={20} />, roles: ['super_admin', 'administrator', 'owner', 'admin_staff', 'agent'] },
-            { path: 'packages', label: 'Paket Umrah/Haji', icon: <Briefcase size={20} />, roles: ['super_admin', 'administrator', 'owner', 'admin_staff', 'marketing_staff'] },
-            { path: 'departures', label: 'Jadwal Keberangkatan', icon: <Calendar size={20} />, roles: ['super_admin', 'administrator', 'owner', 'admin_staff'] }
+            { label: 'Dashboard', path: '/', icon: LayoutDashboard },
+            { label: 'Data Jemaah', path: '/jamaah', icon: Users },
+            { label: 'Keberangkatan', path: '/departures', icon: Calendar }, // Halaman Departures Baru
         ]
     },
     {
-        header: 'Keuangan & Bisnis',
+        section: 'Layanan & Produk',
         items: [
-            { path: 'finance', label: 'Keuangan & Kasir', icon: <Wallet size={20} />, roles: ['super_admin', 'administrator', 'owner', 'finance_staff'] },
-            { path: 'marketing', label: 'Marketing & Leads', icon: <Megaphone size={20} />, roles: ['super_admin', 'administrator', 'owner', 'marketing_staff'] },
-            // Point 7: Menu Sub Agent (Gabung di Agents page tapi label jelas)
-            { path: 'agents', label: 'Agen & Mitra', icon: <UserCheck size={20} />, roles: ['super_admin', 'administrator', 'owner', 'marketing_staff'] }
+            { label: 'Katalog Paket', path: '/packages', icon: Package },
+            { label: 'Hotel & Akomodasi', path: '/hotels', icon: Hotel },
+            { label: 'Maskapai', path: '/flights', icon: Plane },
         ]
     },
     {
-        header: 'Operasional Internal',
+        section: 'Keuangan & Logistik',
         items: [
-            { path: 'tasks', label: 'Tugas Tim', icon: <ClipboardList size={20} />, roles: ['super_admin', 'administrator', 'owner', 'admin_staff', 'hr_staff'] },
-            { path: 'logistics', label: 'Logistik', icon: <Box size={20} />, roles: ['super_admin', 'administrator', 'owner', 'admin_staff'] },
-            // Point 6: HR Menu
-            { path: 'hr', label: 'HR & Karyawan', icon: <UserCog size={20} />, roles: ['super_admin', 'administrator', 'owner', 'hr_staff'] }
+            { label: 'Transaksi & Kasir', path: '/finance', icon: CreditCard },
+            { label: 'Perlengkapan (Logistik)', path: '/logistics', icon: Box },
         ]
     },
     {
-        header: 'Master Data',
+        section: 'Manajemen',
         items: [
-            { path: 'hotels', label: 'Hotel', icon: <Building size={18} />, roles: ['super_admin', 'administrator', 'owner'] },
-            { path: 'flights', label: 'Maskapai', icon: <Plane size={18} />, roles: ['super_admin', 'administrator', 'owner'] },
-            { path: 'users', label: 'Pengguna Sistem', icon: <Users size={18} />, roles: ['super_admin', 'administrator', 'owner'] },
-            { path: 'settings', label: 'Pengaturan', icon: <Settings size={18} />, roles: ['super_admin', 'administrator'] }
+            { label: 'Agen & Marketing', path: '/agents', icon: UserCheck },
+            { label: 'Pengguna Sistem', path: '/users', icon: Shield }, // Admin management
+            { label: 'Pengaturan', path: '/settings', icon: Settings },
         ]
     }
 ];
-
-export const hasAccess = (userRole, allowedRoles) => {
-    if (!userRole) return false;
-    if (allowedRoles.includes('all')) return true;
-    if (userRole === 'super_admin' || userRole === 'administrator') return true; // Admin WP selalu allow
-    return allowedRoles.includes(userRole);
-};
