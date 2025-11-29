@@ -1,0 +1,22 @@
+{
+  "name": "Umroh Manager",
+  "short_name": "UmrohMgr",
+  "description": "Aplikasi Manajemen Travel Umroh",
+  "start_url": "/wp-admin/admin.php?page=umroh-manager",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#333333",
+  "scope": "/wp-admin/",
+  "icons": [
+    {
+      "src": "icon-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

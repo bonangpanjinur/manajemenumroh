@@ -1,0 +1,93 @@
+/* * ADMIN STYLE - UMROH MANAGER HYBRID
+ * Menyembunyikan elemen WordPress standar untuk tampilan aplikasi full
+ */
+
+/* 1. Reset Dasar & Font */
+body.umroh-manager-page {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+    background: #f3f4f6 !important; /* Cool Gray 50 */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+}
+
+/* 2. Sembunyikan Elemen WordPress (Admin Bar, Menu, Footer, Notices) */
+body.umroh-manager-page #wpadminbar,
+body.umroh-manager-page #adminmenumain,
+body.umroh-manager-page #adminmenuback,
+body.umroh-manager-page #adminmenuwrap,
+body.umroh-manager-page #wpfooter,
+body.umroh-manager-page .update-nag,
+body.umroh-manager-page .notice,
+body.umroh-manager-page #wpbody-content > .wrap > h1,
+body.umroh-manager-page .auto-fold #wpcontent,
+body.umroh-manager-page #screen-meta,
+body.umroh-manager-page #screen-meta-links {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    z-index: -9999 !important;
+}
+
+/* 3. Reset Container WordPress agar Full Width */
+body.umroh-manager-page #wpcontent {
+    margin-left: 0 !important;
+    padding: 0 !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+    background: #f3f4f6 !important;
+}
+
+body.umroh-manager-page #wpbody-content {
+    padding-bottom: 0 !important;
+    float: none !important;
+}
+
+body.umroh-manager-page #wpbody {
+    padding-top: 0 !important;
+}
+
+/* 4. Container Utama Aplikasi React */
+#umh-app-root {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 999999; /* Pastikan di atas layer WP apapun */
+    background: #f3f4f6;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Scroll ditangani di dalam Layout React */
+}
+
+/* 5. Loading Spinner (Saat React dimuat) */
+.umh-loading-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    width: 100vw;
+    background: #fff;
+    color: #4b5563;
+}
+
+.umh-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #e5e7eb;
+    border-top: 4px solid #2563eb; /* Blue 600 */
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
