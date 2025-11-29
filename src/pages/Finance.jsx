@@ -2,297 +2,152 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
-import Pagination from '../components/Pagination';
 import useCRUD from '../hooks/useCRUD';
-import api from '../utils/api';
-import { Plus, Printer, Upload, CheckSquare, Square, Filter, Search } from 'lucide-react';
+import api from '../utils/api'; // Pastikan utils/api.js ada
+import { Plus, Wallet, FileText, CheckCircle, Clock } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import toast from 'react-hot-toast';
 
 const Finance = () => {
-    // 1. Data Utama Finance
-    const { 
-        data, 
-        loading, 
-        pagination,
-        fetchData, 
-        deleteItem,
-        changePage,
-        changeLimit
-    } = useCRUD('umh/v1/finance');
+    // Menggunakan endpoint 'payments'
+    const { data, loading, fetchData, createItem, deleteItem } = useCRUD('umh/v1/payments');
+    const [jamaahList, setJamaahList] = useState([]);
+    const [searchJamaah, setSearchJamaah] = useState('');
 
-    // 2. Data Relasi untuk Dropdown
-    const { data: jamaahList, fetchData: fetchJamaah } = useCRUD('umh/v1/jamaah');
-    const { data: employeeList, fetchData: fetchEmployees } = useCRUD('umh/v1/hr');
-    const { data: agentList, fetchData: fetchAgents } = useCRUD('umh/v1/agents');
-    const { data: campaignList, fetchData: fetchCampaigns } = useCRUD('umh/v1/marketing');
+    useEffect(() => { 
+        fetchData(); 
+        // Load jamaah ringkas untuk dropdown
+        api.get('umh/v1/jamaah?status=registered').then(res => setJamaahList(res.data || res)).catch(()=>[]);
+    }, [fetchData]);
 
-    // State
-    const [selectedIds, setSelectedIds] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [file, setFile] = useState(null);
-    const [filters, setFilters] = useState({ type: '', category: '', startDate: '', endDate: '' });
-
-    // Initial Load
-    useEffect(() => {
-        fetchData();
-        fetchJamaah();
-        fetchEmployees();
-        fetchAgents();
-        fetchCampaigns();
-    }, []);
-
-    // Initial Form State
-    const initialForm = { 
-        type: 'income', 
-        date: new Date().toISOString().split('T')[0], 
-        amount: 0, 
-        category: 'pembayaran_paket', 
-        jamaah_id: '', 
-        employee_id: '',
-        agent_id: '',
-        campaign_id: '',
-        description: '' 
+    
+    // Form Pembayaran
+    const initialForm = {
+        jamaah_id: '',
+        amount: '',
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'transfer', // transfer, cash, qris
+        status: 'verified', // verified, pending
+        notes: ''
     };
     const [formData, setFormData] = useState(initialForm);
+    const [selectedJamaahDetail, setSelectedJamaahDetail] = useState(null);
 
-    // Handle Filter Change
-    const handleFilterChange = (key, value) => {
-        const newFilters = { ...filters, [key]: value };
-        setFilters(newFilters);
-        // Build query string for filter
-        // Note: useCRUD fetchData supports custom url params if we implemented it, 
-        // but for simplicity here we might just reload or pass params.
-        // Assuming fetchData accepts (page, limit, search, customParams)
-        // Let's just trigger refresh for now (backend need to support filter params)
-        fetchData(1, pagination.limit, '', newFilters);
+    // Saat memilih jemaah, kita ambil detail tagihannya (simulasi)
+    const handleSelectJamaah = (e) => {
+        const id = e.target.value;
+        setFormData({...formData, jamaah_id: id});
+        const detail = jamaahList.find(j => String(j.id) === String(id));
+        setSelectedJamaahDetail(detail);
     };
 
-    const handleSave = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        const loadingId = toast.loading('Menyimpan transaksi...');
-        
-        try {
-            // Bersihkan data relasi yang tidak relevan dengan kategori
-            const payload = { ...formData };
-            if (payload.category !== 'pembayaran_paket') delete payload.jamaah_id;
-            if (payload.category !== 'gaji') delete payload.employee_id;
-            if (payload.category !== 'komisi_agen') delete payload.agent_id;
-            if (payload.category !== 'marketing') delete payload.campaign_id;
-
-            // 1. Simpan Data Transaksi
-            const res = await api.post('umh/v1/finance', payload);
-            const newId = res.id;
-
-            // 2. Upload Bukti jika ada
-            if (file && newId) {
-                const uploadRes = await api.upload(file, 'proof_payment');
-                if (uploadRes.url) {
-                    await api.post(`umh/v1/finance/${newId}`, { proof_file: uploadRes.url });
-                }
-            }
-
-            toast.success('Transaksi berhasil disimpan!', { id: loadingId });
+        const success = await createItem(formData);
+        if (success) {
             setIsModalOpen(false);
             setFormData(initialForm);
-            setFile(null);
-            fetchData();
-        } catch (err) {
-            toast.error('Gagal menyimpan: ' + err.message, { id: loadingId });
+            setSelectedJamaahDetail(null);
+            toast.success("Pembayaran berhasil dicatat");
         }
-    };
-
-    const toggleSelect = (id) => {
-        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-    };
-
-    const handleBulkPrint = () => {
-        if (selectedIds.length === 0) return toast.error('Pilih minimal satu transaksi');
-        const url = `${window.umhData.root}umh/v1/print/receipt?ids=${selectedIds.join(',')}&_wpnonce=${window.umhData.nonce}`;
-        window.open(url, '_blank');
-    };
-
-    const handleSinglePrint = (id) => {
-        const url = `${window.umhData.root}umh/v1/print/receipt?ids=${id}&_wpnonce=${window.umhData.nonce}`;
-        window.open(url, '_blank');
     };
 
     const columns = [
-        { 
-            header: <div className="flex justify-center"><CheckSquare size={16}/></div>,
-            accessor: 'id',
-            render: (row) => (
-                <div className="flex justify-center cursor-pointer" onClick={() => toggleSelect(row.id)}>
-                    {selectedIds.includes(row.id) 
-                        ? <CheckSquare size={18} className="text-blue-600" /> 
-                        : <Square size={18} className="text-gray-300" />}
-                </div>
-            )
-        },
-        { header: 'Tanggal', accessor: 'date', render: r => formatDate(r.date) },
-        { header: 'Kategori', accessor: 'category', render: r => <span className="capitalize">{r.category?.replace(/_/g, ' ')}</span> },
-        { 
-            header: 'Relasi', 
-            accessor: 'relation', 
-            render: r => {
-                if (r.jamaah_name) return <div className="text-xs font-medium text-blue-600">Jemaah: {r.jamaah_name}</div>;
-                if (r.employee_name) return <div className="text-xs font-medium text-purple-600">Staff: {r.employee_name}</div>;
-                if (r.agent_name) return <div className="text-xs font-medium text-orange-600">Agen: {r.agent_name}</div>;
-                if (r.campaign_name) return <div className="text-xs font-medium text-pink-600">Iklan: {r.campaign_name}</div>;
-                return <span className="text-gray-400">-</span>;
-            } 
-        },
-        { header: 'Nominal', accessor: 'amount', className: 'text-right', render: r => (
-            <span className={`font-bold ${r.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                {r.type === 'income' ? '+' : '-'} {formatCurrency(r.amount)}
-            </span>
+        { header: 'Tanggal', accessor: 'payment_date', render: r => <span className="text-gray-600 text-sm">{formatDate(r.payment_date)}</span> },
+        { header: 'Jemaah', accessor: 'jamaah_name', render: r => (
+            <div>
+                <div className="font-bold">{r.jamaah_name}</div>
+                <div className="text-xs text-gray-500">ID: {r.jamaah_id}</div>
+            </div>
         )},
-        { header: 'Bukti', accessor: 'proof_file', render: r => r.proof_file ? <a href={r.proof_file} target="_blank" className="text-blue-500 underline text-xs flex items-center gap-1"><Upload size={10}/> Lihat</a> : '-' },
-        { 
-            header: 'Aksi', accessor: 'actions', 
-            render: r => r.type === 'income' && (
-                <button onClick={() => handleSinglePrint(r.id)} className="text-gray-600 hover:text-blue-600" title="Cetak Kwitansi">
-                    <Printer size={16}/>
-                </button>
-            )
-        }
+        { header: 'Jumlah', accessor: 'amount', render: r => <span className="font-bold text-green-700">{formatCurrency(r.amount)}</span> },
+        { header: 'Metode', accessor: 'payment_method', render: r => <span className="uppercase text-xs font-semibold bg-gray-100 px-2 py-1 rounded">{r.payment_method}</span> },
+        { header: 'Status', accessor: 'status', render: r => (
+            r.status === 'verified' 
+            ? <span className="flex items-center gap-1 text-green-600 text-xs font-bold"><CheckCircle size={12}/> Diterima</span> 
+            : <span className="flex items-center gap-1 text-orange-600 text-xs font-bold"><Clock size={12}/> Menunggu</span>
+        )}
     ];
 
     return (
-        <Layout title="Keuangan & Kasir">
-            {/* Toolbar Filter */}
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-4 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex gap-2 items-center w-full md:w-auto overflow-x-auto">
-                    <div className="flex items-center gap-2 border px-3 py-2 rounded-md bg-gray-50">
-                        <Filter size={16} className="text-gray-500"/>
-                        <select className="bg-transparent text-sm outline-none" onChange={e => handleFilterChange('type', e.target.value)}>
-                            <option value="">Semua Tipe</option>
-                            <option value="income">Pemasukan</option>
-                            <option value="expense">Pengeluaran</option>
-                        </select>
-                    </div>
-                    
-                    {selectedIds.length > 0 && (
-                        <button onClick={handleBulkPrint} className="bg-gray-800 text-white px-3 py-2 rounded text-sm flex items-center gap-2 hover:bg-gray-900 transition shadow-sm">
-                            <Printer size={14}/> Cetak ({selectedIds.length})
-                        </button>
-                    )}
+        <Layout title="Keuangan & Pembayaran">
+            {/* Summary Cards (Dummy Data for UI) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-100">
+                    <div className="text-gray-500 text-sm mb-1">Total Pemasukan (Bulan Ini)</div>
+                    <div className="text-2xl font-bold text-blue-700">Rp 1.250.000.000</div>
                 </div>
+                <div className="bg-white p-4 rounded-lg shadow-sm border border-orange-100">
+                    <div className="text-gray-500 text-sm mb-1">Tagihan Belum Lunas</div>
+                    <div className="text-2xl font-bold text-orange-600">Rp 450.000.000</div>
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-sm border border-green-100">
+                    <div className="text-gray-500 text-sm mb-1">Transaksi Berhasil</div>
+                    <div className="text-2xl font-bold text-green-700">142 Transaksi</div>
+                </div>
+            </div>
 
-                <button onClick={() => { setFormData(initialForm); setIsModalOpen(true); }} className="btn-primary flex gap-2">
-                    <Plus size={20}/> Transaksi Baru
+            <div className="mb-4 flex justify-between items-center bg-white p-3 rounded-lg border">
+                <h3 className="font-bold text-gray-700 flex items-center gap-2"><Wallet size={20}/> Riwayat Transaksi</h3>
+                <button onClick={() => setIsModalOpen(true)} className="btn-primary flex gap-2">
+                    <Plus size={18}/> Catat Pembayaran
                 </button>
             </div>
-
-            {/* Table Area */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-                <CrudTable 
-                    columns={columns} 
-                    data={data} 
-                    loading={loading} 
-                    onDelete={deleteItem} 
-                />
-                <Pagination 
-                    pagination={pagination}
-                    onPageChange={changePage}
-                    onLimitChange={changeLimit}
-                />
-            </div>
-
-            {/* Modal Form */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Catat Transaksi">
-                <form onSubmit={handleSave} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Jenis Transaksi</label>
-                            <select className="input-field font-medium" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
-                                <option value="income">Pemasukan (In)</option>
-                                <option value="expense">Pengeluaran (Out)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="label">Tanggal</label>
-                            <input type="date" className="input-field" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-                        </div>
-                    </div>
+            
+            <CrudTable columns={columns} data={data} loading={loading} onDelete={deleteItem} />
+            
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Catat Pembayaran Jemaah" size="max-w-xl">
+                <form onSubmit={handleSubmit} className="space-y-4">
                     
+                    {/* Pilih Jemaah */}
                     <div>
-                        <label className="label">Kategori</label>
-                        <select className="input-field" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                            <option value="pembayaran_paket">Pembayaran Paket Jemaah</option>
-                            <option value="operasional">Biaya Operasional</option>
-                            <option value="gaji">Gaji Karyawan</option>
-                            <option value="marketing">Biaya Marketing / Iklan</option>
-                            <option value="komisi_agen">Komisi Agen</option>
-                            <option value="lainnya">Lainnya</option>
+                        <label className="label">Cari Jemaah</label>
+                        <select className="input-field" value={formData.jamaah_id} onChange={handleSelectJamaah} required>
+                            <option value="">-- Pilih Jemaah --</option>
+                            {jamaahList.map(j => (
+                                <option key={j.id} value={j.id}>{j.full_name} - {j.package_name || 'Tanpa Paket'}</option>
+                            ))}
                         </select>
                     </div>
 
-                    {/* Dynamic Relation Fields */}
-                    <div className="bg-gray-50 p-3 rounded border border-gray-200 animate-fade-in">
-                        {formData.category === 'pembayaran_paket' && (
-                            <div>
-                                <label className="label text-blue-700">Pilih Jemaah</label>
-                                <select className="input-field" value={formData.jamaah_id} onChange={e => setFormData({...formData, jamaah_id: e.target.value})} required>
-                                    <option value="">-- Cari Jemaah --</option>
-                                    {jamaahList?.map(j => <option key={j.id} value={j.id}>{j.full_name}</option>)}
-                                </select>
-                            </div>
-                        )}
+                    {/* Detail Tagihan (Jika Jemaah dipilih) */}
+                    {selectedJamaahDetail && (
+                        <div className="bg-blue-50 p-3 rounded text-sm text-blue-800 border border-blue-100">
+                            <div><strong>Paket:</strong> {selectedJamaahDetail.package_name}</div>
+                            <div><strong>Total Tagihan:</strong> {formatCurrency(selectedJamaahDetail.package_price || 0)}</div>
+                        </div>
+                    )}
 
-                        {formData.category === 'gaji' && (
-                            <div>
-                                <label className="label text-purple-700">Pilih Karyawan</label>
-                                <select className="input-field" value={formData.employee_id} onChange={e => setFormData({...formData, employee_id: e.target.value})} required>
-                                    <option value="">-- Cari Karyawan --</option>
-                                    {employeeList?.map(e => <option key={e.id} value={e.id}>{e.name} - {e.position}</option>)}
-                                </select>
-                            </div>
-                        )}
-
-                        {formData.category === 'komisi_agen' && (
-                            <div>
-                                <label className="label text-orange-700">Pilih Agen</label>
-                                <select className="input-field" value={formData.agent_id} onChange={e => setFormData({...formData, agent_id: e.target.value})} required>
-                                    <option value="">-- Cari Agen --</option>
-                                    {agentList?.map(a => <option key={a.id} value={a.id}>{a.name} ({a.city})</option>)}
-                                </select>
-                            </div>
-                        )}
-
-                        {formData.category === 'marketing' && (
-                            <div>
-                                <label className="label text-pink-700">Pilih Kampanye Iklan</label>
-                                <select className="input-field" value={formData.campaign_id} onChange={e => setFormData({...formData, campaign_id: e.target.value})} required>
-                                    <option value="">-- Cari Kampanye --</option>
-                                    {campaignList?.map(c => <option key={c.id} value={c.id}>{c.title} ({c.platform})</option>)}
-                                </select>
-                            </div>
-                        )}
-                        
-                        {['operasional', 'lainnya'].includes(formData.category) && (
-                            <p className="text-xs text-gray-500 italic">Kategori ini tidak memerlukan relasi data khusus.</p>
-                        )}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="label">Tanggal Bayar</label>
+                            <input type="date" className="input-field" value={formData.payment_date} onChange={e => setFormData({...formData, payment_date: e.target.value})} required />
+                        </div>
+                        <div>
+                            <label className="label">Metode Pembayaran</label>
+                            <select className="input-field" value={formData.payment_method} onChange={e => setFormData({...formData, payment_method: e.target.value})}>
+                                <option value="transfer">Transfer Bank</option>
+                                <option value="cash">Tunai / Cash</option>
+                                <option value="qris">QRIS</option>
+                                <option value="edc">Kartu Debit/Kredit (EDC)</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div>
-                        <label className="label">Nominal (Rp)</label>
-                        <input type="number" className="input-field font-bold text-lg" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
+                        <label className="label">Jumlah Pembayaran (Rp)</label>
+                        <input type="number" className="input-field text-lg font-bold" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} placeholder="0" required />
                     </div>
 
                     <div>
-                        <label className="label">Keterangan</label>
-                        <textarea className="input-field" rows="2" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Catatan tambahan..."></textarea>
-                    </div>
-                    
-                    <div className="border-t pt-3">
-                        <label className="label flex items-center gap-2 text-gray-700"><Upload size={16}/> Upload Bukti Transfer (Opsional)</label>
-                        <input type="file" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" onChange={e => setFile(e.target.files[0])} accept="image/*,application/pdf" />
+                        <label className="label">Catatan / Referensi</label>
+                        <textarea className="input-field" rows="2" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} placeholder="No. Referensi Transfer / Keterangan"></textarea>
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4 border-t">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary w-32">Simpan</button>
+                        <button type="submit" className="btn-primary w-full md:w-auto">Simpan Transaksi</button>
                     </div>
                 </form>
             </Modal>

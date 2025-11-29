@@ -1,136 +1,100 @@
-import { createRoot } from 'react-dom/client';
 import React, { useState, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
 import './index.css';
-
-// Import Components
-import Header from './components/Header';
-import Sidebar from './components/Sidebar';
 import { Toaster } from 'react-hot-toast';
-import { DataProvider, useData } from './contexts/DataContext';
-import { MENUS } from './utils/menuConfig'; // Import menu untuk lookup title
+import { DataProvider } from './contexts/DataContext';
 
-// Import Pages
+// Import Semua Halaman
 import Dashboard from './pages/Dashboard';
+import Jamaah from './pages/Jamaah';
 import Packages from './pages/Packages';
 import Departures from './pages/Departures';
-import Jamaah from './pages/Jamaah';
 import Finance from './pages/Finance';
-import Marketing from './pages/Marketing';
-import Hotels from './pages/Hotels';
-import Users from './pages/Users';
-import Settings from './pages/Settings';
-import Tasks from './pages/Tasks';
-import HR from './pages/HR';
-import Logistics from './pages/Logistics';
+import Marketing from './pages/Marketing'; // Asumsi file ini ada/standard
 import Agents from './pages/Agents';
+import Tasks from './pages/Tasks'; // Asumsi file ini ada/standard
+import Logistics from './pages/Logistics';
+import HR from './pages/HR'; // Asumsi file ini ada/standard
+import Hotels from './pages/Hotels';
 import Flights from './pages/Flights';
 import Masters from './pages/Masters';
-import Categories from './pages/Categories';
-import PackageCategories from './pages/PackageCategories';
-import Roles from './pages/Roles';
+import Users from './pages/Users';
+import Settings from './pages/Settings';
 
-const AppContent = () => {
-    const { user, loading } = useData();
-    const [currentPage, setCurrentPage] = useState('dashboard');
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+const App = () => {
+    // State untuk Routing Sederhana (SPA)
+    // Mengambil halaman terakhir dari localStorage agar saat refresh tidak kembali ke dashboard
+    const storedPage = localStorage.getItem('umh_active_page');
+    const [activePage, setActivePage] = useState(storedPage || 'dashboard');
 
-    // Default ke dashboard jika user berubah
-    useEffect(() => {
-        if (user) setCurrentPage('dashboard');
-    }, [user]);
-
-    // Handle navigasi dengan pengecekan hak akses
-    const handleNavigate = (page) => {
-        setCurrentPage(page);
-        setIsSidebarOpen(false);
+    // Fungsi navigasi yang dilempar ke Sidebar/Layout
+    const navigate = (page) => {
+        setActivePage(page);
+        localStorage.setItem('umh_active_page', page);
     };
 
-    // Helper untuk mendapatkan Judul Halaman berdasarkan current page
-    const getPageTitle = (path) => {
-        // Cari di config menu
-        for (const group of MENUS) {
-            const item = group.items.find(i => i.path === path);
-            if (item) return item.label;
-        }
-        // Fallback title formatter jika tidak ketemu di menu
-        return path.charAt(0).toUpperCase() + path.slice(1).replace('-', ' ');
-    };
-
+    // Mapping Halaman
     const renderPage = () => {
-        // Jika loading user data, tampilkan spinner
-        if (loading) return <div className="flex items-center justify-center h-full text-gray-500">Memuat data pengguna...</div>;
-
-        // Switch Case Rendering
-        switch (currentPage) {
+        switch (activePage) {
             case 'dashboard': return <Dashboard />;
+            case 'jamaah': return <Jamaah />;
             case 'packages': return <Packages />;
             case 'departures': return <Departures />;
-            case 'jamaah': return <Jamaah />;
+            
+            // Keuangan & Bisnis
             case 'finance': return <Finance />;
             case 'marketing': return <Marketing />;
+            case 'agents': return <Agents />;
+            
+            // Operasional
             case 'tasks': return <Tasks />;
-            case 'hr': return <HR />;
             case 'logistics': return <Logistics />;
+            case 'hr': return <HR />;
             
             // Master Data
             case 'hotels': return <Hotels />;
             case 'flights': return <Flights />;
-            case 'agents': return <Agents />;
+            case 'masters': return <Masters />;
             case 'users': return <Users />;
             case 'settings': return <Settings />;
-            
-            // Extra pages
-            case 'masters': return <Masters />;
-            case 'categories': return <Categories />;
-            case 'package-categories': return <PackageCategories />;
-            case 'roles': return <Roles />;
             
             default: return <Dashboard />;
         }
     };
 
+    // Hack untuk melewatkan prop 'navigate' ke komponen anak melalui Context atau props global
+    // Di sini kita menggunakan cara sederhana: 
+    // Kita akan mempassing fungsi navigate ke window object atau menggunakan Custom Event
+    // Tapi cara paling React adalah membungkus renderPage dengan Context, 
+    // namun karena struktur Layout Anda mungkin sudah menangani Sidebar,
+    // kita pastikan Layout bisa mengakses state activePage ini.
+    
+    // UPDATE: Agar Sidebar di dalam Layout bisa mengubah page,
+    // kita perlu Context atau prop drilling. 
+    // Asumsi: Anda menggunakan DataContext atau melawatkan props di Layout.
+    // Untuk mempermudah tanpa merombak semua file, kita simpan fungsi navigasi di window
+    // agar bisa dipanggil dari Sidebar.jsx
+    
+    useEffect(() => {
+        window.umhNavigate = navigate;
+        window.umhActivePage = activePage;
+    }, [activePage]);
+
     return (
-        <div className="flex h-screen bg-gray-100 font-sans text-gray-900 overflow-hidden">
-            <Sidebar 
-                isOpen={isSidebarOpen} 
-                toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
-                activePage={currentPage}
-                onNavigate={handleNavigate}
-            />
-            
-            <div className="flex-1 flex flex-col overflow-hidden w-full relative">
-                <Header 
-                    toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
-                    title={getPageTitle(currentPage)} 
-                />
+        <DataProvider>
+            <div className="umh-app-container bg-gray-50 min-h-screen text-gray-800 font-sans">
+                {/* Toaster untuk Notifikasi Global */}
+                <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
                 
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 md:p-6">
-                    {/* Efek Fade In sederhana */}
-                    <div className="animate-fade-in">
-                        {renderPage()}
-                    </div>
-                </main>
+                {/* Render Halaman Aktif */}
+                {renderPage()}
             </div>
-            
-            <Toaster position="top-right" toastOptions={{
-                className: '',
-                style: {
-                    borderRadius: '10px',
-                    background: '#333',
-                    color: '#fff',
-                },
-            }} />
-        </div>
+        </DataProvider>
     );
 };
 
-const App = () => (
-    <DataProvider>
-        <AppContent />
-    </DataProvider>
-);
-
-const container = document.getElementById('umh-app-root');
+// Mount React ke Div WordPress
+const container = document.getElementById('umroh-manager-app');
 if (container) {
     const root = createRoot(container);
     root.render(<App />);

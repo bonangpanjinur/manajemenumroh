@@ -1,196 +1,96 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import CrudTable from '../components/CrudTable';
-import { useData } from '../contexts/DataContext';
-import useCRUD from '../hooks/useCRUD';
 import Modal from '../components/Modal';
-import { Package, Truck, CheckCircle, Clock } from 'lucide-react';
-
-// --- KONFIGURASI BARANG LOGISTIK DI SINI ---
-// Tambahkan atau hapus item di dalam array ini sesuai kebutuhan travel Anda
-const LOGISTIC_ITEMS = [
-    { key: 'koper', label: 'Koper Besar' },
-    { key: 'koper_kabin', label: 'Koper Kabin' },
-    { key: 'tas_paspor', label: 'Tas Paspor' },
-    { key: 'kain_ihram', label: 'Kain Ihram (Pria)' },
-    { key: 'mukena', label: 'Mukena (Wanita)' },
-    { key: 'bahan_batik', label: 'Bahan Batik' },
-    { key: 'buku_doa', label: 'Buku Doa' },
-    { key: 'syal', label: 'Syal Identitas' }
-];
+import useCRUD from '../hooks/useCRUD';
+import { Plus, Box, Archive } from 'lucide-react';
 
 const Logistics = () => {
-    const { user } = useData();
-    // Endpoint ini sudah dimodifikasi di backend agar me-return nama jamaah
-    const { data, loading, updateItem } = useCRUD('umh/v1/logistics');
+    // Endpoint logistics untuk barang inventaris
+    const { data, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/logistics');
+    
+    useEffect(() => { fetchData(); }, [fetchData]);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [modalMode, setModalMode] = useState('create');
     const [currentItem, setCurrentItem] = useState(null);
-    const [handoverData, setHandoverData] = useState({});
+    const [formData, setFormData] = useState({ item_name: '', stock_qty: 0, min_stock_alert: 10, unit: 'Pcs' });
 
-    // Columns
-    const columns = [
-        { header: 'Nama Jamaah', accessor: 'jamaah_name', sortable: true, render: row => (
-            <div>
-                <span className="font-bold text-gray-800">{row.jamaah_name}</span>
-                <div className="text-xs text-gray-500">ID: {row.registration_number || '-'}</div>
-            </div>
-        )},
-        { header: 'Paket', accessor: 'package_name' },
-        { header: 'Alamat Pengiriman', accessor: 'shipping_address', render: row => row.shipping_address || <span className="text-gray-400 italic">Sama dengan alamat KTP</span> }, 
-        { header: 'Perlengkapan', accessor: 'items_status', render: (row) => {
-            const items = row.items_status || {};
-            const takenCount = Object.values(items).filter(Boolean).length;
-            const total = LOGISTIC_ITEMS.length;
-            const percentage = Math.round((takenCount / total) * 100);
-            
-            return (
-                <div>
-                    <div className="flex justify-between text-xs mb-1">
-                        <span>{takenCount}/{total} Item</span>
-                        <span className="font-bold">{percentage}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                        <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${percentage}%` }}></div>
-                    </div>
-                </div>
-            );
-        }},
-        { header: 'Status Pengambilan', accessor: 'handover_status', render: (row) => (
-            <span className={`px-2 py-1 rounded-full text-xs flex items-center gap-1 w-fit ${row.handover_status === 'taken' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                {row.handover_status === 'taken' ? <CheckCircle size={12}/> : <Clock size={12}/>}
-                {row.handover_status === 'taken' ? 'Sudah Diambil' : 'Belum Lengkap'}
-            </span>
-        )},
-        { header: 'Diambil Oleh', accessor: 'taken_by', render: (row) => row.taken_by || '-' },
-    ];
-
-    const handleHandoverClick = (item) => {
+    const handleOpenModal = (mode, item = null) => {
+        setModalMode(mode);
         setCurrentItem(item);
-        setHandoverData({
-            handover_status: item.handover_status || 'pending',
-            taken_by: item.taken_by || '',
-            date_taken: item.date_taken || new Date().toISOString().split('T')[0],
-            items_status: item.items_status || {}
-        });
+        setFormData(item || { item_name: '', stock_qty: 0, min_stock_alert: 10, unit: 'Pcs' });
         setIsModalOpen(true);
     };
 
-    const handleSaveHandover = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        // Cek apakah semua item sudah dicentang
-        const allChecked = LOGISTIC_ITEMS.every(item => handoverData.items_status?.[item.key]);
-        const finalStatus = allChecked ? 'taken' : handoverData.handover_status;
-
-        await updateItem(currentItem.id, {
-            ...handoverData,
-            handover_status: finalStatus
-        });
-        setIsModalOpen(false);
+        const success = modalMode === 'create' ? await createItem(formData) : await updateItem(currentItem.id, formData);
+        if (success) setIsModalOpen(false);
     };
 
-    const toggleItemCheck = (key) => {
-        setHandoverData(prev => ({
-            ...prev,
-            items_status: { 
-                ...prev.items_status, 
-                [key]: !prev.items_status?.[key] 
-            }
-        }));
-    };
+    const columns = [
+        { header: 'Nama Barang', accessor: 'item_name', render: r => (
+            <div className="flex items-center gap-2 font-medium">
+                <Box size={16} className="text-gray-400"/> {r.item_name}
+            </div>
+        )},
+        { header: 'Stok Saat Ini', accessor: 'stock_qty', render: r => (
+            <span className={`font-bold ${Number(r.stock_qty) <= Number(r.min_stock_alert) ? 'text-red-600' : 'text-green-600'}`}>
+                {r.stock_qty} {r.unit}
+            </span>
+        )},
+        { header: 'Status Stok', accessor: 'status', render: r => (
+            Number(r.stock_qty) <= Number(r.min_stock_alert) 
+            ? <span className="badge bg-red-100 text-red-700 text-xs">Stok Menipis</span>
+            : <span className="badge bg-green-100 text-green-700 text-xs">Aman</span>
+        )}
+    ];
 
     return (
-        <Layout title="Logistik & Perlengkapan">
-            <div className="mb-4 bg-white p-4 rounded shadow-sm border border-blue-100 flex items-center justify-between">
-                <div>
-                    <h2 className="font-bold text-gray-800">Distribusi Perlengkapan</h2>
-                    <p className="text-sm text-gray-500">Kelola serah terima koper, kain ihram, dan perlengkapan jamaah.</p>
-                </div>
-                <div className="bg-blue-50 p-2 rounded-full text-blue-600">
-                    <Truck size={24} />
-                </div>
+        <Layout title="Manajemen Logistik & Perlengkapan">
+            <div className="flex justify-between items-center mb-4">
+                <p className="text-sm text-gray-500">Kelola stok koper, kain ihram, bahan batik, dan perlengkapan lainnya.</p>
+                <button onClick={() => handleOpenModal('create')} className="btn-primary flex items-center gap-2">
+                    <Plus size={18}/> Tambah Barang
+                </button>
             </div>
 
-            <CrudTable
-                columns={columns}
-                data={data}
-                loading={loading}
-                renderRowActions={(row) => (
-                    <button 
-                        onClick={() => handleHandoverClick(row)}
-                        className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 transition"
-                    >
-                        Update Serah Terima
-                    </button>
-                )}
-                userCapabilities={user?.role}
-                editCapability="manage_options"
-            />
+            <CrudTable columns={columns} data={data} loading={loading} onEdit={i => handleOpenModal('edit', i)} onDelete={deleteItem} />
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`Serah Terima: ${currentItem?.jamaah_name || 'Jamaah'}`}>
-                <form onSubmit={handleSaveHandover} className="space-y-4">
-                    
-                    {/* Checklist Item Dinamis dari Variabel LOGISTIC_ITEMS */}
-                    <div className="bg-gray-50 p-4 rounded border">
-                        <label className="block text-sm font-bold text-gray-700 mb-3 border-b pb-2">Checklist Kelengkapan</label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {LOGISTIC_ITEMS.map((item) => (
-                                <label key={item.key} className="flex items-center gap-2 cursor-pointer hover:bg-white p-1 rounded transition">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={handoverData.items_status?.[item.key] || false}
-                                        onChange={() => toggleItemCheck(item.key)}
-                                        className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
-                                    />
-                                    <span className="text-sm text-gray-700">{item.label}</span>
-                                </label>
-                            ))}
-                        </div>
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Tambah Inventaris" : "Update Stok"}>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="label">Nama Barang</label>
+                        <input className="input-field" value={formData.item_name} onChange={e=>setFormData({...formData, item_name: e.target.value})} placeholder="Koper 24 Inch, Kain Batik, dll" required />
                     </div>
-
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Status Pengambilan</label>
-                            <select 
-                                className="mt-1 w-full border rounded p-2"
-                                value={handoverData.handover_status}
-                                onChange={e => setHandoverData({...handoverData, handover_status: e.target.value})}
-                            >
-                                <option value="pending">Belum Lengkap</option>
-                                <option value="taken">Sudah Diambil Lengkap</option>
-                                <option value="shipped">Dikirim Ekspedisi</option>
-                            </select>
+                            <label className="label">Jumlah Stok</label>
+                            <input type="number" className="input-field" value={formData.stock_qty} onChange={e=>setFormData({...formData, stock_qty: e.target.value})} />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Tanggal</label>
-                            <input 
-                                type="date" 
-                                className="mt-1 w-full border rounded p-2"
-                                value={handoverData.date_taken}
-                                onChange={e => setHandoverData({...handoverData, date_taken: e.target.value})}
-                            />
+                            <label className="label">Satuan</label>
+                            <select className="input-field" value={formData.unit} onChange={e=>setFormData({...formData, unit: e.target.value})}>
+                                <option value="Pcs">Pcs</option>
+                                <option value="Box">Box</option>
+                                <option value="Lusin">Lusin</option>
+                                <option value="Meter">Meter</option>
+                            </select>
                         </div>
                     </div>
-
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Diambil Oleh / Penerima</label>
-                        <input 
-                            type="text" 
-                            className="mt-1 w-full border rounded p-2"
-                            placeholder="Nama penerima atau agen..."
-                            value={handoverData.taken_by}
-                            onChange={e => setHandoverData({...handoverData, taken_by: e.target.value})}
-                        />
+                        <label className="label">Peringatan Stok Minimum</label>
+                        <input type="number" className="input-field" value={formData.min_stock_alert} onChange={e=>setFormData({...formData, min_stock_alert: e.target.value})} />
+                        <p className="text-xs text-gray-400 mt-1">Sistem akan memberi peringatan di dashboard jika stok di bawah angka ini.</p>
                     </div>
-
                     <div className="flex justify-end gap-2 pt-4 border-t">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded">Batal</button>
-                        <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700">Simpan Status</button>
+                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
+                        <button type="submit" className="btn-primary">Simpan</button>
                     </div>
                 </form>
             </Modal>
         </Layout>
     );
 };
-
 export default Logistics;
