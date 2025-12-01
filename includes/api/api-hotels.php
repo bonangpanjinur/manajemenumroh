@@ -6,7 +6,6 @@ class UMH_Hotels_API extends UMH_CRUD_Controller {
     public function __construct() {
         $schema = [
             'name'        => ['type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field'],
-            // Point 6: Pastikan type string biasa, bukan enum, agar bisa input kota custom
             'city'        => ['type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field'],
             'distance'    => ['type' => 'integer', 'description' => 'Jarak ke Masjid (meter)'],
             'rating'      => ['type' => 'string', 'default' => '5'],
@@ -16,11 +15,12 @@ class UMH_Hotels_API extends UMH_CRUD_Controller {
             'images'      => ['type' => 'string', 'description' => 'JSON array of image URLs']
         ];
 
-        parent::__construct('hotels', 'umh_hotels', $schema, [
-            'get_items' => ['public'], // Public access for packages display
-            'create_item' => ['admin_staff', 'marketing_staff'],
-            'update_item' => ['admin_staff', 'marketing_staff'],
-            'delete_item' => ['admin_staff']
+        // PERBAIKAN: Gunakan nama tabel yang benar 'umh_master_hotels'
+        parent::__construct('hotels', 'umh_master_hotels', $schema, [
+            'get_items'   => ['public'], 
+            'create_item' => ['administrator', 'owner', 'admin_staff', 'marketing_staff'],
+            'update_item' => ['administrator', 'owner', 'admin_staff', 'marketing_staff'],
+            'delete_item' => ['administrator', 'owner', 'admin_staff']
         ]);
     }
 }

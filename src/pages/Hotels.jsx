@@ -63,7 +63,14 @@ const Hotels = () => {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <CrudTable columns={columns} data={data} loading={loading} onEdit={i => handleOpenModal('edit', i)} onDelete={deleteItem} />
+                <CrudTable 
+                    columns={columns} 
+                    data={data} 
+                    loading={loading} 
+                    onEdit={i => handleOpenModal('edit', i)} 
+                    // PERBAIKAN: Kirim item.id, bukan item object utuh
+                    onDelete={(item) => deleteItem(item.id)} 
+                />
             </div>
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Tambah Hotel Baru" : "Edit Hotel"}>

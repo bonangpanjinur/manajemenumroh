@@ -7,9 +7,6 @@ if (file_exists($utils_path)) require_once $utils_path;
 
 class UMH_Packages_API {
     public function __construct() {
-        // PERBAIKAN VITAL: Smart Hook Registration
-        // Jika rest_api_init sudah terjadi (file ini diload oleh loader), langsung register routes.
-        // Jika belum (file diload manual/awal), pasang hook.
         if (did_action('rest_api_init')) {
             $this->register_routes();
         } else {
@@ -20,8 +17,6 @@ class UMH_Packages_API {
     public function register_routes() {
         $namespace = 'umh/v1';
         
-        // Gunakan permission check yang aman
-        // Jika fungsi helper belum ada (fallback), gunakan current_user_can
         $permission = function_exists('umh_check_api_permission') 
             ? umh_check_api_permission(['owner', 'admin_staff', 'marketing_staff'])
             : function() { return current_user_can('edit_posts'); };
@@ -31,7 +26,7 @@ class UMH_Packages_API {
             [
                 'methods' => 'GET',
                 'callback' => [$this, 'handle_packages_get'],
-                'permission_callback' => '__return_true', // Public agar bisa dilihat di frontend list
+                'permission_callback' => '__return_true', 
             ],
             [
                 'methods' => 'POST',
@@ -48,7 +43,7 @@ class UMH_Packages_API {
                 'permission_callback' => '__return_true',
             ],
             [
-                'methods' => 'POST', // Gunakan POST untuk Update (Edit)
+                'methods' => 'POST', 
                 'callback' => [$this, 'handle_packages_update'],
                 'permission_callback' => $permission
             ],
@@ -64,13 +59,14 @@ class UMH_Packages_API {
         global $wpdb;
         $table = $wpdb->prefix . 'umh_packages';
         
+        // FIX: Join ke tabel umh_master_airlines yang benar
         $results = $wpdb->get_results("
             SELECT p.*, 
                    c.name as category_name, 
                    f.name as airline_name 
             FROM $table p
             LEFT JOIN {$wpdb->prefix}umh_package_categories c ON p.category_id = c.id
-            LEFT JOIN {$wpdb->prefix}umh_flights f ON p.airline_id = f.id
+            LEFT JOIN {$wpdb->prefix}umh_master_airlines f ON p.airline_id = f.id
             WHERE p.status != 'archived'
             ORDER BY p.created_at DESC
         ");
@@ -82,7 +78,6 @@ class UMH_Packages_API {
         $table = $wpdb->prefix . 'umh_packages';
         $data = $request->get_json_params();
         
-        // Validasi dasar
         if (empty($data['name'])) {
             return new WP_Error('missing_name', 'Nama paket wajib diisi', ['status' => 400]);
         }
@@ -144,7 +139,6 @@ class UMH_Packages_API {
         $table = $wpdb->prefix . 'umh_packages';
         $id = $request['id'];
 
-        // Soft delete
         $wpdb->update($table, ['status' => 'archived'], ['id' => $id]);
         
         return rest_ensure_response(['success' => true]);

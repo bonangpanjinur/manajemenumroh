@@ -6,8 +6,6 @@ import useCRUD from '../hooks/useCRUD';
 import { Plus, User, Shield, Key } from 'lucide-react';
 
 const Users = () => {
-    // Endpoint WP Users standar biasanya butuh permissions tinggi
-    // Kita gunakan endpoint custom plugin umh/v1/users
     const { data, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/users');
     
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -17,9 +15,8 @@ const Users = () => {
     const initialForm = { 
         username: '', 
         email: '', 
-        first_name: '', 
-        last_name: '', 
-        roles: 'subscriber', // default role
+        full_name: '', 
+        role: 'subscriber', // FIX: Gunakan 'role' tunggal
         password: '' 
     };
     const [formData, setFormData] = useState(initialForm);
@@ -29,30 +26,35 @@ const Users = () => {
     const handleOpenModal = (mode, item = null) => {
         setModalMode(mode);
         setCurrentItem(item);
-        // Reset password field saat edit agar tidak tertimpa kosong
-        const form = item ? { ...item, password: '' } : initialForm;
-        setFormData(form);
+        // Reset password saat edit
+        setFormData(item ? { ...item, password: '' } : initialForm);
         setIsModalOpen(true);
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const success = modalMode === 'create' ? await createItem(formData) : await updateItem(currentItem.id, formData);
+        const success = modalMode === 'create' 
+            ? await createItem(formData) 
+            : await updateItem(currentItem.id, formData);
+        
         if (success) setIsModalOpen(false);
     };
 
     const columns = [
         { header: 'Username', accessor: 'username', render: r => (
-            <div className="flex items-center gap-2 font-bold text-gray-800">
-                <div className="bg-gray-100 p-2 rounded-full"><User size={16}/></div>
-                {r.username}
+            <div className="flex items-center gap-2">
+                <div className="bg-blue-50 p-2 rounded-full text-blue-600"><User size={16}/></div>
+                <span className="font-bold text-gray-700">{r.username}</span>
             </div>
         )},
-        { header: 'Nama Lengkap', accessor: 'name', render: r => r.name || `${r.first_name} ${r.last_name}` },
-        { header: 'Email', accessor: 'email', render: r => <span className="text-gray-600 text-sm">{r.email}</span> },
-        { header: 'Role / Peran', accessor: 'roles', render: r => (
-            <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded capitalize">
-                {Array.isArray(r.roles) ? r.roles[0] : r.roles}
+        { header: 'Nama Lengkap', accessor: 'full_name' },
+        { header: 'Email', accessor: 'email' },
+        { header: 'Role', accessor: 'role', render: r => (
+            <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                r.role === 'administrator' ? 'bg-purple-100 text-purple-700' : 
+                r.role === 'editor' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'
+            }`}>
+                {r.role}
             </span>
         )}
     ];
@@ -70,10 +72,16 @@ const Users = () => {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <CrudTable columns={columns} data={data} loading={loading} onEdit={i => handleOpenModal('edit', i)} onDelete={deleteItem} />
+                <CrudTable 
+                    columns={columns} 
+                    data={data} 
+                    loading={loading} 
+                    onEdit={i => handleOpenModal('edit', i)} 
+                    onDelete={item => deleteItem(item.id)} 
+                />
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Tambah Pengguna Baru" : "Edit Pengguna"}>
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Tambah Pengguna" : "Edit Pengguna"}>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -86,34 +94,29 @@ const Users = () => {
                         </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Nama Depan</label>
-                            <input className="input-field" value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} />
-                        </div>
-                        <div>
-                            <label className="label">Nama Belakang</label>
-                            <input className="input-field" value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} />
-                        </div>
+                    <div>
+                        <label className="label">Nama Lengkap</label>
+                        <input className="input-field" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} required />
                     </div>
 
                     <div>
                         <label className="label flex items-center gap-2"><Shield size={14}/> Role Akses</label>
-                        <select className="input-field" value={Array.isArray(formData.roles) ? formData.roles[0] : formData.roles} onChange={e => setFormData({...formData, roles: e.target.value})}>
+                        <select className="input-field" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
                             <option value="subscriber">Staff (Subscriber)</option>
                             <option value="editor">Manager (Editor)</option>
                             <option value="administrator">Administrator</option>
+                            <option value="owner">Owner</option>
                         </select>
                     </div>
 
                     <div className="bg-yellow-50 p-3 rounded border border-yellow-100">
                         <label className="label flex items-center gap-2 text-yellow-800"><Key size={14}/> Password</label>
-                        <input type="password" className="input-field" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder={modalMode === 'edit' ? "Kosongkan jika tidak ingin mengubah password" : "Password kuat..."} required={modalMode === 'create'} />
+                        <input type="password" className="input-field" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder={modalMode === 'edit' ? "Kosongkan jika tidak diubah" : "Password kuat..."} required={modalMode === 'create'} />
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4 border-t">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary">Simpan User</button>
+                        <button type="submit" className="btn-primary">Simpan</button>
                     </div>
                 </form>
             </Modal>

@@ -13,7 +13,8 @@ import {
     Tags, 
     CheckSquare, 
     Briefcase,
-    Megaphone
+    Megaphone,
+    BarChart3 // Icon baru untuk COA/Keuangan
 } from 'lucide-react';
 
 export const menuItems = [
@@ -29,7 +30,8 @@ export const menuItems = [
         section: 'Layanan & Produk',
         items: [
             { label: 'Katalog Paket', path: '/packages', icon: Package },
-            { label: 'Kategori Paket', path: '/categories', icon: Tags },
+            // PERBAIKAN 1: Arahkan ke route package-categories yang benar
+            { label: 'Kategori Paket', path: '/package-categories', icon: Tags },
             { label: 'Hotel & Akomodasi', path: '/hotels', icon: Hotel },
             { label: 'Maskapai Penerbangan', path: '/flights', icon: Plane },
         ]
@@ -38,6 +40,8 @@ export const menuItems = [
         section: 'Keuangan & Logistik',
         items: [
             { label: 'Transaksi & Kasir', path: '/finance', icon: CreditCard },
+            // PERBAIKAN 2: Pindahkan Kategori Keuangan (COA) ke sini agar logis
+            { label: 'Kategori Keuangan (COA)', path: '/finance-categories', icon: BarChart3 },
             { label: 'Perlengkapan (Logistik)', path: '/logistics', icon: Box },
         ]
     },

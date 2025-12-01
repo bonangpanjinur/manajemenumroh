@@ -1,29 +1,23 @@
 <?php
-if (!defined('ABSPATH')) {
-    exit;
+if (!defined('ABSPATH')) exit;
+require_once plugin_dir_path(__FILE__) . '../class-umh-crud-controller.php';
+
+class UMH_Package_Categories_API extends UMH_CRUD_Controller {
+    public function __construct() {
+        $schema = [
+            'name'        => ['type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field'],
+            'slug'        => ['type' => 'string', 'sanitize_callback' => 'sanitize_title'],
+            'description' => ['type' => 'string', 'sanitize_callback' => 'sanitize_textarea_field'],
+        ];
+
+        // PENTING: Gunakan tabel 'umh_package_categories'
+        // Endpoint: /umh/v1/package-categories
+        parent::__construct('package-categories', 'umh_package_categories', $schema, [
+            'get_items'   => ['public'],
+            'create_item' => ['administrator', 'owner', 'admin_staff', 'marketing_staff'],
+            'update_item' => ['administrator', 'owner', 'admin_staff', 'marketing_staff'],
+            'delete_item' => ['administrator', 'owner', 'admin_staff']
+        ]);
+    }
 }
-
-add_action('rest_api_init', 'umh_register_pkg_categories_routes');
-
-function umh_register_pkg_categories_routes() {
-    $base = 'package-categories';
-
-    $schema = [
-        'name'        => ['type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field'],
-        'slug'        => ['type' => 'string', 'required' => false, 'sanitize_callback' => 'sanitize_title'],
-        'description' => ['type' => 'string', 'required' => false, 'sanitize_callback' => 'sanitize_textarea_field'],
-    ];
-
-    new UMH_CRUD_Controller(
-        $base,                     // Endpoint: umh/v1/package-categories
-        'umh_package_categories',  // Nama Tabel DB
-        $schema,
-        [
-            'get_items'   => ['owner', 'admin_staff'],
-            'create_item' => ['owner', 'admin_staff'],
-            'update_item' => ['owner', 'admin_staff'],
-            'delete_item' => ['owner'],
-        ],
-        ['name', 'slug']
-    );
-}
+new UMH_Package_Categories_API();

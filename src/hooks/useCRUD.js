@@ -12,20 +12,17 @@ const useCRUD = (endpoint, initialParams = {}) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // 1. Fetch Data dengan Debounce dan Error Handling
+    // 1. Fetch Data
     const fetchData = useCallback(async (params = {}) => {
         setLoading(true);
         setError(null);
         try {
-            // Merge params baru dengan initial params
             const queryParams = { ...initialParams, ...params };
             const response = await api.get(endpoint, { params: queryParams });
             
-            // Normalisasi Data (Handle berbagai format response WP REST API)
             if (response && Array.isArray(response)) {
                 setData(response);
             } else if (response && response.items && Array.isArray(response.items)) {
-                // Format standar controller dengan pagination
                 setData(response.items);
                 setPagination({
                     current_page: parseInt(response.current_page || 1),
@@ -47,14 +44,14 @@ const useCRUD = (endpoint, initialParams = {}) => {
         }
     }, [endpoint, JSON.stringify(initialParams)]);
 
-    // 2. Create Item (Tambah Data)
+    // 2. Create Item
     const createItem = async (newItem) => {
         setLoading(true);
         const toastId = toast.loading('Menyimpan data...');
         try {
             await api.post(endpoint, newItem);
             toast.success('Data berhasil disimpan!', { id: toastId });
-            await fetchData(); // Auto refresh
+            await fetchData(); 
             return true;
         } catch (err) {
             const errMsg = err.message || 'Gagal menyimpan data';
@@ -65,7 +62,7 @@ const useCRUD = (endpoint, initialParams = {}) => {
         }
     };
 
-    // 3. Update Item (Edit Data)
+    // 3. Update Item
     const updateItem = async (id, updatedItem) => {
         setLoading(true);
         const toastId = toast.loading('Memperbarui data...');
@@ -83,15 +80,17 @@ const useCRUD = (endpoint, initialParams = {}) => {
         }
     };
 
-    // 4. Delete Item (Hapus Data)
+    // 4. Delete Item (Perbaikan Logika & Pesan)
     const deleteItem = async (id) => {
+        // Konfirmasi ada di sini, jadi di halaman tidak perlu ada window.confirm lagi
         if (!window.confirm('Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.')) return false;
         
         setLoading(true);
         const toastId = toast.loading('Menghapus data...');
         try {
             await api.delete(`${endpoint}/${id}`);
-            toast.success('Data berhasil dihapus', { id: toastId });
+            toast.success('Data berhasil dihapus', { id: toastId }); // Pastikan pesan ini benar
+            
             // Optimistic update UI
             setData((prev) => prev.filter((item) => item.id !== id));
             await fetchData(); 
@@ -105,7 +104,6 @@ const useCRUD = (endpoint, initialParams = {}) => {
         }
     };
 
-    // Fungsi helper untuk pagination
     const changePage = (page) => fetchData({ page });
     const changeLimit = (limit) => fetchData({ per_page: limit, page: 1 });
 

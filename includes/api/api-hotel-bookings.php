@@ -1,17 +1,6 @@
 <?php
-/**
- * File: includes/api/api-hotel-bookings.php
- *
- * File BARU (Peningkatan 1):
- * - Membuat endpoint kustom untuk mengelola booking hotel (tabel umh_hotel_bookings).
- * - API:
- * - GET /hotel-bookings?package_id=...
- * - POST /hotel-bookings
- * - DELETE /hotel-bookings/{id}
- */
-
 if (!defined('ABSPATH')) {
-    exit; // Exit if accessed directly
+    exit; 
 }
 
 add_action('rest_api_init', 'umh_register_hotel_booking_api_routes');
@@ -20,14 +9,12 @@ function umh_register_hotel_booking_api_routes() {
     $namespace = 'umh/v1';
     $base = 'hotel-bookings';
 
-    // GET /hotel-bookings?package_id=...
     register_rest_route($namespace, '/' . $base, [
         [
             'methods'  => WP_REST_Server::READABLE,
             'callback' => 'umh_get_hotel_bookings',
             'permission_callback' => 'umh_check_api_permission_ops_staff',
         ],
-        // POST /hotel-bookings
         [
             'methods'  => WP_REST_Server::CREATABLE,
             'callback' => 'umh_create_hotel_booking',
@@ -35,7 +22,6 @@ function umh_register_hotel_booking_api_routes() {
         ],
     ]);
 
-    // DELETE /hotel-bookings/{id}
     register_rest_route($namespace, '/' . $base . '/(?P<id>[\d]+)', [
         [
             'methods'  => WP_REST_Server::DELETABLE,
@@ -45,11 +31,12 @@ function umh_register_hotel_booking_api_routes() {
     ]);
 }
 
-// GET /hotel-bookings?package_id=...
 function umh_get_hotel_bookings($request) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'umh_hotel_bookings';
-    $hotels_table = $wpdb->prefix . 'umh_hotels';
+    // FIX: Gunakan nama tabel yang benar
+    $hotels_table = $wpdb->prefix . 'umh_master_hotels';
+    
     $package_id = $request->get_param('package_id');
     $jamaah_id = $request->get_param('jamaah_id');
 
@@ -72,7 +59,6 @@ function umh_get_hotel_bookings($request) {
         return new WP_REST_Response([], 200); 
     }
 
-    // JOIN dengan tabel hotels untuk dapat nama hotel, dll.
     $query = "SELECT b.*, h.name AS hotel_name, h.city, h.rating 
               FROM $table_name AS b
               LEFT JOIN $hotels_table AS h ON b.hotel_id = h.id
@@ -83,7 +69,6 @@ function umh_get_hotel_bookings($request) {
     return new WP_REST_Response($items, 200);
 }
 
-// POST /hotel-bookings
 function umh_create_hotel_booking($request) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'umh_hotel_bookings';
@@ -112,7 +97,6 @@ function umh_create_hotel_booking($request) {
     return new WP_REST_Response($new_booking, 201);
 }
 
-// DELETE /hotel-bookings/{id}
 function umh_delete_hotel_booking($request) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'umh_hotel_bookings';

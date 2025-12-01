@@ -1,18 +1,6 @@
 <?php
-/**
- * File: includes/api/api-flight-bookings.php
- *
- * File BARU (Peningkatan 1):
- * - Membuat endpoint kustom untuk mengelola booking pesawat (tabel umh_flight_bookings).
- * - Endpoint ini mirip dengan api-payments.php.
- * - API:
- * - GET /flight-bookings?package_id=...
- * - POST /flight-bookings
- * - DELETE /flight-bookings/{id}
- */
-
 if (!defined('ABSPATH')) {
-    exit; // Exit if accessed directly
+    exit; 
 }
 
 add_action('rest_api_init', 'umh_register_flight_booking_api_routes');
@@ -21,14 +9,12 @@ function umh_register_flight_booking_api_routes() {
     $namespace = 'umh/v1';
     $base = 'flight-bookings';
 
-    // GET /flight-bookings?package_id=...
     register_rest_route($namespace, '/' . $base, [
         [
             'methods'  => WP_REST_Server::READABLE,
             'callback' => 'umh_get_flight_bookings',
             'permission_callback' => 'umh_check_api_permission_ops_staff',
         ],
-        // POST /flight-bookings
         [
             'methods'  => WP_REST_Server::CREATABLE,
             'callback' => 'umh_create_flight_booking',
@@ -36,7 +22,6 @@ function umh_register_flight_booking_api_routes() {
         ],
     ]);
 
-    // DELETE /flight-bookings/{id}
     register_rest_route($namespace, '/' . $base . '/(?P<id>[\d]+)', [
         [
             'methods'  => WP_REST_Server::DELETABLE,
@@ -46,16 +31,16 @@ function umh_register_flight_booking_api_routes() {
     ]);
 }
 
-// Izin: Hanya Owner, Admin, dan Staf Operasional
 function umh_check_api_permission_ops_staff() {
     return umh_check_api_permission(['owner', 'admin_staff', 'ops_staff']);
 }
 
-// GET /flight-bookings?package_id=...
 function umh_get_flight_bookings($request) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'umh_flight_bookings';
-    $flights_table = $wpdb->prefix . 'umh_flights';
+    // FIX: Gunakan nama tabel yang benar
+    $flights_table = $wpdb->prefix . 'umh_master_airlines';
+    
     $package_id = $request->get_param('package_id');
     $jamaah_id = $request->get_param('jamaah_id');
 
@@ -75,22 +60,23 @@ function umh_get_flight_bookings($request) {
     if (!empty($where_clauses)) {
         $where_sql = " WHERE " . implode(' AND ', $where_clauses);
     } else {
-        // Jangan ambil semua jika tidak ada filter, terlalu berat
         return new WP_REST_Response([], 200); 
     }
 
-    // JOIN dengan tabel flights untuk dapat nama maskapai, dll.
-    $query = "SELECT b.*, f.airline, f.flight_number, f.departure_time, f.arrival_time 
+    // JOIN ke tabel master airline
+    // Pastikan kolom yang diambil sesuai: f.name, f.code (karena tabel master tidak punya flight_number/departure_time di level maskapai)
+    // Jika perlu flight number/time, itu harusnya di tabel booking, bukan master.
+    // Asumsi: Kita ambil nama maskapai dari master.
+    $query = "SELECT b.*, f.name as airline_name, f.code as airline_code
               FROM $table_name AS b
               LEFT JOIN $flights_table AS f ON b.flight_id = f.id
               $where_sql
-              ORDER BY f.departure_time ASC";
+              ORDER BY b.id DESC";
               
     $items = $wpdb->get_results($wpdb->prepare($query, $params));
     return new WP_REST_Response($items, 200);
 }
 
-// POST /flight-bookings
 function umh_create_flight_booking($request) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'umh_flight_bookings';
@@ -119,7 +105,6 @@ function umh_create_flight_booking($request) {
     return new WP_REST_Response($new_booking, 201);
 }
 
-// DELETE /flight-bookings/{id}
 function umh_delete_flight_booking($request) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'umh_flight_bookings';

@@ -20,14 +20,10 @@ const Categories = () => {
         { header: 'Keterangan', accessor: 'description' },
     ];
 
-    const { data, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/categories'); // Pastikan endpoint ini ada di api-categories.php
+    const { data, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/categories');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editId, setEditId] = useState(null);
-    const [formData, setFormData] = useState({
-        name: '',
-        type: 'expense',
-        description: ''
-    });
+    const [formData, setFormData] = useState({ name: '', type: 'expense', description: '' });
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -46,6 +42,11 @@ const Categories = () => {
         setIsModalOpen(true);
     };
 
+    // FIX: Kirim item.id ke deleteItem, bukan item object
+    const handleDelete = (item) => {
+        deleteItem(item.id);
+    };
+
     return (
         <Layout title="Kategori Keuangan (COA)">
             <div className="flex justify-between mb-4">
@@ -53,7 +54,7 @@ const Categories = () => {
                 <button onClick={() => { setEditId(null); setIsModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded">+ Akun Baru</button>
             </div>
 
-            {loading ? <Spinner /> : <CrudTable columns={columns} data={data} onEdit={handleEdit} onDelete={deleteItem} />}
+            {loading ? <Spinner /> : <CrudTable columns={columns} data={data} onEdit={handleEdit} onDelete={handleDelete} />}
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Akun" : "Tambah Akun Keuangan"}>
                 <form onSubmit={handleSubmit} className="space-y-4">

@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter, Routes, Route } from 'react-router-dom';
-import DataProvider from './contexts/DataContext'; // PERBAIKAN: Hapus kurung kurawal {} karena default export
+import DataProvider from './contexts/DataContext';
 import { Toaster } from 'react-hot-toast';
 
 // Import Halaman Utama
@@ -19,7 +19,8 @@ import Agents from './pages/Agents';
 // Import Halaman Master & Settings
 import Hotels from './pages/Hotels';
 import Flights from './pages/Flights';
-import Categories from './pages/Categories';
+import PackageCategories from './pages/PackageCategories'; // Pastikan ini diimport
+import Categories from './pages/Categories'; // Ini adalah Finance Categories (COA)
 import Users from './pages/Users';
 import Roles from './pages/Roles';
 import Settings from './pages/Settings';
@@ -52,7 +53,13 @@ const App = () => {
                         {/* Master Data & Admin */}
                         <Route path="/hotels" element={<Hotels />} />
                         <Route path="/flights" element={<Flights />} />
-                        <Route path="/categories" element={<Categories />} />
+                        
+                        {/* PERBAIKAN: Pisahkan Rute Kategori */}
+                        <Route path="/package-categories" element={<PackageCategories />} />
+                        <Route path="/finance-categories" element={<Categories />} /> 
+                        {/* Backward compatibility jika ada yg akses url lama */}
+                        <Route path="/categories" element={<Categories />} /> 
+
                         <Route path="/users" element={<Users />} />
                         <Route path="/roles" element={<Roles />} />
                         <Route path="/settings" element={<Settings />} />
@@ -64,17 +71,14 @@ const App = () => {
 };
 
 // Mount React App
-// PERBAIKAN: Cari container dengan ID yang benar (sesuai PHP)
 const container = document.getElementById('umroh-manager-app') || document.getElementById('umh-app-root');
 
 if (container) {
-    // Trik: Paksa ID container jadi 'umh-app-root' agar CSS admin-style.css (Full Screen) jalan
     if (container.id !== 'umh-app-root') {
         container.id = 'umh-app-root';
     }
-
     const root = createRoot(container);
     root.render(<App />);
 } else {
-    console.error("Fatal Error: Container app tidak ditemukan di DOM. Pastikan plugin aktif dan ID div sesuai.");
+    console.error("Fatal Error: Container app tidak ditemukan di DOM.");
 }

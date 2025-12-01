@@ -3,54 +3,69 @@ if (!defined('ABSPATH')) exit;
 require_once plugin_dir_path(__FILE__) . '../class-umh-crud-controller.php';
 
 class UMH_Finance_API extends UMH_CRUD_Controller {
+    
     public function __construct() {
         $schema = [
-            'transaction_type' => ['type' => 'string', 'required' => true],
-            'transaction_date' => ['type' => 'string', 'format' => 'date', 'required' => true],
+            'transaction_date' => ['type' => 'string', 'required' => true],
+            'type'             => ['type' => 'string', 'required' => true, 'enum' => ['income', 'expense']],
+            'category'         => ['type' => 'string', 'default' => 'General'],
             'amount'           => ['type' => 'number', 'required' => true],
-            'category'         => ['type' => 'string'],
             'description'      => ['type' => 'string'],
             'jamaah_id'        => ['type' => 'integer'],
-            'agent_id'         => ['type' => 'integer'],
             'employee_id'      => ['type' => 'integer'],
-            'campaign_id'      => ['type' => 'integer'], // BARU: Relasi ke Kampanye
             'payment_method'   => ['type' => 'string'],
+            'status'           => ['type' => 'string', 'default' => 'verified'],
+            'proof_file'       => ['type' => 'string'], 
         ];
-        parent::__construct('finance', 'umh_finance', $schema, ['get_items' => ['admin_staff', 'finance_staff', 'owner'], 'create_item' => ['admin_staff', 'finance_staff', 'owner']]);
+
+        parent::__construct('finance', 'umh_finance', $schema, [
+            'get_items' => ['owner', 'admin_staff', 'finance_staff'],
+            'create_item' => ['owner', 'admin_staff', 'finance_staff'],
+            'update_item' => ['owner', 'admin_staff', 'finance_staff'],
+            'delete_item' => ['owner', 'admin_staff']
+        ]);
     }
 
-    // Override get_items untuk JOIN yang lebih lengkap
     public function get_items($request) {
         global $wpdb;
-        $type = $request->get_param('transaction_type');
-        $where = "WHERE 1=1";
-        $params = [];
-
-        if ($type) {
-            $where .= " AND f.type = %s"; 
-            $params[] = $type;
-        }
+        $jamaah_table = $wpdb->prefix . 'umh_jamaah';
         
-        // UPDATE: Tambahkan JOIN ke tabel Marketing
-        $sql = "SELECT f.*, 
-                j.full_name as jamaah_name,
-                a.name as agent_name,
-                e.name as employee_name,
-                c.title as campaign_name
+        $sql = "SELECT f.*, j.full_name as jamaah_name 
                 FROM {$this->table_name} f
-                LEFT JOIN {$wpdb->prefix}umh_jamaah j ON f.jamaah_id = j.id
-                LEFT JOIN {$wpdb->prefix}umh_agents a ON f.agent_id = a.id
-                LEFT JOIN {$wpdb->prefix}umh_employees e ON f.employee_id = e.id
-                LEFT JOIN {$wpdb->prefix}umh_marketing c ON f.campaign_id = c.id
-                $where
-                ORDER BY f.date DESC"; 
-        
-        if (!empty($params)) {
-            $sql = $wpdb->prepare($sql, $params);
+                LEFT JOIN $jamaah_table j ON f.jamaah_id = j.id
+                WHERE 1=1";
+
+        if ($request->get_param('type')) {
+            $sql .= $wpdb->prepare(" AND f.type = %s", $request->get_param('type'));
         }
+
+        $sql .= " ORDER BY f.transaction_date DESC, f.id DESC";
         
-        $results = $wpdb->get_results($sql, ARRAY_A);
-        return rest_ensure_response($results);
+        return rest_ensure_response($wpdb->get_results($sql, ARRAY_A));
+    }
+
+    public function create_item($request) {
+        $response = parent::create_item($request);
+        
+        // Auto update status jemaah jika ada pembayaran
+        if (!is_wp_error($response) && $response->get_status() === 201) {
+            $data = $response->get_data();
+            if (!empty($data['jamaah_id'])) {
+                $this->update_jamaah_status($data['jamaah_id']);
+            }
+        }
+        return $response;
+    }
+
+    private function update_jamaah_status($id) {
+        global $wpdb;
+        $paid = $wpdb->get_var($wpdb->prepare("SELECT SUM(amount) FROM {$this->table_name} WHERE jamaah_id=%d AND type='income'", $id));
+        $price = $wpdb->get_var($wpdb->prepare("SELECT package_price FROM {$wpdb->prefix}umh_jamaah WHERE id=%d", $id));
+        
+        $status = ($paid > 0) ? 'dp' : 'registered';
+        if ($price > 0 && $paid >= $price) $status = 'lunas';
+        
+        $wpdb->update($wpdb->prefix.'umh_jamaah', ['status' => $status], ['id' => $id]);
     }
 }
 new UMH_Finance_API();
