@@ -9,28 +9,39 @@ import { formatCurrency } from '../utils/formatters';
 import toast from 'react-hot-toast';
 
 const Packages = () => {
+    // Menggunakan endpoint packages
     const { data, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/packages');
     
     const [categories, setCategories] = useState([]);
     const [hotels, setHotels] = useState([]);
     const [airlines, setAirlines] = useState([]);
 
-    // Load data penunjang
+    // Load data penunjang (Kategori, Hotel, Maskapai)
     useEffect(() => {
         const loadSupportData = async () => {
             try {
+                // PERBAIKAN 1: Tambahkan params per_page: 100 agar data tidak terpotong (default API biasanya 10 atau 20)
                 const [cats, htls, airls] = await Promise.all([
-                    api.get('umh/v1/package-categories').catch(() => []),
-                    api.get('umh/v1/hotels').catch(() => []),
-                    api.get('umh/v1/flights').catch(() => [])
+                    api.get('umh/v1/package-categories', { params: { per_page: 100 } }).catch(() => []),
+                    api.get('umh/v1/hotels', { params: { per_page: 100 } }).catch(() => []),
+                    api.get('umh/v1/flights', { params: { per_page: 100 } }).catch(() => [])
                 ]);
                 
-                // Pastikan data yang diset adalah Array untuk mencegah blank screen
-                setCategories(Array.isArray(cats) ? cats : (cats.data || []));
-                setHotels(Array.isArray(htls) ? htls : (htls.data || []));
-                setAirlines(Array.isArray(airls) ? airls : (airls.data || []));
+                // PERBAIKAN 2: Helper untuk menormalkan respon API
+                // API sering mengembalikan objek { items: [...] } atau { data: [...] }, bukan array langsung.
+                const normalizeOptions = (res) => {
+                    if (Array.isArray(res)) return res;
+                    if (res && Array.isArray(res.items)) return res.items;
+                    if (res && Array.isArray(res.data)) return res.data;
+                    return [];
+                };
+                
+                setCategories(normalizeOptions(cats));
+                setHotels(normalizeOptions(htls));
+                setAirlines(normalizeOptions(airls));
             } catch (error) {
                 console.error("Gagal memuat data penunjang", error);
+                toast.error("Gagal memuat data master (Hotel/Maskapai)");
             }
         };
         
@@ -59,6 +70,8 @@ const Packages = () => {
     const handleOpenModal = (mode, item = null) => {
         setModalMode(mode);
         setCurrentItem(item);
+        
+        // Reset form atau isi dengan data item yang diedit
         setFormData(item ? {
             ...item,
             category_id: item.category_id || '',
@@ -69,6 +82,7 @@ const Packages = () => {
             included_features: item.included_features || '',
             excluded_features: item.excluded_features || ''
         } : initialForm);
+        
         setIsModalOpen(true);
     };
 
@@ -80,13 +94,14 @@ const Packages = () => {
         
         if (success) { 
             setIsModalOpen(false); 
-            // fetchData sudah dipanggil otomatis oleh hook useCRUD
+            // Data akan otomatis refresh karena useCRUD memanggil fetchData kembali
         }
     };
 
-    // Helper Safely Get Name (Mencegah Blank Screen)
+    // Helper untuk mendapatkan nama Hotel/Maskapai berdasarkan ID agar tidak blank di tabel
     const getHotelName = (id) => {
         if (!hotels || hotels.length === 0 || !id) return '-';
+        // Konversi ke string untuk perbandingan aman
         const hotel = hotels.find(h => String(h.id) === String(id));
         return hotel ? hotel.name : '-';
     };
@@ -97,6 +112,7 @@ const Packages = () => {
         return airline ? airline.name : '-';
     };
 
+    // Definisi Kolom Tabel
     const columns = [
         { header: 'Nama Paket', accessor: 'name', render: r => (
             <div>
