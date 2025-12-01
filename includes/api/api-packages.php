@@ -7,20 +7,31 @@ if (file_exists($utils_path)) require_once $utils_path;
 
 class UMH_Packages_API {
     public function __construct() {
-        add_action('rest_api_init', [$this, 'register_routes']);
+        // PERBAIKAN VITAL: Smart Hook Registration
+        // Jika rest_api_init sudah terjadi (file ini diload oleh loader), langsung register routes.
+        // Jika belum (file diload manual/awal), pasang hook.
+        if (did_action('rest_api_init')) {
+            $this->register_routes();
+        } else {
+            add_action('rest_api_init', [$this, 'register_routes']);
+        }
     }
 
     public function register_routes() {
         $namespace = 'umh/v1';
         
-        // Menggunakan factory function untuk permission
-        $permission = umh_check_api_permission(['owner', 'admin_staff', 'marketing_staff']);
+        // Gunakan permission check yang aman
+        // Jika fungsi helper belum ada (fallback), gunakan current_user_can
+        $permission = function_exists('umh_check_api_permission') 
+            ? umh_check_api_permission(['owner', 'admin_staff', 'marketing_staff'])
+            : function() { return current_user_can('edit_posts'); };
 
+        // 1. GET ALL & CREATE
         register_rest_route($namespace, '/packages', [
             [
                 'methods' => 'GET',
                 'callback' => [$this, 'handle_packages_get'],
-                'permission_callback' => '__return_true', // Public read allowed agar bisa dilihat di frontend
+                'permission_callback' => '__return_true', // Public agar bisa dilihat di frontend list
             ],
             [
                 'methods' => 'POST',
@@ -29,6 +40,7 @@ class UMH_Packages_API {
             ]
         ]);
         
+        // 2. GET SINGLE, UPDATE, DELETE
         register_rest_route($namespace, '/packages/(?P<id>\d+)', [
             [
                 'methods' => 'GET',
@@ -36,7 +48,7 @@ class UMH_Packages_API {
                 'permission_callback' => '__return_true',
             ],
             [
-                'methods' => 'POST', // Update pakai POST di REST API WP kadang lebih stabil
+                'methods' => 'POST', // Gunakan POST untuk Update (Edit)
                 'callback' => [$this, 'handle_packages_update'],
                 'permission_callback' => $permission
             ],
@@ -52,8 +64,6 @@ class UMH_Packages_API {
         global $wpdb;
         $table = $wpdb->prefix . 'umh_packages';
         
-        // Join dengan Category dan Airline
-        // Pastikan nama kolom di SELECT sesuai dengan yang ada di DB (base_price, duration_days)
         $results = $wpdb->get_results("
             SELECT p.*, 
                    c.name as category_name, 
@@ -72,15 +82,19 @@ class UMH_Packages_API {
         $table = $wpdb->prefix . 'umh_packages';
         $data = $request->get_json_params();
         
-        // Sanitasi & Mapping Data Frontend ke Database
+        // Validasi dasar
+        if (empty($data['name'])) {
+            return new WP_Error('missing_name', 'Nama paket wajib diisi', ['status' => 400]);
+        }
+
         $insert_data = [
             'name' => sanitize_text_field($data['name']),
-            'category_id' => intval($data['category_id']),
-            'airline_id' => intval($data['airline_id']),
-            'hotel_makkah_id' => intval($data['hotel_makkah_id']),
-            'hotel_madinah_id' => intval($data['hotel_madinah_id']),
-            'duration_days' => intval($data['duration_days']), // Sesuai kolom DB baru
-            'base_price' => floatval($data['base_price']),     // Sesuai kolom DB baru
+            'category_id' => !empty($data['category_id']) ? intval($data['category_id']) : null,
+            'airline_id' => !empty($data['airline_id']) ? intval($data['airline_id']) : null,
+            'hotel_makkah_id' => !empty($data['hotel_makkah_id']) ? intval($data['hotel_makkah_id']) : null,
+            'hotel_madinah_id' => !empty($data['hotel_madinah_id']) ? intval($data['hotel_madinah_id']) : null,
+            'duration_days' => intval($data['duration_days']),
+            'base_price' => floatval($data['base_price']),
             'description' => wp_kses_post($data['description'] ?? ''),
             'included_features' => wp_kses_post($data['included_features'] ?? ''),
             'excluded_features' => wp_kses_post($data['excluded_features'] ?? ''),
@@ -105,10 +119,10 @@ class UMH_Packages_API {
 
         $update_data = [
             'name' => sanitize_text_field($data['name']),
-            'category_id' => intval($data['category_id']),
-            'airline_id' => intval($data['airline_id']),
-            'hotel_makkah_id' => intval($data['hotel_makkah_id']),
-            'hotel_madinah_id' => intval($data['hotel_madinah_id']),
+            'category_id' => !empty($data['category_id']) ? intval($data['category_id']) : null,
+            'airline_id' => !empty($data['airline_id']) ? intval($data['airline_id']) : null,
+            'hotel_makkah_id' => !empty($data['hotel_makkah_id']) ? intval($data['hotel_makkah_id']) : null,
+            'hotel_madinah_id' => !empty($data['hotel_madinah_id']) ? intval($data['hotel_madinah_id']) : null,
             'duration_days' => intval($data['duration_days']),
             'base_price' => floatval($data['base_price']),
             'description' => wp_kses_post($data['description'] ?? ''),
@@ -130,7 +144,7 @@ class UMH_Packages_API {
         $table = $wpdb->prefix . 'umh_packages';
         $id = $request['id'];
 
-        // Soft delete (Ubah status jadi archived)
+        // Soft delete
         $wpdb->update($table, ['status' => 'archived'], ['id' => $id]);
         
         return rest_ensure_response(['success' => true]);

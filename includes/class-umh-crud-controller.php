@@ -24,6 +24,8 @@ class UMH_CRUD_Controller {
         $this->search_fields = $search_fields;
 
         // PERBAIKAN LOGIKA HOOK (Mencegah Double Hook / No Route)
+        // Jika class ini diinisialisasi DI DALAM callback rest_api_init (oleh API Loader),
+        // maka kita harus langsung register routes, karena hook rest_api_init sudah lewat/sedang jalan.
         if (did_action('rest_api_init')) {
             $this->register_routes();
         } else {
@@ -67,13 +69,12 @@ class UMH_CRUD_Controller {
     }
 
     public function check_permission($request) {
-        // Logic permission tetap sama
         if (!is_user_logged_in()) {
             return new WP_Error('rest_forbidden', 'Silakan login terlebih dahulu.', ['status' => 401]);
         }
 
-        // ByPass sementara untuk testing, bisa dikomentari nanti
-        // return true; 
+        // Izinkan Super Admin (bypass logic)
+        if (current_user_can('manage_options')) return true;
 
         $method = $request->get_method();
         $action = '';
@@ -94,15 +95,15 @@ class UMH_CRUD_Controller {
 
         $allowed_roles = $this->permissions[$action] ?? ['administrator'];
         
-        // Cek logic permission dari utils jika ada (support api-users.php logic)
+        // Gunakan helper dari utils.php jika tersedia
         if (function_exists('umh_check_api_permission')) {
              $checker = umh_check_api_permission($allowed_roles);
              $result = call_user_func($checker, $request);
-             if (is_wp_error($result)) return $result;
-             return true;
+             // Jika result true atau WP_Error, kembalikan
+             return $result;
         }
 
-        return true; // Fallback default allow logged in
+        return true; 
     }
     
     // --- CRUD OPERATIONS ---
@@ -116,10 +117,6 @@ class UMH_CRUD_Controller {
 
         $where = "WHERE 1=1";
 
-        // Cek apakah tabel punya kolom status untuk soft delete
-        // Asumsi tabel standar punya kolom 'status'
-        // $where .= " AND status != 'deleted'"; 
-
         if ($search && !empty($this->search_fields)) {
             $search_query = [];
             foreach ($this->search_fields as $field) {
@@ -128,7 +125,6 @@ class UMH_CRUD_Controller {
             $where .= " AND (" . implode(' OR ', $search_query) . ")";
         }
         
-        // Filter tambahan dari query params (exact match)
         $params = $request->get_params();
         $ignored_params = ['page', 'per_page', 'search', 'order', 'orderby'];
         foreach ($params as $key => $value) {
@@ -137,7 +133,6 @@ class UMH_CRUD_Controller {
             }
         }
 
-        // Sorting
         $orderby = $request->get_param('orderby') ? esc_sql($request->get_param('orderby')) : 'id';
         $order = $request->get_param('order') ? esc_sql($request->get_param('order')) : 'DESC';
 
@@ -160,10 +155,7 @@ class UMH_CRUD_Controller {
 
     public function create_item($request) {
         global $wpdb;
-        
-        // Hook sebelum create (misal untuk hash password atau generate kode)
         $data = apply_filters("umh_crud_{$this->resource_name}_before_create", $this->prepare_item_for_db($request), $request);
-        
         if (is_wp_error($data)) return $data;
 
         if ($wpdb->insert($this->table_name, $data)) {
@@ -175,10 +167,7 @@ class UMH_CRUD_Controller {
     public function update_item($request) {
         global $wpdb;
         $id = (int) $request['id'];
-        
-        // Hook sebelum update
         $data = apply_filters("umh_crud_{$this->resource_name}_before_update", $this->prepare_item_for_db($request), $request);
-        
         if (is_wp_error($data)) return $data;
 
         $wpdb->update($this->table_name, $data, ['id' => $id]);
@@ -188,9 +177,8 @@ class UMH_CRUD_Controller {
     public function delete_item($request) {
         global $wpdb;
         $id = (int) $request['id'];
-        
-        // Cek apakah pakai soft delete (status) atau hard delete
         $cols = $wpdb->get_col("DESC {$this->table_name}", 0);
+        
         if (in_array('status', $cols)) {
              $wpdb->update($this->table_name, ['status' => 'deleted'], ['id' => $id]);
         } else {
@@ -203,7 +191,6 @@ class UMH_CRUD_Controller {
     protected function prepare_item_for_db($request) {
         $data = [];
         $params = $request->get_json_params();
-        
         foreach ($this->schema as $key => $config) {
             if (isset($params[$key])) {
                 $data[$key] = $params[$key];

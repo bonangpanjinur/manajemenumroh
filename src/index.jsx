@@ -1,59 +1,61 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter, Routes, Route } from 'react-router-dom';
+import DataProvider from './contexts/DataContext'; // PERBAIKAN: Hapus kurung kurawal {} karena default export
 import { Toaster } from 'react-hot-toast';
-import './index.css';
 
-// Import Pages
+// Import Halaman Utama
 import Dashboard from './pages/Dashboard';
 import Jamaah from './pages/Jamaah';
 import Packages from './pages/Packages';
 import Departures from './pages/Departures';
 import Finance from './pages/Finance';
+import Marketing from './pages/Marketing';
+import Tasks from './pages/Tasks';
+import Logistics from './pages/Logistics';
+import HR from './pages/HR';
+import Agents from './pages/Agents';
+
+// Import Halaman Master & Settings
 import Hotels from './pages/Hotels';
 import Flights from './pages/Flights';
-import Agents from './pages/Agents';
+import Categories from './pages/Categories';
+import Users from './pages/Users';
+import Roles from './pages/Roles';
 import Settings from './pages/Settings';
-import Logistics from './pages/Logistics';
-import Users from './pages/Users'; 
-import Masters from './pages/Masters'; // Tambahan Master Data
 
-import DataProvider from './contexts/DataContext';
+// Styles
+import './index.css';
 
 const App = () => {
     return (
         <DataProvider>
             <HashRouter>
-                <div className="font-sans text-gray-900 bg-gray-50 min-h-screen">
-                    <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+                <div className="min-h-screen bg-gray-100 font-sans text-gray-900">
+                    <Toaster position="top-right" />
                     <Routes>
                         <Route path="/" element={<Dashboard />} />
+                        
+                        {/* Operasional Utama */}
                         <Route path="/jamaah" element={<Jamaah />} />
                         <Route path="/packages" element={<Packages />} />
                         <Route path="/departures" element={<Departures />} />
-                        <Route path="/finance" element={<Finance />} />
-                        <Route path="/marketing" element={<div className="p-10 text-center">Halaman Marketing (Coming Soon)</div>} />
                         
-                        {/* Master Data */}
+                        {/* Bisnis & Pendukung */}
+                        <Route path="/finance" element={<Finance />} />
+                        <Route path="/marketing" element={<Marketing />} />
+                        <Route path="/agents" element={<Agents />} />
+                        <Route path="/tasks" element={<Tasks />} />
+                        <Route path="/logistics" element={<Logistics />} />
+                        <Route path="/hr" element={<HR />} />
+                        
+                        {/* Master Data & Admin */}
                         <Route path="/hotels" element={<Hotels />} />
                         <Route path="/flights" element={<Flights />} />
-                        <Route path="/agents" element={<Agents />} />
-                        <Route path="/masters" element={<Masters />} />
-                        
-                        {/* Operasional */}
-                        <Route path="/logistics" element={<Logistics />} />
-                        <Route path="/tasks" element={<div className="p-10 text-center">Halaman Tugas (Coming Soon)</div>} />
-                        <Route path="/hr" element={<div className="p-10 text-center">Halaman HR (Coming Soon)</div>} />
-
-                        {/* Manajemen */}
+                        <Route path="/categories" element={<Categories />} />
                         <Route path="/users" element={<Users />} />
+                        <Route path="/roles" element={<Roles />} />
                         <Route path="/settings" element={<Settings />} />
-                        
-                        <Route path="*" element={
-                            <div className="flex items-center justify-center h-screen">
-                                <h1 className="text-xl font-bold text-gray-500">404 | Halaman Tidak Ditemukan</h1>
-                            </div>
-                        } />
                     </Routes>
                 </div>
             </HashRouter>
@@ -61,19 +63,18 @@ const App = () => {
     );
 };
 
-// --- PERBAIKAN VITAL DI SINI ---
-// Pastikan ID ini SAMA PERSIS dengan yang ada di file admin/dashboard-react.php
-const container = document.getElementById('umroh-manager-app');
+// Mount React App
+// PERBAIKAN: Cari container dengan ID yang benar (sesuai PHP)
+const container = document.getElementById('umroh-manager-app') || document.getElementById('umh-app-root');
 
 if (container) {
-    try {
-        const root = createRoot(container);
-        root.render(<App />);
-    } catch (e) {
-        console.error("React Mount Error:", e);
-        // Tampilkan error di layar jika crash saat mounting
-        container.innerHTML = `<div style="color:red; padding:20px; text-align:center;"><h3>Gagal Memuat Aplikasi</h3><p>${e.message}</p></div>`;
+    // Trik: Paksa ID container jadi 'umh-app-root' agar CSS admin-style.css (Full Screen) jalan
+    if (container.id !== 'umh-app-root') {
+        container.id = 'umh-app-root';
     }
+
+    const root = createRoot(container);
+    root.render(<App />);
 } else {
-    console.error("Fatal Error: Container #umroh-manager-app tidak ditemukan di DOM.");
+    console.error("Fatal Error: Container app tidak ditemukan di DOM. Pastikan plugin aktif dan ID div sesuai.");
 }

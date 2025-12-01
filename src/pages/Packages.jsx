@@ -15,19 +15,33 @@ const Packages = () => {
     const [hotels, setHotels] = useState([]);
     const [airlines, setAirlines] = useState([]);
 
+    // Load data penunjang
     useEffect(() => {
+        const loadSupportData = async () => {
+            try {
+                const [cats, htls, airls] = await Promise.all([
+                    api.get('umh/v1/package-categories').catch(() => []),
+                    api.get('umh/v1/hotels').catch(() => []),
+                    api.get('umh/v1/flights').catch(() => [])
+                ]);
+                
+                // Pastikan data yang diset adalah Array untuk mencegah blank screen
+                setCategories(Array.isArray(cats) ? cats : (cats.data || []));
+                setHotels(Array.isArray(htls) ? htls : (htls.data || []));
+                setAirlines(Array.isArray(airls) ? airls : (airls.data || []));
+            } catch (error) {
+                console.error("Gagal memuat data penunjang", error);
+            }
+        };
+        
         fetchData();
-        // Load data penunjang
-        api.get('umh/v1/package-categories').then(setCategories).catch(() => {});
-        api.get('umh/v1/hotels').then(setHotels).catch(() => {});
-        api.get('umh/v1/flights').then(setAirlines).catch(() => {});
+        loadSupportData();
     }, [fetchData]);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('create');
     const [currentItem, setCurrentItem] = useState(null);
 
-    // Initial State sesuai dengan field API baru
     const initialForm = {
         name: '', 
         category_id: '',
@@ -45,10 +59,8 @@ const Packages = () => {
     const handleOpenModal = (mode, item = null) => {
         setModalMode(mode);
         setCurrentItem(item);
-        // Reset form saat buka modal
         setFormData(item ? {
             ...item,
-            // Pastikan nilai null dikonversi jadi string kosong agar input controlled
             category_id: item.category_id || '',
             airline_id: item.airline_id || '',
             hotel_makkah_id: item.hotel_makkah_id || '',
@@ -68,14 +80,22 @@ const Packages = () => {
         
         if (success) { 
             setIsModalOpen(false); 
-            toast.success(modalMode === 'create' ? 'Paket berhasil dibuat' : 'Paket berhasil diperbarui');
-            fetchData(); 
+            // fetchData sudah dipanggil otomatis oleh hook useCRUD
         }
     };
 
-    // Helper untuk menampilkan nama dari ID
-    const getHotelName = (id) => hotels.find(h => String(h.id) === String(id))?.name || '-';
-    const getAirlineName = (id) => airlines.find(a => String(a.id) === String(id))?.name || '-';
+    // Helper Safely Get Name (Mencegah Blank Screen)
+    const getHotelName = (id) => {
+        if (!hotels || hotels.length === 0 || !id) return '-';
+        const hotel = hotels.find(h => String(h.id) === String(id));
+        return hotel ? hotel.name : '-';
+    };
+
+    const getAirlineName = (id) => {
+        if (!airlines || airlines.length === 0 || !id) return '-';
+        const airline = airlines.find(a => String(a.id) === String(id));
+        return airline ? airline.name : '-';
+    };
 
     const columns = [
         { header: 'Nama Paket', accessor: 'name', render: r => (
@@ -97,21 +117,24 @@ const Packages = () => {
     ];
 
     return (
-        <Layout title="Paket Umrah & Haji">
-            <div className="mb-4 flex justify-between items-center">
-                <p className="text-sm text-gray-500">Kelola master paket, fasilitas, dan spesifikasi standar.</p>
+        <Layout title="Master Data Paket">
+            <div className="mb-4 flex justify-between items-center bg-white p-4 rounded-lg border shadow-sm">
+                <div>
+                    <h2 className="font-bold text-lg">Katalog Paket</h2>
+                    <p className="text-sm text-gray-500">Buat template paket (Produk) di sini. Jadwal keberangkatan diatur di menu 'Keberangkatan'.</p>
+                </div>
                 <button onClick={() => handleOpenModal('create')} className="btn-primary flex gap-2"><Plus size={18}/> Buat Paket Baru</button>
             </div>
 
             <CrudTable columns={columns} data={data} loading={loading} onEdit={i => handleOpenModal('edit', i)} onDelete={deleteItem} />
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Buat Paket Baru" : "Edit Paket"} size="max-w-4xl">
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Buat Paket Master Baru" : "Edit Paket Master"} size="max-w-4xl">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     
                     {/* INFO UTAMA */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
-                            <label className="label">Nama Paket</label>
+                            <label className="label">Nama Paket (Master)</label>
                             <input className="input-field font-bold" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Cth: Paket Umrah Hemat 9 Hari" required />
                         </div>
                         <div>
