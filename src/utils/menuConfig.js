@@ -1,18 +1,7 @@
 import { 
-    LayoutDashboard, 
-    Users, 
-    Plane, 
-    Calendar, 
-    Package, 
-    CreditCard, 
-    Hotel, 
-    Settings, 
-    Box, 
-    Shield, 
-    Tags, 
-    CheckSquare, 
-    Briefcase,
-    Megaphone
+    LayoutDashboard, Users, Plane, Calendar, Package, CreditCard, 
+    Hotel, Settings, Box, UserCheck, Shield, Tags, 
+    Briefcase, Megaphone, Wallet, Trash2 
 } from 'lucide-react';
 
 export const menuItems = [
@@ -25,36 +14,37 @@ export const menuItems = [
         ]
     },
     {
-        section: 'Layanan & Produk',
+        section: 'Produk & Layanan',
         items: [
-            { label: 'Katalog Paket', path: '/packages', icon: Package }, // Path yang benar untuk Paket
-            { label: 'Kategori Paket', path: '/categories', icon: Tags },
-            { label: 'Hotel & Akomodasi', path: '/hotels', icon: Hotel },
-            { label: 'Maskapai Penerbangan', path: '/flights', icon: Plane },
+            { label: 'Katalog Paket', path: '/packages', icon: Package },
+            { label: 'Master Hotel', path: '/hotels', icon: Hotel },
+            { label: 'Master Maskapai', path: '/flights', icon: Plane },
+            { label: 'Kategori Paket', path: '/package-categories', icon: Tags },
         ]
     },
     {
-        section: 'Keuangan & Logistik',
+        section: 'Keuangan & Aset',
         items: [
-            { label: 'Keuangan & Kasir', path: '/finance', icon: CreditCard },
-            { label: 'Perlengkapan (Logistik)', path: '/logistics', icon: Box },
+            { label: 'Transaksi & Kasir', path: '/finance', icon: Wallet },
+            { label: 'Akun Keuangan (COA)', path: '/categories', icon: CreditCard },
+            { label: 'Logistik & Stok', path: '/logistics', icon: Box },
         ]
     },
     {
-        section: 'Tim & Manajemen',
+        section: 'Tim & Marketing',
         items: [
             { label: 'Marketing & Leads', path: '/marketing', icon: Megaphone },
-            { label: 'Agen & Mitra', path: '/agents', icon: Users },
-            { label: 'Tugas & Pekerjaan', path: '/tasks', icon: CheckSquare },
-            { label: 'Manajemen HR & SDM', path: '/hr', icon: Briefcase }, // Path yang benar untuk HR
+            { label: 'Agen & Mitra', path: '/agents', icon: UserCheck },
+            { label: 'SDM (HR) & Absensi', path: '/hr', icon: Briefcase },
         ]
     },
     {
-        section: 'Admin Sistem',
+        section: 'Pengaturan Sistem',
         items: [
-            { label: 'Pengguna Sistem', path: '/users', icon: Shield },
-            { label: 'Role & Akses', path: '/roles', icon: Shield },
+            { label: 'Pengguna Sistem', path: '/users', icon: Users },
+            { label: 'Peran & Akses', path: '/roles', icon: Shield },
             { label: 'Pengaturan', path: '/settings', icon: Settings },
+            // { label: 'Sampah (Trash)', path: '/trash', icon: Trash2 }, // Uncomment jika halaman Trash.jsx sudah siap
         ]
     }
 ];
