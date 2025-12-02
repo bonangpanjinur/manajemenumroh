@@ -1,20 +1,17 @@
 <?php
-/**
- * Template untuk merender aplikasi React
- * Pastikan ID div di bawah ini SAMA PERSIS dengan document.getElementById di src/index.jsx
- */
+if (!defined('ABSPATH')) {
+    exit;
+}
 ?>
+
 <div class="wrap">
-    <!-- Judul Halaman Bawaan WordPress (Opsional, bisa dihapus jika React punya Header sendiri) -->
-    <h1 class="wp-heading-inline">Manajemen Umrah & Haji</h1>
+    <!-- Container untuk React App -->
+    <div id="umh-app-root"></div>
     
-    <!-- INI ADALAH KONTAINER UTAMA REACT -->
-    <!-- React akan me-render seluruh aplikasi di dalam div ini -->
-    <div id="umroh-manager-app">
-        <!-- Loading state sebelum React mengambil alih -->
-        <div style="padding: 20px; text-align: center; color: #666;">
-            <h3>Memuat Aplikasi...</h3>
-            <p>Mohon tunggu sebentar, sedang menyiapkan dashboard.</p>
+    <!-- Fallback jika React gagal load -->
+    <noscript>
+        <div class="notice notice-error">
+            <p>JavaScript diperlukan untuk menjalankan aplikasi ini. Harap aktifkan JavaScript di browser Anda.</p>
         </div>
-    </div>
+    </noscript>
 </div>

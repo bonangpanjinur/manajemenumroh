@@ -7,14 +7,13 @@ const useCRUD = (endpoint, initialParams = {}) => {
     const [pagination, setPagination] = useState({ current_page: 1, total_pages: 1, total_items: 0 });
     const [loading, setLoading] = useState(false);
 
-    // --- 1. FETCH DATA (READ) ---
+    // 1. FETCH DATA (GET)
     const fetchData = useCallback(async (params = {}) => {
         setLoading(true);
         try {
             const queryParams = { ...initialParams, ...params };
             const response = await api.get(endpoint, { params: queryParams });
             
-            // Handle response format yang berbeda-beda dari WP REST API
             if (Array.isArray(response)) {
                 setData(response);
             } else if (response && Array.isArray(response.items)) {
@@ -31,23 +30,23 @@ const useCRUD = (endpoint, initialParams = {}) => {
             }
         } catch (err) {
             console.error(`Error fetching ${endpoint}:`, err);
-            // Jangan spam toast error saat fetch awal, cukup log di console
+            // Optional: toast.error("Gagal memuat data.");
         } finally {
             setLoading(false);
         }
     }, [endpoint]);
 
-    // --- 2. CREATE ITEM ---
+    // 2. CREATE ITEM (POST)
     const createItem = async (newItem) => {
         setLoading(true);
         const toastId = toast.loading('Menyimpan data...');
         try {
             await api.post(endpoint, newItem);
-            toast.success('Data berhasil disimpan!', { id: toastId });
-            await fetchData(); // Refresh data
+            toast.success('Berhasil disimpan!', { id: toastId });
+            await fetchData();
             return true;
         } catch (err) {
-            const msg = err.message || 'Gagal menyimpan data';
+            const msg = err.response?.data?.message || err.message || 'Gagal menyimpan';
             toast.error(msg, { id: toastId });
             return false;
         } finally {
@@ -55,18 +54,17 @@ const useCRUD = (endpoint, initialParams = {}) => {
         }
     };
 
-    // --- 3. UPDATE ITEM ---
+    // 3. UPDATE ITEM (POST to ID)
     const updateItem = async (id, updatedItem) => {
         setLoading(true);
         const toastId = toast.loading('Memperbarui data...');
         try {
-            // Support endpoint REST WP (kadang butuh POST ke ID untuk update)
             await api.post(`${endpoint}/${id}`, updatedItem);
-            toast.success('Data berhasil diperbarui!', { id: toastId });
+            toast.success('Berhasil diperbarui!', { id: toastId });
             await fetchData();
             return true;
         } catch (err) {
-            const msg = err.message || 'Gagal update data';
+            const msg = err.response?.data?.message || err.message || 'Gagal update';
             toast.error(msg, { id: toastId });
             return false;
         } finally {
@@ -74,22 +72,19 @@ const useCRUD = (endpoint, initialParams = {}) => {
         }
     };
 
-    // --- 4. DELETE ITEM ---
+    // 4. DELETE ITEM (DELETE)
     const deleteItem = async (id) => {
-        if (!window.confirm('Apakah Anda yakin ingin menghapus data ini?')) return false;
+        if (!window.confirm('Yakin ingin menghapus data ini?')) return false;
 
         setLoading(true);
         const toastId = toast.loading('Menghapus...');
         try {
             await api.delete(`${endpoint}/${id}`); 
             toast.success('Data telah dihapus', { id: toastId });
-            
-            // Optimistic Update: Hapus item dari tampilan segera
             setData(prev => prev.filter(item => item.id !== id));
-            
             return true;
         } catch (err) {
-            const msg = err.message || 'Gagal menghapus';
+            const msg = err.response?.data?.message || err.message || 'Gagal menghapus';
             toast.error(msg, { id: toastId });
             return false;
         } finally {

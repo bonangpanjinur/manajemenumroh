@@ -8,7 +8,7 @@ import { Toaster } from 'react-hot-toast';
 import Dashboard from './pages/Dashboard';
 import Jamaah from './pages/Jamaah';
 import Departures from './pages/Departures';
-import Packages from './pages/Packages'; // Pastikan file ini berisi logika PAKET, bukan HR
+import Packages from './pages/Packages'; 
 import Hotels from './pages/Hotels';
 import Flights from './pages/Flights';
 import PackageCategories from './pages/PackageCategories';
@@ -21,7 +21,7 @@ import HR from './pages/HR';
 import Users from './pages/Users';
 import Roles from './pages/Roles';
 import Settings from './pages/Settings';
-// import Trash from './pages/Trash'; // Uncomment jika file Trash.jsx sudah siap
+import Trash from './pages/Trash';
 
 import './index.css';
 
@@ -59,7 +59,7 @@ const App = () => {
                         <Route path="/users" element={<Users />} />
                         <Route path="/roles" element={<Roles />} />
                         <Route path="/settings" element={<Settings />} />
-                        {/* <Route path="/trash" element={<Trash />} /> */}
+                        <Route path="/trash" element={<Trash />} />
 
                         {/* Fallback: Redirect unknown routes to Dashboard */}
                         <Route path="*" element={<Navigate to="/" replace />} />
@@ -70,11 +70,13 @@ const App = () => {
     );
 };
 
-// Mount App
-const container = document.getElementById('umh-app-root');
-if (container) {
-    const root = createRoot(container);
-    root.render(<App />);
-} else {
-    console.error("Container 'umh-app-root' not found. Pastikan plugin aktif.");
-}
+// Mount App with Safety Check for DOM Readiness
+document.addEventListener('DOMContentLoaded', () => {
+    const container = document.getElementById('umh-app-root');
+    if (container) {
+        const root = createRoot(container);
+        root.render(<App />);
+    } else {
+        console.error("Container 'umh-app-root' not found. Pastikan plugin aktif dan Anda berada di halaman yang benar.");
+    }
+});

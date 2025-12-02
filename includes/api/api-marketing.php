@@ -17,7 +17,7 @@ class UMH_Marketing_API {
             'status'     => ['type' => 'string', 'default' => 'active']
         ];
         
-        // FIX: Gunakan 'marketing-campaigns' (tanda hubung)
+        // Endpoint: /wp-json/umh/v1/marketing-campaigns
         new UMH_CRUD_Controller('marketing-campaigns', 'umh_marketing', $campaign_schema, 
             [
                 'get_items'   => ['owner', 'administrator', 'marketing_staff', 'admin_staff'], 
@@ -41,7 +41,7 @@ class UMH_Marketing_API {
             'assigned_to'    => ['type' => 'integer'] 
         ];
 
-        // FIX: Gunakan 'marketing-leads' (tanda hubung)
+        // Endpoint: /wp-json/umh/v1/marketing-leads
         new UMH_CRUD_Controller('marketing-leads', 'umh_leads', $leads_schema,
             [
                 'get_items'   => ['owner', 'administrator', 'marketing_staff', 'admin_staff'], 
