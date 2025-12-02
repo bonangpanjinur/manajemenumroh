@@ -17,9 +17,9 @@ export const menuItems = [
         section: 'Produk & Layanan',
         items: [
             { label: 'Katalog Paket', path: '/packages', icon: Package },
+            { label: 'Kategori Paket', path: '/package-categories', icon: Tags },
             { label: 'Master Hotel', path: '/hotels', icon: Hotel },
             { label: 'Master Maskapai', path: '/flights', icon: Plane },
-            { label: 'Kategori Paket', path: '/package-categories', icon: Tags },
         ]
     },
     {
@@ -44,7 +44,7 @@ export const menuItems = [
             { label: 'Pengguna Sistem', path: '/users', icon: Users },
             { label: 'Peran & Akses', path: '/roles', icon: Shield },
             { label: 'Pengaturan', path: '/settings', icon: Settings },
-            // { label: 'Sampah (Trash)', path: '/trash', icon: Trash2 }, // Uncomment jika halaman Trash.jsx sudah siap
+            // { label: 'Sampah (Trash)', path: '/trash', icon: Trash2 },
         ]
     }
 ];

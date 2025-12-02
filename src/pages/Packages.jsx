@@ -7,20 +7,13 @@ import { Package, Plus, Calendar, DollarSign, Hotel, Plane, CheckCircle, XCircle
 import { formatCurrency } from '../utils/formatters';
 
 const Packages = () => {
-    // Endpoint: umh/v1/packages
+    // API Utama: umh/v1/packages
     const { data: packages, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/packages');
     
-    // Master Data untuk Dropdown
+    // API Pendukung (Dropdown)
     const { data: categories } = useCRUD('umh/v1/package-categories'); 
     const { data: airlines } = useCRUD('umh/v1/flights');             
     const { data: hotels } = useCRUD('umh/v1/hotels');                
-
-    // Load data saat komponen dimuat
-    useEffect(() => { 
-        fetchData(); 
-        // Note: categories, airlines, hotels diload oleh hook masing-masing jika dipanggil, 
-        // tapi useCRUD defaultnya fetch on mount. Kita asumsikan hook di atas sudah fetch.
-    }, [fetchData]);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('create');
@@ -39,6 +32,8 @@ const Packages = () => {
         excluded_features: '' 
     };
     const [formData, setFormData] = useState(initialForm);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
 
     const handleOpenModal = (mode, item = null) => {
         setModalMode(mode);
@@ -60,8 +55,10 @@ const Packages = () => {
         if (success) setIsModalOpen(false);
     };
 
+    // Helper untuk menampilkan nama dari ID
     const getAirlineName = (id) => airlines?.find(a => String(a.id) === String(id))?.name || '-';
     const getCategoryName = (id) => categories?.find(c => String(c.id) === String(id))?.name || '-';
+    const getHotelName = (id) => hotels?.find(h => String(h.id) === String(id))?.name || '-';
 
     // Kolom Tabel Paket
     const columns = [
@@ -72,7 +69,7 @@ const Packages = () => {
         { header: 'Harga Mulai', accessor: 'base_price', render: (row) => <span className="font-bold text-green-700">{formatCurrency(row.base_price)}</span> },
     ];
 
-    // Filter Hotel
+    // Filter Hotel untuk Dropdown
     const makkahHotels = hotels ? hotels.filter(h => h.city === 'Makkah') : [];
     const madinahHotels = hotels ? hotels.filter(h => h.city === 'Madinah') : [];
 
@@ -102,6 +99,7 @@ const Packages = () => {
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Buat Paket Baru" : "Edit Paket"} size="max-w-4xl">
                 <form onSubmit={handleSubmit} className="space-y-6">
+                    {/* INFO DASAR */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="col-span-2">
                             <label className="label">Nama Paket</label>
@@ -127,6 +125,7 @@ const Packages = () => {
                         </div>
                     </div>
 
+                    {/* AKOMODASI */}
                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                         <h3 className="font-bold text-gray-700 mb-3 text-sm border-b pb-2">Akomodasi & Transportasi</h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -160,6 +159,7 @@ const Packages = () => {
                         </div>
                     </div>
 
+                    {/* FASILITAS & HARGA */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="label flex items-center gap-1 text-green-700"><CheckCircle size={14}/> Fasilitas Termasuk</label>
