@@ -1,31 +1,28 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter, Routes, Route } from 'react-router-dom';
-import DataProvider from './contexts/DataContext';
+import DataProvider from './contexts/DataContext.jsx';
 import { Toaster } from 'react-hot-toast';
 
-// Import Halaman Utama
-import Dashboard from './pages/Dashboard';
-import Jamaah from './pages/Jamaah';
-import Packages from './pages/Packages';
-import Departures from './pages/Departures';
-import Finance from './pages/Finance';
-import Marketing from './pages/Marketing';
-import Tasks from './pages/Tasks';
-import Logistics from './pages/Logistics';
-import HR from './pages/HR';
-import Agents from './pages/Agents';
+// Import Pages
+import Dashboard from './pages/Dashboard.jsx';
+import Jamaah from './pages/Jamaah.jsx';
+import Packages from './pages/Packages.jsx';
+import Departures from './pages/Departures.jsx';
+import Finance from './pages/Finance.jsx';
+import Marketing from './pages/Marketing.jsx';
+import Tasks from './pages/Tasks.jsx';
+import Logistics from './pages/Logistics.jsx';
+import HR from './pages/HR.jsx';
+import Agents from './pages/Agents.jsx';
+import Hotels from './pages/Hotels.jsx';
+import Flights from './pages/Flights.jsx';
+import Categories from './pages/Categories.jsx';
+import Users from './pages/Users.jsx';
+import Roles from './pages/Roles.jsx';
+import Settings from './pages/Settings.jsx';
+import Trash from './pages/Trash.jsx';
 
-// Import Halaman Master & Settings
-import Hotels from './pages/Hotels';
-import Flights from './pages/Flights';
-import PackageCategories from './pages/PackageCategories'; // Pastikan ini diimport
-import Categories from './pages/Categories'; // Ini adalah Finance Categories (COA)
-import Users from './pages/Users';
-import Roles from './pages/Roles';
-import Settings from './pages/Settings';
-
-// Styles
 import './index.css';
 
 const App = () => {
@@ -36,33 +33,22 @@ const App = () => {
                     <Toaster position="top-right" />
                     <Routes>
                         <Route path="/" element={<Dashboard />} />
-                        
-                        {/* Operasional Utama */}
                         <Route path="/jamaah" element={<Jamaah />} />
                         <Route path="/packages" element={<Packages />} />
                         <Route path="/departures" element={<Departures />} />
-                        
-                        {/* Bisnis & Pendukung */}
                         <Route path="/finance" element={<Finance />} />
                         <Route path="/marketing" element={<Marketing />} />
                         <Route path="/agents" element={<Agents />} />
                         <Route path="/tasks" element={<Tasks />} />
                         <Route path="/logistics" element={<Logistics />} />
                         <Route path="/hr" element={<HR />} />
-                        
-                        {/* Master Data & Admin */}
                         <Route path="/hotels" element={<Hotels />} />
                         <Route path="/flights" element={<Flights />} />
-                        
-                        {/* PERBAIKAN: Pisahkan Rute Kategori */}
-                        <Route path="/package-categories" element={<PackageCategories />} />
-                        <Route path="/finance-categories" element={<Categories />} /> 
-                        {/* Backward compatibility jika ada yg akses url lama */}
-                        <Route path="/categories" element={<Categories />} /> 
-
+                        <Route path="/categories" element={<Categories />} />
                         <Route path="/users" element={<Users />} />
                         <Route path="/roles" element={<Roles />} />
                         <Route path="/settings" element={<Settings />} />
+                        <Route path="/trash" element={<Trash />} />
                     </Routes>
                 </div>
             </HashRouter>
@@ -70,15 +56,8 @@ const App = () => {
     );
 };
 
-// Mount React App
 const container = document.getElementById('umroh-manager-app') || document.getElementById('umh-app-root');
-
 if (container) {
-    if (container.id !== 'umh-app-root') {
-        container.id = 'umh-app-root';
-    }
-    const root = createRoot(container);
-    root.render(<App />);
-} else {
-    console.error("Fatal Error: Container app tidak ditemukan di DOM.");
+    if (container.id !== 'umh-app-root') container.id = 'umh-app-root';
+    createRoot(container).render(<App />);
 }

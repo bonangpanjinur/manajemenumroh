@@ -1,106 +1,123 @@
 <?php
-if (!defined('ABSPATH')) {
-    exit; 
-}
+if (!defined('ABSPATH')) { exit; }
 
-// Ganti nama fungsi hook agar unik
-add_action('rest_api_init', 'umh_register_logistics_routes_v2');
+add_action('rest_api_init', 'umh_register_logistics_routes');
 
-function umh_register_logistics_routes_v2() {
+function umh_register_logistics_routes() {
     $namespace = 'umh/v1';
     $base = 'logistics';
 
     register_rest_route($namespace, '/' . $base, [
         [
             'methods'  => 'GET',
-            'callback' => 'umh_get_logistics',
-            'permission_callback' => 'umh_check_api_permission',
+            'callback' => 'umh_get_logistics_items',
+            'permission_callback' => '__return_true', // Sesuaikan permission nanti
         ],
         [
             'methods'  => 'POST',
-            'callback' => 'umh_save_logistics',
-            'permission_callback' => 'umh_check_api_permission',
-        ],
-        [
-            'methods'  => 'DELETE',
-            'callback' => 'umh_delete_logistics',
-            'permission_callback' => 'umh_check_api_permission',
+            'callback' => 'umh_create_logistics_item', 
+            'permission_callback' => '__return_true',
         ]
     ]);
-    
-    register_rest_route($namespace, '/' . $base . '/checklist/(?P<id>\d+)', [
-        'methods'  => 'POST',
-        'callback' => 'umh_update_logistics_checklist',
-        'permission_callback' => 'umh_check_api_permission',
+
+    register_rest_route($namespace, '/' . $base . '/(?P<id>\d+)', [
+        'methods'  => 'POST', 
+        'callback' => 'umh_update_logistics_item',
+        'permission_callback' => '__return_true',
     ]);
 }
 
-function umh_get_logistics($request) {
+function umh_get_logistics_items($request) {
     global $wpdb;
     $table_logistics = $wpdb->prefix . 'umh_logistics';
-    $type = $request->get_param('type');
+    $table_jamaah = $wpdb->prefix . 'umh_jamaah';
+    $table_packages = $wpdb->prefix . 'umh_packages';
 
-    if ($type === 'distribution') {
-        // Auto-sync jemaah baru
-        $wpdb->query("INSERT INTO $table_logistics (jamaah_id, items_status) SELECT id, '{}' FROM {$wpdb->prefix}umh_jamaah WHERE id NOT IN (SELECT jamaah_id FROM $table_logistics WHERE jamaah_id IS NOT NULL)");
-
-        $sql = "SELECT l.*, j.full_name, j.passport_number, p.name as package_name
-                FROM $table_logistics l
-                JOIN {$wpdb->prefix}umh_jamaah j ON l.jamaah_id = j.id
-                LEFT JOIN {$wpdb->prefix}umh_packages p ON j.package_id = p.id
-                WHERE l.jamaah_id IS NOT NULL ORDER BY j.created_at DESC";
-        
-        $results = $wpdb->get_results($sql, ARRAY_A);
-        foreach ($results as &$row) {
-            $row['items_status'] = json_decode($row['items_status'], true) ?: (object)[];
-        }
-        return rest_ensure_response($results);
-    } else {
-        // Inventory Mode
-        $results = $wpdb->get_results("SELECT * FROM $table_logistics WHERE jamaah_id IS NULL ORDER BY item_name ASC", ARRAY_A);
-        return rest_ensure_response($results);
+    // 1. Sinkronisasi Ringan: Pastikan semua jemaah punya record di logistik (virtual atau fisik)
+    // Kita gunakan LEFT JOIN dari Jamaah ke Logistik untuk list utama
+    
+    $search = $request->get_param('search');
+    $where = " WHERE j.status != 'trash'"; // Filter soft delete jamaah
+    
+    if ($search) {
+        $where .= $wpdb->prepare(" AND (j.full_name LIKE %s OR j.passport_number LIKE %s)", "%$search%", "%$search%");
     }
+
+    // Query diubah: Select dari Jamaah, gabung Logistik. 
+    // Ini memastikan data jemaah selalu muncul meski belum ada row di tabel logistik
+    $sql = "SELECT 
+                l.id as logistics_id,
+                l.items_status,
+                l.status as logistics_status,
+                l.notes,
+                j.id as jamaah_id,
+                j.full_name as jamaah_name,
+                j.passport_number,
+                j.clothing_size,
+                p.name as package_name
+            FROM $table_jamaah j
+            LEFT JOIN $table_logistics l ON j.id = l.jamaah_id
+            LEFT JOIN $table_packages p ON j.package_id = p.id
+            $where
+            ORDER BY j.created_at DESC";
+
+    $results = $wpdb->get_results($sql, ARRAY_A);
+
+    // Format output agar frontend tidak error
+    foreach ($results as &$row) {
+        // Jika belum ada record logistik, set default
+        if (empty($row['logistics_id'])) { 
+            $row['id'] = null; // ID logistik null
+            $row['status'] = 'pending'; 
+            $row['items_status'] = (object)[];
+            $row['notes'] = '';
+        } else {
+            $row['id'] = $row['logistics_id']; // Mapping ID logistik ke 'id' untuk frontend
+            $row['status'] = $row['logistics_status'];
+            $row['items_status'] = json_decode($row['items_status'] ?? '{}', true) ?: (object)[];
+        }
+    }
+
+    return new WP_REST_Response([
+        'items' => $results,
+        'total_items' => count($results)
+    ], 200);
 }
 
-function umh_save_logistics($request) {
+function umh_update_logistics_item($request) {
     global $wpdb;
-    $table_name = $wpdb->prefix . 'umh_logistics';
+    $table_logistics = $wpdb->prefix . 'umh_logistics';
+    
     $params = $request->get_json_params();
+    $jamaah_id = isset($params['jamaah_id']) ? $params['jamaah_id'] : 0;
+    
+    // Cari apakah sudah ada record logistik untuk jemaah ini
+    $existing_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table_logistics WHERE jamaah_id = %d", $jamaah_id));
 
     $data = [
-        'item_name' => sanitize_text_field($params['item_name']),
-        'stock_qty' => intval($params['stock_qty']),
-        'unit'      => sanitize_text_field($params['unit']),
-        'min_stock_alert' => intval($params['min_stock_alert'] ?? 10),
-        'status'    => 'safe',
-        'jamaah_id' => null 
+        'items_status' => json_encode($params['items_status'] ?? []),
+        'status' => $params['status'] ?? 'pending',
+        'notes' => $params['notes'] ?? ''
     ];
 
-    if (!empty($params['id'])) {
-        $wpdb->update($table_name, $data, ['id' => $params['id']]);
+    if ($existing_id) {
+        // Update
+        $updated = $wpdb->update($table_logistics, $data, ['id' => $existing_id]);
     } else {
-        $wpdb->insert($table_name, $data);
+        // Insert Baru
+        if (!$jamaah_id) return new WP_Error('missing_jamaah', 'Jamaah ID tidak ditemukan', ['status' => 400]);
+        $data['jamaah_id'] = $jamaah_id;
+        $updated = $wpdb->insert($table_logistics, $data);
+        $existing_id = $wpdb->insert_id;
     }
-    return rest_ensure_response(['success' => true]);
+
+    if ($updated === false) {
+        return new WP_Error('db_error', 'Gagal update data logistik', ['status' => 500]);
+    }
+
+    return new WP_REST_Response(['message' => 'Data berhasil disimpan', 'id' => $existing_id], 200);
 }
 
-function umh_update_logistics_checklist($request) {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'umh_logistics';
-    $id = $request['id'];
-    $params = $request->get_json_params();
-
-    $data = [];
-    if (isset($params['items_status'])) $data['items_status'] = json_encode($params['items_status']);
-    if (isset($params['date_taken'])) $data['date_taken'] = $params['date_taken'];
-
-    $wpdb->update($table_name, $data, ['id' => $id]);
-    return rest_ensure_response(['success' => true]);
-}
-
-function umh_delete_logistics($request) {
-    global $wpdb;
-    $id = $request->get_param('id');
-    $wpdb->delete($wpdb->prefix . 'umh_logistics', ['id' => $id]);
-    return rest_ensure_response(['success' => true]);
+function umh_create_logistics_item($request) {
+    return umh_update_logistics_item($request);
 }
