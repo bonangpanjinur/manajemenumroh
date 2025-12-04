@@ -14,10 +14,15 @@ const CrudTable = ({
     if (typeof accessor === 'function') {
       return accessor(item);
     }
-    return accessor.split('.').reduce((obj, key) => (obj && obj[key] !== 'undefined') ? obj[key] : '', item);
+    // Safety check untuk nested property
+    try {
+        return accessor.split('.').reduce((obj, key) => (obj && obj[key] !== undefined) ? obj[key] : '', item);
+    } catch (e) {
+        return '';
+    }
   };
 
-  // SAFETY CHECK: Pastikan data adalah array
+  // SAFETY FIX: Pastikan data selalu array sebelum di-map
   const safeData = Array.isArray(data) ? data : [];
 
   return (
@@ -59,7 +64,8 @@ const CrudTable = ({
                 <td colSpan={columns.length + (actions ? 2 : 1)} className="px-6 py-10 text-center text-gray-500">
                   <div className="flex flex-col items-center justify-center">
                     <p>Tidak ada data ditemukan</p>
-                    <p className="text-xs text-gray-400 mt-1">Pastikan database aktif atau tambahkan data baru.</p>
+                    {/* Pesan ini membantu debugging jika API error */}
+                    <p className="text-xs text-gray-400 mt-1">Pastikan database terhubung.</p>
                   </div>
                 </td>
               </tr>
@@ -81,7 +87,6 @@ const CrudTable = ({
                         <button
                           onClick={() => onDetail(item)}
                           className="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-md transition-colors"
-                          title="Lihat Detail"
                         >
                           Detail
                         </button>
@@ -90,7 +95,6 @@ const CrudTable = ({
                         <button
                           onClick={() => onEdit(item)}
                           className="text-yellow-600 hover:text-yellow-900 bg-yellow-50 hover:bg-yellow-100 px-3 py-1 rounded-md transition-colors"
-                          title="Edit Data"
                         >
                           Edit
                         </button>
@@ -99,7 +103,6 @@ const CrudTable = ({
                         <button
                           onClick={() => onDelete(item)}
                           className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-1 rounded-md transition-colors"
-                          title="Hapus Data"
                         >
                           Hapus
                         </button>
@@ -112,12 +115,6 @@ const CrudTable = ({
           </tbody>
         </table>
       </div>
-      
-      {!isLoading && safeData.length > 0 && (
-         <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
-            Menampilkan {safeData.length} data.
-         </div>
-      )}
     </div>
   );
 };

@@ -1,8 +1,8 @@
 <?php
 /**
  * File: includes/db-schema.php
- * Deskripsi: Skema Database Final Enterprise (Cleaned for dbDelta)
- * FIX: Menghapus semua komentar SQL inline (--) karena dbDelta tidak mendukungnya.
+ * Deskripsi: Skema Database Final
+ * FIX: Menghapus komentar SQL (--) agar dbDelta berjalan lancar.
  */
 
 if (!defined('ABSPATH')) {
@@ -14,10 +14,7 @@ function umh_create_db_tables() {
     $charset_collate = $wpdb->get_charset_collate();
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 
-    // ==========================================
     // 1. MASTER DATA
-    // ==========================================
-
     $table_locations = $wpdb->prefix . 'umh_master_locations';
     $sql_locations = "CREATE TABLE $table_locations (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -64,10 +61,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_hotels);
 
-    // ==========================================
     // 2. JAMAAH
-    // ==========================================
-
     $table_jamaah = $wpdb->prefix . 'umh_jamaah';
     $sql_jamaah = "CREATE TABLE $table_jamaah (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -112,10 +106,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_jamaah);
 
-    // ==========================================
     // 3. PAKET
-    // ==========================================
-
     $table_packages = $wpdb->prefix . 'umh_packages';
     $sql_packages = "CREATE TABLE $table_packages (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -219,9 +210,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_facilities);
 
-    // ==========================================
     // 4. KEUANGAN
-    // ==========================================
     $table_finance = $wpdb->prefix . 'umh_finance';
     $sql_finance = "CREATE TABLE $table_finance (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -251,10 +240,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_finance);
 
-    // ==========================================
     // 5. SDM (HRD & AGEN)
-    // ==========================================
-
     $table_agents = $wpdb->prefix . 'umh_agents';
     $sql_agents = "CREATE TABLE $table_agents (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -327,10 +313,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_attendance);
 
-    // ==========================================
     // 6. MARKETING
-    // ==========================================
-    
     $table_marketing = $wpdb->prefix . 'umh_marketing'; 
     $sql_marketing = "CREATE TABLE $table_marketing (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -367,10 +350,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_leads);
 
-    // ==========================================
     // 7. LOGISTIK
-    // ==========================================
-
     $table_logistics = $wpdb->prefix . 'umh_logistics';
     $sql_logistics = "CREATE TABLE $table_logistics (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -439,10 +419,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_tasks);
 
-    // ==========================================
     // 8. USERS & ROLES
-    // ==========================================
-
     $table_users = $wpdb->prefix . 'umh_users';
     $sql_users = "CREATE TABLE $table_users (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -476,10 +453,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_roles);
 
-    // ==========================================
     // 9. BOOKING DETAILS
-    // ==========================================
-
     $table_bookings = $wpdb->prefix . 'umh_bookings';
     $sql_bookings = "CREATE TABLE $table_bookings (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -584,10 +558,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_requests);
 
-    // ==========================================
     // 10. OPERASIONAL & LOGS
-    // ==========================================
-
     $table_branches = $wpdb->prefix . 'umh_branches';
     $sql_branches = "CREATE TABLE $table_branches (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -631,5 +602,5 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_logs);
 
-    update_option('umh_db_version', '4.0.5');
+    update_option('umh_db_version', '4.0.6'); // Updated Version
 }

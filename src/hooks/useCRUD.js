@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import api from '../utils/api';
+import api from '../utils/api.js';
 
 const useCRUD = (endpoint, initialData = []) => {
-  // Pastikan initialData selalu array jika defaultnya array
-  const [data, setData] = useState(initialData);
+  const [data, setData] = useState(Array.isArray(initialData) ? initialData : []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({
@@ -20,22 +19,34 @@ const useCRUD = (endpoint, initialData = []) => {
       const params = { page, search, ...filters };
       const response = await api.get(endpoint, { params });
       
-      // DEFENSIVE CODING: 
-      // Cek apakah response ada, apakah ada data.data, atau data langsung
-      // Jika null/undefined, default ke array kosong []
+      // FIX: Defensive Coding untuk mencegah 'undefined map'
       let responseData = [];
       
-      if (response && response.data && Array.isArray(response.data.data)) {
-        responseData = response.data.data; // Format standard { success: true, data: [...] }
-      } else if (response && Array.isArray(response.data)) {
-        responseData = response.data; // Format simple [...]
-      } else if (response && Array.isArray(response)) {
-        responseData = response; // Format raw array
+      if (response && response.data) {
+        if (Array.isArray(response.data.data)) {
+          responseData = response.data.data;
+        } else if (Array.isArray(response.data)) {
+          responseData = response.data;
+        } else if (typeof response.data === 'object' && response.data !== null) {
+          // Jika data adalah object (misal untuk dashboard), biarkan object, jangan array
+          responseData = response.data;
+        }
+      } 
+      
+      // Jika endpoint adalah dashboard (stats), kita butuh object, bukan array
+      if(endpoint.includes('stats') || endpoint.includes('dashboard')){
+          if(!responseData || Array.isArray(responseData)){
+              responseData = {}; // Fallback ke object kosong
+          }
+      } else {
+          // Untuk endpoint tabel biasa, pastikan array
+          if(!Array.isArray(responseData)){
+              responseData = []; 
+          }
       }
 
       setData(responseData);
       
-      // Handle Pagination meta jika ada
       const meta = response?.data?.meta || response?.meta || {};
       if (meta.total_pages) {
         setPagination({
@@ -47,8 +58,13 @@ const useCRUD = (endpoint, initialData = []) => {
       }
     } catch (err) {
       console.error(`Error fetching ${endpoint}:`, err);
-      setError(err.message || 'Gagal mengambil data dari server.');
-      setData([]); // Reset ke array kosong saat error agar .map tidak error
+      setError(err.message || 'Gagal mengambil data.');
+      // Reset ke nilai aman saat error
+      if(endpoint.includes('stats') || endpoint.includes('dashboard')) {
+          setData({});
+      } else {
+          setData([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -91,8 +107,7 @@ const useCRUD = (endpoint, initialData = []) => {
   };
 
   const deleteItem = async (id) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus data ini?')) return;
-    
+    if (!window.confirm('Hapus data ini?')) return;
     setLoading(true);
     try {
       await api.delete(`${endpoint}/${id}`);
@@ -111,7 +126,6 @@ const useCRUD = (endpoint, initialData = []) => {
     }
   };
 
-  // Alias refreshData untuk konsistensi
   const refreshData = () => fetchData(pagination.currentPage);
 
   return {
