@@ -23,7 +23,7 @@ jobs:
       # 3. Install Dependencies & Build React
       - name: Install & Build
         run: |
-          npm ci
+          npm ci --legacy-peer-deps
           npm run build
         env:
           CI: false # Mencegah build gagal karena warning sepele
