@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 
 const useCRUD = (endpoint, initialData = []) => {
+  // Pastikan initialData selalu array jika defaultnya array
   const [data, setData] = useState(initialData);
-  const [loading, setLoading] = useState(false); // Default false, will be set true on fetch
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -12,21 +13,30 @@ const useCRUD = (endpoint, initialData = []) => {
     perPage: 10
   });
 
-  // Fungsi fetch data yang stabil dengan useCallback
   const fetchData = useCallback(async (page = 1, search = '', filters = {}) => {
     setLoading(true);
     setError(null);
     try {
-      // Mengubah params menjadi query string
       const params = { page, search, ...filters };
       const response = await api.get(endpoint, { params });
       
-      // Handle response structure dari WP REST API atau Custom PHP
-      const responseData = response.data.data || response.data;
-      const meta = response.data.meta || {};
-
-      setData(Array.isArray(responseData) ? responseData : []);
+      // DEFENSIVE CODING: 
+      // Cek apakah response ada, apakah ada data.data, atau data langsung
+      // Jika null/undefined, default ke array kosong []
+      let responseData = [];
       
+      if (response && response.data && Array.isArray(response.data.data)) {
+        responseData = response.data.data; // Format standard { success: true, data: [...] }
+      } else if (response && Array.isArray(response.data)) {
+        responseData = response.data; // Format simple [...]
+      } else if (response && Array.isArray(response)) {
+        responseData = response; // Format raw array
+      }
+
+      setData(responseData);
+      
+      // Handle Pagination meta jika ada
+      const meta = response?.data?.meta || response?.meta || {};
       if (meta.total_pages) {
         setPagination({
           currentPage: meta.current_page || page,
@@ -37,14 +47,13 @@ const useCRUD = (endpoint, initialData = []) => {
       }
     } catch (err) {
       console.error(`Error fetching ${endpoint}:`, err);
-      setError(err.message || 'Terjadi kesalahan saat mengambil data');
-      setData([]);
+      setError(err.message || 'Gagal mengambil data dari server.');
+      setData([]); // Reset ke array kosong saat error agar .map tidak error
     } finally {
       setLoading(false);
     }
   }, [endpoint]);
 
-  // FIX: Otomatis fetch data saat komponen di-mount atau endpoint berubah
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -53,7 +62,7 @@ const useCRUD = (endpoint, initialData = []) => {
     setLoading(true);
     try {
       await api.post(endpoint, newItem);
-      await fetchData(pagination.currentPage); // Refresh data setelah create
+      await fetchData(pagination.currentPage); 
       return { success: true };
     } catch (err) {
       return { success: false, error: err.response?.data?.message || err.message };
@@ -65,11 +74,10 @@ const useCRUD = (endpoint, initialData = []) => {
   const updateItem = async (id, updatedItem) => {
     setLoading(true);
     try {
-      await api.put(`${endpoint}/${id}`, updatedItem); // Asumsi RESTful: /endpoint/ID
+      await api.put(`${endpoint}/${id}`, updatedItem);
       await fetchData(pagination.currentPage);
       return { success: true };
     } catch (err) {
-      // Fallback untuk backend yang mungkin menggunakan POST untuk update
       try {
          await api.post(`${endpoint}/${id}`, updatedItem);
          await fetchData(pagination.currentPage);
@@ -87,11 +95,10 @@ const useCRUD = (endpoint, initialData = []) => {
     
     setLoading(true);
     try {
-      await api.delete(`${endpoint}/${id}`); // Asumsi RESTful
+      await api.delete(`${endpoint}/${id}`);
       await fetchData(pagination.currentPage);
       return { success: true };
     } catch (err) {
-       // Fallback jika delete via POST query param
        try {
           await api.get(`${endpoint}?action=delete&id=${id}`);
           await fetchData(pagination.currentPage);
@@ -104,12 +111,16 @@ const useCRUD = (endpoint, initialData = []) => {
     }
   };
 
+  // Alias refreshData untuk konsistensi
+  const refreshData = () => fetchData(pagination.currentPage);
+
   return {
     data,
     loading,
     error,
     pagination,
     fetchData,
+    refreshData,
     createItem,
     updateItem,
     deleteItem

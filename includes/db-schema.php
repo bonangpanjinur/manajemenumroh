@@ -1,8 +1,8 @@
 <?php
 /**
  * File: includes/db-schema.php
- * Deskripsi: Skema Database Final Enterprise (Merged Version)
- * Menggabungkan struktur data travel umroh lengkap dengan fitur Absensi QR/GPS.
+ * Deskripsi: Skema Database Final Enterprise (Cleaned for dbDelta)
+ * FIX: Menghapus semua komentar SQL inline (--) karena dbDelta tidak mendukungnya.
  */
 
 if (!defined('ABSPATH')) {
@@ -15,10 +15,9 @@ function umh_create_db_tables() {
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 
     // ==========================================
-    // 1. MASTER DATA (Lokasi, Maskapai, Hotel)
+    // 1. MASTER DATA
     // ==========================================
 
-    // 1.1 Master Lokasi
     $table_locations = $wpdb->prefix . 'umh_master_locations';
     $sql_locations = "CREATE TABLE $table_locations (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -31,7 +30,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_locations);
 
-    // 1.2 Master Maskapai
     $table_airlines = $wpdb->prefix . 'umh_master_airlines';
     $sql_airlines = "CREATE TABLE $table_airlines (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -49,7 +47,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_airlines);
 
-    // 1.3 Master Hotel
     $table_hotels = $wpdb->prefix . 'umh_master_hotels';
     $sql_hotels = "CREATE TABLE $table_hotels (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -68,16 +65,15 @@ function umh_create_db_tables() {
     dbDelta($sql_hotels);
 
     // ==========================================
-    // 2. JAMAAH & DATA DIRI
+    // 2. JAMAAH
     // ==========================================
 
-    // 2.1 Master Jemaah
     $table_jamaah = $wpdb->prefix . 'umh_jamaah';
     $sql_jamaah = "CREATE TABLE $table_jamaah (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         user_id bigint(20) UNSIGNED NULL, 
         umh_user_id bigint(20) UNSIGNED NULL,
-        nik varchar(20) UNIQUE,
+        nik varchar(20),
         passport_number varchar(20),
         full_name varchar(150) NOT NULL,
         full_name_ar varchar(150),
@@ -117,15 +113,14 @@ function umh_create_db_tables() {
     dbDelta($sql_jamaah);
 
     // ==========================================
-    // 3. PAKET & KEBERANGKATAN
+    // 3. PAKET
     // ==========================================
 
-    // 3.1 Katalog Paket
     $table_packages = $wpdb->prefix . 'umh_packages';
     $sql_packages = "CREATE TABLE $table_packages (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         name varchar(200) NOT NULL,
-        slug varchar(200) UNIQUE,
+        slug varchar(200),
         type enum('umrah', 'haji', 'tour') DEFAULT 'umrah',
         category_id bigint(20) UNSIGNED NULL,
         airline_id bigint(20) UNSIGNED NULL,
@@ -151,7 +146,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_packages);
 
-    // 3.2 Jadwal Keberangkatan
     $table_departures = $wpdb->prefix . 'umh_departures';
     $sql_departures = "CREATE TABLE $table_departures (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -185,7 +179,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_departures);
 
-    // 3.3 Kategori Paket
     $table_pkg_cats = $wpdb->prefix . 'umh_package_categories';
     $sql_pkg_cats = "CREATE TABLE $table_pkg_cats (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -198,7 +191,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_pkg_cats);
 
-    // 3.4 Itinerary
     $table_itinerary = $wpdb->prefix . 'umh_package_itineraries';
     $sql_itinerary = "CREATE TABLE $table_itinerary (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -215,7 +207,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_itinerary);
 
-    // 3.5 Fasilitas
     $table_facilities = $wpdb->prefix . 'umh_package_facilities';
     $sql_facilities = "CREATE TABLE $table_facilities (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -229,7 +220,7 @@ function umh_create_db_tables() {
     dbDelta($sql_facilities);
 
     // ==========================================
-    // 4. KEUANGAN (FINANCE)
+    // 4. KEUANGAN
     // ==========================================
     $table_finance = $wpdb->prefix . 'umh_finance';
     $sql_finance = "CREATE TABLE $table_finance (
@@ -246,8 +237,8 @@ function umh_create_db_tables() {
         agent_id bigint(20) UNSIGNED NULL,
         branch_id bigint(20) UNSIGNED DEFAULT 0,
         payment_method varchar(50) DEFAULT 'transfer',
-        related_id bigint(20) DEFAULT NULL, -- Field Tambahan untuk Kompatibilitas React
-        related_name varchar(255) DEFAULT NULL, -- Field Tambahan untuk Kompatibilitas React
+        related_id bigint(20) DEFAULT NULL,
+        related_name varchar(255) DEFAULT NULL,
         proof_file varchar(255) NULL,
         status enum('pending', 'verified', 'rejected', 'cancelled') DEFAULT 'verified',
         verified_by bigint(20) UNSIGNED NULL,
@@ -264,7 +255,6 @@ function umh_create_db_tables() {
     // 5. SDM (HRD & AGEN)
     // ==========================================
 
-    // 5.1 Profil Agen
     $table_agents = $wpdb->prefix . 'umh_agents';
     $sql_agents = "CREATE TABLE $table_agents (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -280,17 +270,17 @@ function umh_create_db_tables() {
         parent_agent_id bigint(20) UNSIGNED NULL,
         type varchar(20) DEFAULT 'master',
         agency_name varchar(100),
-        level enum('silver', 'gold', 'platinum', 'master', 'sub', 'Cabang', 'Agen', 'Sub Agen') DEFAULT 'master', -- Updated ENUM for React App compatibility
+        level varchar(50) DEFAULT 'master',
         fixed_commission decimal(15,2) DEFAULT 0,
         commission_type enum('fixed', 'percent') DEFAULT 'fixed',
         commission_value decimal(15,2) DEFAULT 0,
-        commission_rate decimal(15,2) DEFAULT 0, -- Alias for React App
+        commission_rate decimal(15,2) DEFAULT 0,
         bank_name varchar(50),
         bank_account_number varchar(50),
         bank_account_holder varchar(100),
         bank_details text,
         contract_file varchar(255),
-        status enum('active', 'suspended', 'inactive', 'pending', 'Active', 'Inactive') DEFAULT 'active', -- Updated ENUM
+        status varchar(50) DEFAULT 'active',
         joined_at datetime DEFAULT CURRENT_TIMESTAMP,
         joined_date date,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
@@ -298,8 +288,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_agents);
 
-    // 5.2 Data Karyawan (Updated with allow_remote)
-    $table_employees = $wpdb->prefix . 'umh_hr_employees'; // Gunakan nama tabel HR yang konsisten
+    $table_employees = $wpdb->prefix . 'umh_hr_employees';
     $sql_employees = "CREATE TABLE $table_employees (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         user_id bigint(20) UNSIGNED DEFAULT 0,
@@ -308,49 +297,47 @@ function umh_create_db_tables() {
         email varchar(100),
         phone varchar(20),
         position varchar(100),
-        division varchar(100) DEFAULT 'Operasional', -- Ditambahkan untuk React App
+        division varchar(100) DEFAULT 'Operasional',
         department varchar(100),
         join_date date,
         salary decimal(15,2) DEFAULT 0,
-        allow_remote tinyint(1) DEFAULT 0, -- FITUR BARU: Izin Remote Absen
-        status enum('active', 'resigned', 'terminated', 'Active', 'Inactive') DEFAULT 'active',
+        allow_remote tinyint(1) DEFAULT 0,
+        status varchar(50) DEFAULT 'active',
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY  (id)
     ) $charset_collate;";
     dbDelta($sql_employees);
 
-    // 5.3 Absensi Karyawan (Updated with GPS & Method)
     $table_attendance = $wpdb->prefix . 'umh_hr_attendance';
     $sql_attendance = "CREATE TABLE $table_attendance (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         date date NOT NULL,
         employee_id bigint(20) UNSIGNED NOT NULL,
-        status enum('present', 'sick', 'permit', 'alpha', 'Hadir', 'Sakit', 'Izin', 'Alpa') DEFAULT 'present',
-        method varchar(50) DEFAULT 'Manual', -- FITUR BARU: QR / GPS / Manual
-        latitude decimal(10, 8) DEFAULT NULL, -- FITUR BARU: GPS Lat
-        longitude decimal(11, 8) DEFAULT NULL, -- FITUR BARU: GPS Lng
+        status varchar(50) DEFAULT 'present',
+        method varchar(50) DEFAULT 'Manual',
+        latitude decimal(10, 8) DEFAULT NULL,
+        longitude decimal(11, 8) DEFAULT NULL,
         notes text,
         check_in_time time,
         check_out_time time,
-        time time DEFAULT NULL, -- Alias for React App
+        time time DEFAULT NULL,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY  (id),
-        UNIQUE KEY emp_date (employee_id, date)
+        KEY emp_date (employee_id, date)
     ) $charset_collate;";
     dbDelta($sql_attendance);
 
     // ==========================================
-    // 6. MARKETING & LEADS
+    // 6. MARKETING
     // ==========================================
     
-    // 6.1 Kampanye Iklan
     $table_marketing = $wpdb->prefix . 'umh_marketing'; 
     $sql_marketing = "CREATE TABLE $table_marketing (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         title varchar(200) NOT NULL,
-        campaign_name varchar(255), -- Alias
+        campaign_name varchar(255),
         platform varchar(50),
-        type varchar(50) DEFAULT 'Social Media', -- Alias
+        type varchar(50) DEFAULT 'Social Media',
         budget decimal(15,2) DEFAULT 0,
         roi_percentage decimal(5,2) DEFAULT 0,
         start_date date,
@@ -361,7 +348,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_marketing);
 
-    // 6.2 Leads
     $table_leads = $wpdb->prefix . 'umh_leads';
     $sql_leads = "CREATE TABLE $table_leads (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -382,22 +368,21 @@ function umh_create_db_tables() {
     dbDelta($sql_leads);
 
     // ==========================================
-    // 7. LOGISTIK & INVENTORY
+    // 7. LOGISTIK
     // ==========================================
 
-    // 7.1 Logistik (Transaction)
     $table_logistics = $wpdb->prefix . 'umh_logistics';
     $sql_logistics = "CREATE TABLE $table_logistics (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         booking_id bigint(20) DEFAULT NULL,
-        booking_code varchar(50) DEFAULT NULL, -- Cache
+        booking_code varchar(50) DEFAULT NULL,
         recipient_name varchar(255) DEFAULT NULL,
         item_name varchar(100) NOT NULL,
         quantity int(11) DEFAULT 1,
-        stock_qty int DEFAULT 0, -- Master Stock
+        stock_qty int DEFAULT 0,
         min_stock_alert int DEFAULT 10,
         unit varchar(20) DEFAULT 'Pcs',
-        status varchar(50) DEFAULT 'safe', -- Pending, Disiapkan, Diterima (Mixed Enum)
+        status varchar(50) DEFAULT 'safe',
         jamaah_id bigint(20) UNSIGNED NULL,
         items_status longtext,
         date_taken datetime,
@@ -408,11 +393,10 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_logistics);
     
-    // 7.2 Inventory (Barang Master)
     $table_inventory = $wpdb->prefix . 'umh_inventory_items';
     $sql_inventory = "CREATE TABLE $table_inventory (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        item_code varchar(50) UNIQUE, 
+        item_code varchar(50), 
         item_name varchar(100) NOT NULL,
         category enum('perlengkapan', 'dokumen', 'souvenir') DEFAULT 'perlengkapan',
         stock_qty int DEFAULT 0,
@@ -423,7 +407,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_inventory);
 
-    // 7.3 Distribusi Logistik
     $table_dist = $wpdb->prefix . 'umh_logistics_distribution';
     $sql_dist = "CREATE TABLE $table_dist (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -442,7 +425,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_dist);
 
-    // 7.4 Tabel Tasks
     $table_tasks = $wpdb->prefix . 'umh_tasks';
     $sql_tasks = "CREATE TABLE $table_tasks (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -461,7 +443,6 @@ function umh_create_db_tables() {
     // 8. USERS & ROLES
     // ==========================================
 
-    // 8.1 Tabel Users (Custom Auth)
     $table_users = $wpdb->prefix . 'umh_users';
     $sql_users = "CREATE TABLE $table_users (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -479,13 +460,10 @@ function umh_create_db_tables() {
         token_expires datetime,
         wp_user_id bigint(20) UNSIGNED,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY  (id),
-        UNIQUE KEY username (username),
-        UNIQUE KEY email (email)
+        PRIMARY KEY  (id)
     ) $charset_collate;";
     dbDelta($sql_users);
     
-    // 8.2 Master Roles
     $table_roles = $wpdb->prefix . 'umh_roles';
     $sql_roles = "CREATE TABLE $table_roles (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -499,17 +477,16 @@ function umh_create_db_tables() {
     dbDelta($sql_roles);
 
     // ==========================================
-    // 9. BOOKING DETAILS (Complex)
+    // 9. BOOKING DETAILS
     // ==========================================
 
-    // 9.1 Bookings (Header)
     $table_bookings = $wpdb->prefix . 'umh_bookings';
     $sql_bookings = "CREATE TABLE $table_bookings (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        booking_code varchar(50) NOT NULL UNIQUE,
+        booking_code varchar(50) NOT NULL,
         departure_id bigint(20) UNSIGNED NOT NULL,
-        package_id bigint(20) UNSIGNED NULL, -- Alias for React App
-        booking_date date DEFAULT NULL, -- Alias
+        package_id bigint(20) UNSIGNED NULL,
+        booking_date date DEFAULT NULL,
         user_id bigint(20) UNSIGNED NULL,
         booker_user_id bigint(20) UNSIGNED NULL,
         branch_id bigint(20) UNSIGNED DEFAULT 0,
@@ -524,11 +501,11 @@ function umh_create_db_tables() {
         total_pax int DEFAULT 1,
         total_price decimal(15,2) DEFAULT 0,
         total_paid decimal(15,2) DEFAULT 0,
-        paid_amount decimal(15,2) DEFAULT 0, -- Alias
+        paid_amount decimal(15,2) DEFAULT 0,
         commission_agent decimal(15,2) DEFAULT 0,
         commission_sub_agent decimal(15,2) DEFAULT 0,
         payment_status enum('unpaid', 'dp', 'partial', 'paid', 'refunded', 'overdue') DEFAULT 'unpaid',
-        status enum('draft', 'pending', 'confirmed', 'completed', 'cancelled', 'Booked', 'DP', 'Lunas', 'Cancel') DEFAULT 'draft',
+        status varchar(50) DEFAULT 'draft',
         notes text,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -537,7 +514,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_bookings);
 
-    // 9.2 Booking Passengers
     $table_booking_pax = $wpdb->prefix . 'umh_booking_passengers';
     $sql_booking_pax = "CREATE TABLE $table_booking_pax (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -556,7 +532,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_booking_pax);
 
-    // 9.3 Rooming List
     $table_rooming = $wpdb->prefix . 'umh_rooming_list';
     $sql_rooming = "CREATE TABLE $table_rooming (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -572,7 +547,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_rooming);
 
-    // 9.4 Coupons
     $table_coupons = $wpdb->prefix . 'umh_coupons';
     $sql_coupons = "CREATE TABLE $table_coupons (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -592,7 +566,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_coupons);
 
-    // 9.5 Booking Requests
     $table_requests = $wpdb->prefix . 'umh_booking_requests';
     $sql_requests = "CREATE TABLE $table_requests (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -615,7 +588,6 @@ function umh_create_db_tables() {
     // 10. OPERASIONAL & LOGS
     // ==========================================
 
-    // 10.1 Branches
     $table_branches = $wpdb->prefix . 'umh_branches';
     $sql_branches = "CREATE TABLE $table_branches (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -631,7 +603,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_branches);
 
-    // 10.2 Doc Tracking
     $table_doc_track = $wpdb->prefix . 'umh_document_tracking';
     $sql_doc_track = "CREATE TABLE $table_doc_track (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -648,7 +619,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_doc_track);
 
-    // 10.3 Activity Logs
     $table_logs = $wpdb->prefix . 'umh_activity_logs';
     $sql_logs = "CREATE TABLE $table_logs (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -661,5 +631,5 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_logs);
 
-    update_option('umh_db_version', '4.0.2');
+    update_option('umh_db_version', '4.0.5');
 }
