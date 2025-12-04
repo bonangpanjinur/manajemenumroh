@@ -1,53 +1,95 @@
 <?php
-if (!defined('ABSPATH')) exit;
+/**
+ * API Handler untuk Custom User Management (umh_users)
+ */
 
-class UMH_Users_API extends UMH_CRUD_Controller {
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class UMH_API_Users {
+    private $table_name;
+
     public function __construct() {
-        // 1. Definisi Schema (Sesuai kolom database umh_users)
-        // Perhatikan: Kita tidak memasukkan 'password_hash' di sini karena itu field internal
-        $schema = [
-            'username'    => ['type' => 'string', 'required' => true],
-            'email'       => ['type' => 'string', 'required' => true],
-            'full_name'   => ['type' => 'string', 'required' => true],
-            'role'        => ['type' => 'string', 'required' => true], // Gunakan 'role' tunggal
-            'phone'       => ['type' => 'string'],
-            'status'      => ['type' => 'string', 'default' => 'active'],
-            'password'    => ['type' => 'string'], // Field virtual untuk input
-        ];
-
-        // 2. Permission
-        $perms = [
-            'get_items'    => ['owner', 'administrator', 'admin_staff'],
-            'get_item'     => ['owner', 'administrator', 'admin_staff'],
-            'create_item'  => ['owner', 'administrator'],
-            'update_item'  => ['owner', 'administrator'],
-            'delete_item'  => ['owner', 'administrator'],
-        ];
-
-        parent::__construct('users', 'umh_users', $schema, $perms, ['username', 'full_name', 'email']);
-        
-        // 3. Hook untuk Hash Password sebelum Simpan/Update
-        add_filter('umh_crud_users_before_create', [$this, 'handle_user_data'], 10, 2);
-        add_filter('umh_crud_users_before_update', [$this, 'handle_user_data'], 10, 2);
+        global $wpdb;
+        $this->table_name = $wpdb->prefix . 'umh_users';
     }
 
-    public function handle_user_data($data, $request) {
-        $params = $request->get_json_params();
+    public function register_routes() {
+        register_rest_route('umh/v1', '/users', [
+            'methods' => 'GET', 'callback' => [$this, 'get_users'], 'permission_callback' => [$this, 'check_permission']
+        ]);
+        register_rest_route('umh/v1', '/users', [
+            'methods' => 'POST', 'callback' => [$this, 'create_user'], 'permission_callback' => [$this, 'check_permission']
+        ]);
+        // Endpoint Login Khusus (Mengembalikan Token)
+        register_rest_route('umh/v1', '/auth/login', [
+            'methods' => 'POST', 'callback' => [$this, 'login_user'], 'permission_callback' => '__return_true' // Public
+        ]);
+    }
 
-        // Jika ada password dikirim, hash dan simpan ke kolom 'password_hash'
-        if (!empty($params['password'])) {
-            $data['password_hash'] = wp_hash_password($params['password']);
+    public function check_permission() {
+        return current_user_can('manage_options');
+    }
+
+    public function get_users($request) {
+        global $wpdb;
+        // Jangan return password hash!
+        $items = $wpdb->get_results("SELECT id, username, email, full_name, role_key, status, created_at FROM {$this->table_name}");
+        return new WP_REST_Response(['success' => true, 'data' => $items], 200);
+    }
+
+    public function create_user($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+        
+        // Hash Password
+        $password_hash = password_hash($p['password'], PASSWORD_BCRYPT);
+        
+        $wpdb->insert($this->table_name, [
+            'username' => sanitize_text_field($p['username']),
+            'email' => sanitize_email($p['email']),
+            'password_hash' => $password_hash,
+            'full_name' => sanitize_text_field($p['full_name']),
+            'role_key' => $p['role_key'] ?? 'subscriber',
+            'status' => 'active'
+        ]);
+        
+        if ($wpdb->last_error) return new WP_REST_Response(['success' => false, 'message' => $wpdb->last_error], 400);
+        
+        return new WP_REST_Response(['success' => true, 'id' => $wpdb->insert_id], 201);
+    }
+    
+    public function login_user($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+        $username = sanitize_text_field($p['username']);
+        $password = $p['password'];
+        
+        $user = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->table_name} WHERE username = %s OR email = %s", $username, $username));
+        
+        if (!$user || !password_verify($password, $user->password_hash)) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Username atau Password salah'], 401);
         }
-
-        // Hapus field 'password' mentah agar tidak masuk query SQL (karena kolom 'password' tidak ada di DB)
-        unset($data['password']);
-
-        // Pastikan full_name terisi (fallback ke first_name + last_name jika ada)
-        if (empty($data['full_name']) && (!empty($params['first_name']) || !empty($params['last_name']))) {
-            $data['full_name'] = trim(($params['first_name'] ?? '') . ' ' . ($params['last_name'] ?? ''));
+        
+        if ($user->status !== 'active') {
+            return new WP_REST_Response(['success' => false, 'message' => 'Akun dinonaktifkan'], 403);
         }
-
-        return $data;
+        
+        // Generate Token Sederhana (Idealnya pakai JWT, tapi ini random string cukup untuk internal)
+        $token = bin2hex(random_bytes(32));
+        $expiry = date('Y-m-d H:i:s', strtotime('+24 hours'));
+        
+        $wpdb->update($this->table_name, ['auth_token' => $token, 'token_expires' => $expiry], ['id' => $user->id]);
+        
+        return new WP_REST_Response([
+            'success' => true,
+            'token' => $token,
+            'user' => [
+                'id' => $user->id,
+                'full_name' => $user->full_name,
+                'role' => $user->role_key
+            ]
+        ], 200);
     }
 }
-new UMH_Users_API();

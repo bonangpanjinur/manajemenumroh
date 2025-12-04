@@ -1,67 +1,66 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import DataProvider from './contexts/DataContext';
 import { Toaster } from 'react-hot-toast';
+import DataProvider from './contexts/DataContext';
+import './index.css';
 
-// --- IMPORT COMPONENTS (PASTIKAN NAMA FILE DAN FOLDER BENAR) ---
+// Import Halaman (Pages)
 import Dashboard from './pages/Dashboard';
 import Jamaah from './pages/Jamaah';
+import Packages from './pages/Packages';
 import Departures from './pages/Departures';
-import Packages from './pages/Packages'; 
-import Hotels from './pages/Hotels';
-import Flights from './pages/Flights';
-import PackageCategories from './pages/PackageCategories';
-import Finance from './pages/Finance';
-import Categories from './pages/Categories'; // COA
-import Logistics from './pages/Logistics';
-import Marketing from './pages/Marketing';
-import Agents from './pages/Agents';
-import HR from './pages/HR';
-import Users from './pages/Users';
-import Roles from './pages/Roles';
-import Settings from './pages/Settings';
-import Trash from './pages/Trash';
+import Bookings from './pages/Bookings'; // New
+import Finance from './pages/Finance';   // Updated
+import Logistics from './pages/Logistics'; // Updated
+import Marketing from './pages/Marketing'; // Updated
+import HR from './pages/HR';             // Updated
+import Agents from './pages/Agents';     // Updated
+import Masters from './pages/Masters';   // New (Gabungan Hotel/Flight/Loc)
+import PackageCategories from './pages/PackageCategories'; // Updated
+import Users from './pages/Users';       // New
+import Roles from './pages/Roles';       // New
+import Settings from './pages/Settings'; 
+import Tasks from './pages/Tasks';       // New
 
-import './index.css';
+// Note: Halaman lama (Flights, Hotels, Categories, Trash) sudah TIDAK DIPAKAI.
 
 const App = () => {
     return (
         <DataProvider>
             <HashRouter>
-                <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
+                <div className="antialiased text-gray-800 bg-gray-50 min-h-screen">
                     <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+                    
                     <Routes>
-                        {/* 1. DASHBOARD */}
                         <Route path="/" element={<Dashboard />} />
                         
-                        {/* 2. OPERASIONAL */}
-                        <Route path="/jamaah" element={<Jamaah />} />
+                        {/* Produk & Layanan */}
+                        <Route path="/packages" element={<Packages />} />
                         <Route path="/departures" element={<Departures />} />
-                        
-                        {/* 3. PRODUK & LAYANAN */}
-                        <Route path="/packages" element={<Packages />} /> 
                         <Route path="/package-categories" element={<PackageCategories />} />
-                        <Route path="/hotels" element={<Hotels />} />
-                        <Route path="/flights" element={<Flights />} />
                         
-                        {/* 4. KEUANGAN & ASET */}
-                        <Route path="/finance" element={<Finance />} />
-                        <Route path="/categories" element={<Categories />} />
+                        {/* Transaksi */}
+                        <Route path="/bookings" element={<Bookings />} />
+                        
+                        {/* Operasional */}
+                        <Route path="/jamaah" element={<Jamaah />} />
                         <Route path="/logistics" element={<Logistics />} />
-                        
-                        {/* 5. TIM & MARKETING */}
                         <Route path="/marketing" element={<Marketing />} />
-                        <Route path="/agents" element={<Agents />} />
-                        <Route path="/hr" element={<HR />} />
+                        <Route path="/tasks" element={<Tasks />} />
                         
-                        {/* 6. PENGATURAN SISTEM */}
+                        {/* Back Office */}
+                        <Route path="/finance" element={<Finance />} />
+                        <Route path="/hr" element={<HR />} />
+                        <Route path="/agents" element={<Agents />} />
+                        
+                        {/* Sistem & Master Data */}
+                        <Route path="/masters" element={<Masters />} />
                         <Route path="/users" element={<Users />} />
                         <Route path="/roles" element={<Roles />} />
                         <Route path="/settings" element={<Settings />} />
-                        <Route path="/trash" element={<Trash />} />
-
-                        {/* Fallback: Redirect unknown routes to Dashboard */}
+                        
+                        {/* Fallback */}
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 </div>
@@ -70,13 +69,8 @@ const App = () => {
     );
 };
 
-// Mount App with Safety Check for DOM Readiness
-document.addEventListener('DOMContentLoaded', () => {
-    const container = document.getElementById('umh-app-root');
-    if (container) {
-        const root = createRoot(container);
-        root.render(<App />);
-    } else {
-        console.error("Container 'umh-app-root' not found. Pastikan plugin aktif dan Anda berada di halaman yang benar.");
-    }
-});
+const container = document.getElementById('umh-app-root');
+if (container) {
+    const root = createRoot(container);
+    root.render(<App />);
+}

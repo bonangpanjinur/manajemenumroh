@@ -1,71 +1,88 @@
 <?php
-if (!defined('ABSPATH')) exit;
-require_once plugin_dir_path(__FILE__) . '../class-umh-crud-controller.php';
+/**
+ * API Handler untuk Keuangan (Pembayaran & Validasi)
+ */
 
-class UMH_Finance_API extends UMH_CRUD_Controller {
-    
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class UMH_API_Finance {
+    private $tbl_finance;
+    private $tbl_bookings;
+
     public function __construct() {
-        $schema = [
-            'transaction_date' => ['type' => 'string', 'required' => true],
-            'type'             => ['type' => 'string', 'required' => true, 'enum' => ['income', 'expense']],
-            'category'         => ['type' => 'string', 'default' => 'General'],
-            'amount'           => ['type' => 'number', 'required' => true],
-            'description'      => ['type' => 'string'],
-            'jamaah_id'        => ['type' => 'integer'],
-            'employee_id'      => ['type' => 'integer'],
-            'payment_method'   => ['type' => 'string'],
-            'status'           => ['type' => 'string', 'default' => 'verified'],
-            'proof_file'       => ['type' => 'string'], 
-        ];
+        global $wpdb;
+        $this->tbl_finance  = $wpdb->prefix . 'umh_finance';
+        $this->tbl_bookings = $wpdb->prefix . 'umh_bookings';
+    }
 
-        parent::__construct('finance', 'umh_finance', $schema, [
-            'get_items' => ['owner', 'admin_staff', 'finance_staff'],
-            'create_item' => ['owner', 'admin_staff', 'finance_staff'],
-            'update_item' => ['owner', 'admin_staff', 'finance_staff'],
-            'delete_item' => ['owner', 'admin_staff']
+    public function register_routes() {
+        register_rest_route('umh/v1', '/finance', [
+            'methods' => 'POST', 'callback' => [$this, 'add_payment'], 'permission_callback' => [$this, 'check_permission']
+        ]);
+        register_rest_route('umh/v1', '/finance/(?P<id>\d+)/verify', [
+            'methods' => 'PUT', 'callback' => [$this, 'verify_payment'], 'permission_callback' => [$this, 'check_permission']
         ]);
     }
 
-    public function get_items($request) {
-        global $wpdb;
-        $jamaah_table = $wpdb->prefix . 'umh_jamaah';
-        
-        $sql = "SELECT f.*, j.full_name as jamaah_name 
-                FROM {$this->table_name} f
-                LEFT JOIN $jamaah_table j ON f.jamaah_id = j.id
-                WHERE 1=1";
-
-        if ($request->get_param('type')) {
-            $sql .= $wpdb->prepare(" AND f.type = %s", $request->get_param('type'));
-        }
-
-        $sql .= " ORDER BY f.transaction_date DESC, f.id DESC";
-        
-        return rest_ensure_response($wpdb->get_results($sql, ARRAY_A));
+    public function check_permission() {
+        return current_user_can('manage_options');
     }
 
-    public function create_item($request) {
-        $response = parent::create_item($request);
-        
-        // Auto update status jemaah jika ada pembayaran
-        if (!is_wp_error($response) && $response->get_status() === 201) {
-            $data = $response->get_data();
-            if (!empty($data['jamaah_id'])) {
-                $this->update_jamaah_status($data['jamaah_id']);
-            }
-        }
-        return $response;
+    // 1. Tambah Pembayaran (Oleh Jemaah/Admin)
+    public function add_payment($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+
+        $data = [
+            'transaction_date' => $p['transaction_date'] ?? current_time('Y-m-d'),
+            'type' => 'income', // Default income kalau pembayaran booking
+            'category' => $p['category'] ?? 'Cicilan',
+            'amount' => floatval($p['amount']),
+            'description' => sanitize_textarea_field($p['description']),
+            'booking_id' => intval($p['booking_id']),
+            'payment_method' => $p['payment_method'],
+            'proof_file' => esc_url_raw($p['proof_file']),
+            'status' => 'pending', // Butuh validasi finance
+            'created_at' => current_time('mysql')
+        ];
+
+        $wpdb->insert($this->tbl_finance, $data);
+        return new WP_REST_Response(['success' => true, 'message' => 'Pembayaran dikirim, menunggu verifikasi', 'id' => $wpdb->insert_id], 201);
     }
 
-    private function update_jamaah_status($id) {
+    // 2. Verifikasi Pembayaran (Oleh Staff Finance)
+    public function verify_payment($request) {
         global $wpdb;
-        $paid = $wpdb->get_var($wpdb->prepare("SELECT SUM(amount) FROM {$this->table_name} WHERE jamaah_id=%d AND type='income'", $id));
-        $price = $wpdb->get_var($wpdb->prepare("SELECT package_price FROM {$wpdb->prefix}umh_jamaah WHERE id=%d", $id));
-        
-        $status = ($paid > 0) ? 'dp' : 'registered';
-        if ($price > 0 && $paid >= $price) $status = 'lunas';
-        
-        $wpdb->update($wpdb->prefix.'umh_jamaah', ['status' => $status], ['id' => $id]);
+        $id = $request->get_param('id');
+        $p = $request->get_json_params(); // {"status": "verified"}
+
+        if ($p['status'] !== 'verified') {
+            return new WP_REST_Response(['success' => false, 'message' => 'Invalid status'], 400);
+        }
+
+        // Update status di tabel finance
+        $wpdb->update($this->tbl_finance, 
+            ['status' => 'verified', 'verified_by' => get_current_user_id()], 
+            ['id' => $id]
+        );
+
+        // OTOMATIS: Update total_paid di tabel Bookings
+        $payment = $wpdb->get_row($wpdb->prepare("SELECT booking_id, amount FROM {$this->tbl_finance} WHERE id = %d", $id));
+        if ($payment && $payment->booking_id) {
+            $booking_id = $payment->booking_id;
+            
+            // Recalculate total paid
+            $total_paid = $wpdb->get_var($wpdb->prepare("SELECT SUM(amount) FROM {$this->tbl_finance} WHERE booking_id = %d AND status = 'verified'", $booking_id));
+            
+            // Update Booking Header
+            $wpdb->update($this->tbl_bookings, 
+                ['total_paid' => $total_paid, 'payment_status' => 'partial'], // Simple logic, bisa dipercanggih
+                ['id' => $booking_id]
+            );
+        }
+
+        return new WP_REST_Response(['success' => true, 'message' => 'Pembayaran diverifikasi & Saldo Booking diupdate'], 200);
     }
 }
-new UMH_Finance_API();

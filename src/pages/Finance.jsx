@@ -1,300 +1,325 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
-import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Plus, Minus, Wallet, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { 
+    CheckCircle, XCircle, FileText, Download, Plus, 
+    ArrowUpCircle, ArrowDownCircle, Calendar, Filter, Wallet 
+} from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import toast from 'react-hot-toast';
 
 const Finance = () => {
-    // CRUD untuk Transaksi Keuangan
-    const { data, loading, fetchData, createItem, deleteItem } = useCRUD('umh/v1/finance'); 
-    
-    // State untuk data relasi (Dropdown)
-    const [jamaahList, setJamaahList] = useState([]);
-    const [employeeList, setEmployeeList] = useState([]);
-
-    // Fetch data transaksi & relasi saat load
-    useEffect(() => { 
-        fetchData(); 
-        
-        // Ambil data jemaah untuk dropdown pembayaran
-        api.get('umh/v1/jamaah')
-            .then(res => setJamaahList(Array.isArray(res) ? res : res.items || []))
-            .catch(err => console.error("Gagal load jemaah", err));
-
-        // Ambil data karyawan untuk dropdown gaji
-        api.get('umh/v1/hr')
-            .then(res => setEmployeeList(Array.isArray(res) ? res : res.items || []))
-            .catch(err => console.error("Gagal load karyawan", err));
-
-    }, [fetchData]);
-
-    // Modal State
+    // --- STATE ---
+    const [transactions, setTransactions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('income'); // 'income' | 'expense'
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [trxType, setTrxType] = useState('income'); // 'income' (Pemasukan) atau 'expense' (Pengeluaran)
+    const [summary, setSummary] = useState({ income: 0, expense: 0, balance: 0 });
     
-    // Form State
+    // Filter State
+    const [filterDate, setFilterDate] = useState({ 
+        start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // Awal bulan ini
+        end: new Date().toISOString().split('T')[0] // Hari ini
+    });
+
+    // Form State (untuk Input Pengeluaran/Pemasukan Manual)
     const initialForm = {
+        type: 'expense', 
+        category: 'Operasional',
         amount: '',
-        date: new Date().toISOString().split('T')[0],
-        category: '',
         description: '',
-        jamaah_id: '',
-        employee_id: ''
+        transaction_date: new Date().toISOString().split('T')[0],
+        payment_method: 'cash'
     };
     const [formData, setFormData] = useState(initialForm);
 
-    // Buka Modal
-    const handleOpenModal = (type) => {
-        setTrxType(type);
-        setFormData({ 
-            ...initialForm,
-            category: type === 'income' ? 'Pembayaran Jemaah' : 'Operasional', // Default category
-        });
-        setIsModalOpen(true);
-    };
+    // --- FETCH DATA ---
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            // Menggunakan endpoint export/finance karena menyediakan data list lengkap
+            const res = await api.get('umh/v1/export/finance', { 
+                params: { 
+                    start_date: filterDate.start, 
+                    end_date: filterDate.end 
+                } 
+            });
+            
+            const data = res.data || [];
+            setTransactions(data);
 
-    // Submit Transaksi
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        
-        // Persiapkan payload sesuai struktur DB
-        const payload = {
-            transaction_type: trxType,
-            amount: formData.amount,
-            transaction_date: formData.date,
-            category: formData.category,
-            description: formData.description,
-            // Kirim ID relasi hanya jika relevan
-            jamaah_id: formData.category === 'Pembayaran Jemaah' ? formData.jamaah_id : null,
-            employee_id: formData.category === 'Gaji Karyawan' ? formData.employee_id : null,
-        };
+            // Hitung Ringkasan (Client-side calculation)
+            const inc = data.filter(t => t.Tipe === 'income' && t.Status === 'verified').reduce((sum, t) => sum + parseFloat(t.Nominal || 0), 0);
+            const exp = data.filter(t => t.Tipe === 'expense' && t.Status === 'verified').reduce((sum, t) => sum + parseFloat(t.Nominal || 0), 0);
+            setSummary({ income: inc, expense: exp, balance: inc - exp });
 
-        const success = await createItem(payload);
-        if(success) {
-            setIsModalOpen(false);
+        } catch (err) {
+            console.error(err);
+            toast.error("Gagal memuat data keuangan");
+        } finally {
+            setLoading(false);
         }
     };
 
-    // Hitung Total
-    const totalIncome = data.reduce((acc, curr) => curr.transaction_type === 'income' ? acc + parseFloat(curr.amount || 0) : acc, 0);
-    const totalExpense = data.reduce((acc, curr) => curr.transaction_type === 'expense' ? acc + parseFloat(curr.amount || 0) : acc, 0);
-    const balance = totalIncome - totalExpense;
+    // Load data saat filter tanggal berubah
+    useEffect(() => {
+        fetchData();
+    }, [filterDate]);
 
-    // Kolom Tabel
+    // --- ACTIONS ---
+
+    // 1. Verifikasi Pembayaran (Income dari Booking)
+    const handleVerify = async (item) => {
+        // Asumsi item.id tersedia. Jika endpoint export tidak return ID, perlu disesuaikan di API Backend.
+        // Jika data dari export tidak punya ID, kita tidak bisa verify. 
+        // Note: Pastikan api-export.php mengembalikan kolom 'id' juga.
+        
+        if (!item.id) {
+            toast.error("ID Transaksi tidak ditemukan. Pastikan API Export menyertakan ID.");
+            return;
+        }
+
+        if (!window.confirm(`Verifikasi pembayaran sebesar ${formatCurrency(item.Nominal)}?`)) return;
+
+        try {
+            await api.put(`umh/v1/finance/${item.id}/verify`, { status: 'verified' });
+            toast.success("Pembayaran Terverifikasi");
+            fetchData(); // Refresh list
+        } catch (err) {
+            toast.error("Gagal verifikasi: " + (err.message || 'Server Error'));
+        }
+    };
+
+    // 2. Submit Transaksi Baru (Manual)
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post('umh/v1/finance', {
+                ...formData,
+                type: activeTab, // Ikuti tab yang sedang aktif
+                status: 'verified' // Input admin dianggap langsung verified
+            });
+            toast.success("Transaksi berhasil dicatat");
+            setIsModalOpen(false);
+            setFormData(initialForm);
+            fetchData();
+        } catch (err) {
+            toast.error("Gagal menyimpan: " + err.message);
+        }
+    };
+
+    const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    // --- TABEL CONFIG ---
+    
+    // Filter data di tabel berdasarkan Tab
+    const filteredData = useMemo(() => {
+        return transactions.filter(t => t.Tipe === activeTab);
+    }, [transactions, activeTab]);
+
     const columns = [
-        { 
-            header: 'Tanggal', 
-            accessor: 'transaction_date', 
-            render: r => <span className="text-gray-600 text-sm">{formatDate(r.transaction_date)}</span> 
-        },
-        { 
-            header: 'Tipe', 
-            accessor: 'transaction_type', 
-            render: r => (
-                <span className={`flex items-center gap-1 font-bold text-xs uppercase px-2 py-1 rounded ${
-                    r.transaction_type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                }`}>
-                    {r.transaction_type === 'income' ? <ArrowUpRight size={12}/> : <ArrowDownLeft size={12}/>}
-                    {r.transaction_type === 'income' ? 'Masuk' : 'Keluar'}
-                </span>
-            )
-        },
-        { 
-            header: 'Kategori & Ket.', 
-            accessor: 'category', 
-            render: r => (
-                <div>
-                    <div className="font-bold text-gray-800">{r.category}</div>
-                    <div className="text-xs text-gray-500 italic">{r.description || '-'}</div>
-                </div>
-            )
-        },
-        { 
-            header: 'Relasi', 
-            accessor: 'relation', 
-            render: r => {
-                if (r.jamaah_name) return <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100">Jemaah: {r.jamaah_name}</span>;
-                if (r.employee_name) return <span className="text-xs bg-purple-50 text-purple-600 px-2 py-1 rounded border border-purple-100">Karyawan: {r.employee_name}</span>;
-                return <span className="text-gray-400">-</span>;
-            }
-        },
-        { 
-            header: 'Nominal', 
-            accessor: 'amount', 
-            render: r => (
-                <span className={`font-mono font-bold ${r.transaction_type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                    {r.transaction_type === 'income' ? '+' : '-'} {formatCurrency(r.amount)}
-                </span>
-            )
-        },
+        { header: 'Tanggal', accessor: 'Tanggal', render: r => (
+            <div className="flex items-center gap-2 text-gray-700">
+                <Calendar size={14} className="text-gray-400"/>
+                <span>{formatDate(r.Tanggal)}</span>
+            </div>
+        )},
+        { header: 'Kategori', accessor: 'Kategori', render: r => (
+            <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-medium">
+                {r.Kategori}
+            </span>
+        )},
+        { header: 'Nominal', accessor: 'Nominal', render: r => (
+            <span className={`font-bold ${r.Tipe === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                {r.Tipe === 'income' ? '+' : '-'} {formatCurrency(r.Nominal)}
+            </span>
+        )},
+        { header: 'Keterangan', accessor: 'Keterangan', render: r => (
+            <div className="text-sm text-gray-600 max-w-xs truncate" title={r.Keterangan}>
+                {r.Keterangan || '-'}
+            </div>
+        )},
+        { header: 'Status', accessor: 'Status', render: r => (
+            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${
+                r.Status === 'verified' ? 'bg-green-50 text-green-700 border-green-200' : 
+                r.Status === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 
+                'bg-red-50 text-red-700 border-red-200'
+            }`}>
+                {r.Status}
+            </span>
+        )},
+        { header: 'Aksi', accessor: 'id', render: r => (
+            <div className="flex gap-2">
+                {r.Status === 'pending' && r.Tipe === 'income' && (
+                    <button 
+                        onClick={() => handleVerify(r)} 
+                        className="btn-xs bg-green-600 text-white hover:bg-green-700 px-3 py-1 rounded flex items-center gap-1 shadow-sm transition-all"
+                        title="Verifikasi Pembayaran"
+                    >
+                        <CheckCircle size={12}/> Verifikasi
+                    </button>
+                )}
+                {/* Tombol Bukti Bayar (Jika ada URL) */}
+                {r.proof_file && (
+                    <a href={r.proof_file} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1">
+                        <FileText size={16}/>
+                    </a>
+                )}
+            </div>
+        )}
     ];
 
     return (
-        <Layout title="Keuangan & Kasir" subtitle="Pencatatan Arus Kas, Pembayaran Jemaah, dan Gaji">
-            
-            {/* Kartu Ringkasan */}
+        <Layout title="Keuangan & Arus Kas">
+            {/* RINGKASAN ATAS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                    <div>
-                        <p className="text-gray-500 text-xs uppercase font-bold tracking-wider">Total Pemasukan</p>
-                        <h3 className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(totalIncome)}</h3>
-                    </div>
-                    <div className="bg-green-50 p-3 rounded-full text-green-500"><TrendingUp size={24}/></div>
+                <div className="bg-white p-4 rounded-xl border border-green-100 shadow-sm flex items-center gap-4">
+                    <div className="p-3 bg-green-50 rounded-full text-green-600"><ArrowDownCircle size={24}/></div>
+                    <div><div className="text-xs text-gray-500">Total Pemasukan</div><div className="text-xl font-bold text-gray-800">{formatCurrency(summary.income)}</div></div>
                 </div>
-                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                    <div>
-                        <p className="text-gray-500 text-xs uppercase font-bold tracking-wider">Total Pengeluaran</p>
-                        <h3 className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(totalExpense)}</h3>
-                    </div>
-                    <div className="bg-red-50 p-3 rounded-full text-red-500"><TrendingDown size={24}/></div>
+                <div className="bg-white p-4 rounded-xl border border-red-100 shadow-sm flex items-center gap-4">
+                    <div className="p-3 bg-red-50 rounded-full text-red-600"><ArrowUpCircle size={24}/></div>
+                    <div><div className="text-xs text-gray-500">Total Pengeluaran</div><div className="text-xl font-bold text-gray-800">{formatCurrency(summary.expense)}</div></div>
                 </div>
-                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                    <div>
-                        <p className="text-gray-500 text-xs uppercase font-bold tracking-wider">Saldo Kas</p>
-                        <h3 className={`text-2xl font-bold mt-1 ${balance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                            {formatCurrency(balance)}
-                        </h3>
-                    </div>
-                    <div className="bg-blue-50 p-3 rounded-full text-blue-500"><Wallet size={24}/></div>
+                <div className="bg-white p-4 rounded-xl border border-blue-100 shadow-sm flex items-center gap-4">
+                    <div className="p-3 bg-blue-50 rounded-full text-blue-600"><Wallet size={24}/></div>
+                    <div><div className="text-xs text-gray-500">Saldo Akhir</div><div className={`text-xl font-bold ${summary.balance < 0 ? 'text-red-600' : 'text-blue-800'}`}>{formatCurrency(summary.balance)}</div></div>
                 </div>
             </div>
 
-            {/* Kontainer Tabel */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50">
-                    <h3 className="font-bold text-gray-700 flex items-center gap-2">
-                        <Wallet size={18}/> Riwayat Transaksi
-                    </h3>
-                    <div className="flex gap-2 w-full md:w-auto">
-                        <button onClick={() => handleOpenModal('income')} className="flex-1 md:flex-none btn-primary bg-green-600 hover:bg-green-700 border-green-700 text-white flex gap-2 items-center justify-center text-sm px-4 py-2 rounded-lg transition-colors">
-                            <Plus size={16}/> Catat Pemasukan
+            {/* FILTER & ACTIONS */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6">
+                <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
+                    
+                    {/* Tab Switcher */}
+                    <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-full lg:w-auto">
+                        <button 
+                            onClick={() => setActiveTab('income')}
+                            className={`flex-1 lg:flex-none px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'income' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Pemasukan
                         </button>
-                        <button onClick={() => handleOpenModal('expense')} className="flex-1 md:flex-none btn-primary bg-red-600 hover:bg-red-700 border-red-700 text-white flex gap-2 items-center justify-center text-sm px-4 py-2 rounded-lg transition-colors">
-                            <Minus size={16}/> Catat Pengeluaran
+                        <button 
+                            onClick={() => setActiveTab('expense')}
+                            className={`flex-1 lg:flex-none px-6 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'expense' ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Pengeluaran
                         </button>
                     </div>
-                </div>
-                
-                <CrudTable columns={columns} data={data} loading={loading} onDelete={deleteItem} />
-            </div>
 
-            {/* Modal Form */}
-            <Modal 
-                isOpen={isModalOpen} 
-                onClose={() => setIsModalOpen(false)} 
-                title={trxType === 'income' ? "Catat Pemasukan (Kas Masuk)" : "Catat Pengeluaran (Kas Keluar)"}
-            >
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Baris 1: Tanggal & Nominal */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Tanggal Transaksi</label>
+                    {/* Filter Date & Action Buttons */}
+                    <div className="flex flex-col md:flex-row gap-3 w-full lg:w-auto items-center">
+                        <div className="flex items-center gap-2 border px-3 py-2 rounded-lg bg-gray-50 w-full md:w-auto">
+                            <Filter size={16} className="text-gray-400"/>
                             <input 
                                 type="date" 
-                                className="input-field" 
-                                value={formData.date} 
-                                onChange={e => setFormData({...formData, date: e.target.value})} 
-                                required
+                                className="bg-transparent text-sm outline-none w-full md:w-32"
+                                value={filterDate.start}
+                                onChange={e => setFilterDate({...filterDate, start: e.target.value})}
+                            />
+                            <span className="text-gray-400">-</span>
+                            <input 
+                                type="date" 
+                                className="bg-transparent text-sm outline-none w-full md:w-32"
+                                value={filterDate.end}
+                                onChange={e => setFilterDate({...filterDate, end: e.target.value})}
                             />
                         </div>
-                        <div>
-                            <label className="label">Nominal (Rp)</label>
-                            <input 
-                                type="number" 
-                                className="input-field font-mono" 
-                                value={formData.amount} 
-                                onChange={e => setFormData({...formData, amount: e.target.value})} 
-                                required 
-                                placeholder="0"
-                            />
+                        
+                        <div className="flex gap-2 w-full md:w-auto">
+                            {/* Tombol Tambah hanya muncul sesuai konteks */}
+                            <button 
+                                onClick={() => setIsModalOpen(true)} 
+                                className={`btn-primary flex-1 md:flex-none flex items-center justify-center gap-2 ${activeTab === 'expense' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
+                            >
+                                <Plus size={18}/> {activeTab === 'income' ? 'Catat Pemasukan' : 'Catat Pengeluaran'}
+                            </button>
+                            
+                            <button className="btn-secondary flex-1 md:flex-none flex items-center justify-center gap-2">
+                                <Download size={18}/> Export
+                            </button>
                         </div>
                     </div>
-                    
-                    {/* Kategori */}
+                </div>
+            </div>
+
+            {/* TABEL DATA */}
+            <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden min-h-[400px]">
+                <CrudTable 
+                    columns={columns} 
+                    data={filteredData} 
+                    loading={loading} 
+                    emptyMessage={`Belum ada data ${activeTab === 'income' ? 'pemasukan' : 'pengeluaran'} pada periode ini.`}
+                />
+            </div>
+
+            {/* MODAL INPUT TRANSAKSI */}
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`Catat ${activeTab === 'income' ? 'Pemasukan' : 'Pengeluaran'} Manual`}>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="bg-yellow-50 p-3 rounded text-xs text-yellow-800 border border-yellow-200">
+                        Catatan: Gunakan fitur ini untuk transaksi di luar Booking Jemaah (misal: Biaya Listrik, Sewa Kantor, atau Pemasukan Lain-lain).
+                    </div>
+
                     <div>
-                        <label className="label">Kategori Transaksi</label>
-                        <select 
-                            className="input-field" 
-                            value={formData.category} 
-                            onChange={e => setFormData({...formData, category: e.target.value})}
-                            required
-                        >
-                            <option value="">-- Pilih Kategori --</option>
-                            {trxType === 'income' ? (
+                        <label className="label">Tanggal Transaksi</label>
+                        <input type="date" name="transaction_date" className="input-field" value={formData.transaction_date} onChange={handleChange} required />
+                    </div>
+                    
+                    <div>
+                        <label className="label">Kategori</label>
+                        <select name="category" className="input-field" value={formData.category} onChange={handleChange}>
+                            {activeTab === 'expense' ? (
                                 <>
-                                    <option value="Pembayaran Jemaah">Pembayaran Paket Jemaah</option>
-                                    <option value="Penjualan Perlengkapan">Penjualan Perlengkapan</option>
-                                    <option value="Tambahan">Pemasukan Lainnya</option>
+                                    <option value="Operasional Kantor">Operasional Kantor</option>
+                                    <option value="Gaji Karyawan">Gaji Karyawan</option>
+                                    <option value="Marketing">Marketing / Iklan</option>
+                                    <option value="Vendor Visa">Vendor Visa/Tiket</option>
+                                    <option value="Perlengkapan">Perlengkapan Jemaah</option>
+                                    <option value="Lainnya">Lainnya</option>
                                 </>
                             ) : (
                                 <>
-                                    <option value="Operasional">Biaya Operasional Kantor</option>
-                                    <option value="Gaji Karyawan">Gaji Karyawan (Payroll)</option>
-                                    <option value="Vendor">Pembayaran Vendor (Hotel/Pesawat)</option>
-                                    <option value="Marketing">Biaya Iklan & Marketing</option>
-                                    <option value="Lainnya">Pengeluaran Lainnya</option>
+                                    <option value="Investasi">Investasi Masuk</option>
+                                    <option value="Refund Vendor">Refund dari Vendor</option>
+                                    <option value="Lainnya">Lainnya</option>
                                 </>
                             )}
                         </select>
                     </div>
 
-                    {/* Form Dinamis: Relasi */}
-                    
-                    {/* Jika Kategori = Pembayaran Jemaah -> Tampilkan Dropdown Jemaah */}
-                    {formData.category === 'Pembayaran Jemaah' && (
-                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                            <label className="label text-blue-800">Pilih Jemaah</label>
-                            <select 
-                                className="input-field border-blue-300 focus:ring-blue-200" 
-                                value={formData.jamaah_id}
-                                onChange={e => setFormData({...formData, jamaah_id: e.target.value})}
-                                required
-                            >
-                                <option value="">-- Cari Nama Jemaah --</option>
-                                {jamaahList.map(j => (
-                                    <option key={j.id} value={j.id}>{j.full_name} - {j.passport_number || 'No Passport'}</option>
-                                ))}
-                            </select>
-                            <p className="text-xs text-blue-600 mt-1">*Transaksi ini akan tercatat di riwayat jemaah.</p>
-                        </div>
-                    )}
-
-                    {/* Jika Kategori = Gaji Karyawan -> Tampilkan Dropdown Karyawan */}
-                    {formData.category === 'Gaji Karyawan' && (
-                        <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
-                            <label className="label text-purple-800">Pilih Karyawan</label>
-                            <select 
-                                className="input-field border-purple-300 focus:ring-purple-200" 
-                                value={formData.employee_id}
-                                onChange={e => setFormData({...formData, employee_id: e.target.value})}
-                                required
-                            >
-                                <option value="">-- Cari Nama Karyawan --</option>
-                                {employeeList.map(emp => (
-                                    <option key={emp.id} value={emp.id}>{emp.name} - {emp.position}</option>
-                                ))}
-                            </select>
-                            <p className="text-xs text-purple-600 mt-1">*Transaksi ini akan tercatat sebagai slip gaji.</p>
-                        </div>
-                    )}
-
                     <div>
-                        <label className="label">Keterangan / Catatan</label>
-                        <textarea 
-                            className="input-field" 
-                            rows="2" 
-                            value={formData.description} 
-                            onChange={e => setFormData({...formData, description: e.target.value})}
-                            placeholder="Contoh: Pembayaran DP Paket Umroh..."
-                        ></textarea>
+                        <label className="label">Nominal (IDR)</label>
+                        <input 
+                            type="number" 
+                            name="amount" 
+                            className={`input-field font-bold text-lg ${activeTab==='expense'?'text-red-600':'text-green-600'}`} 
+                            value={formData.amount} 
+                            onChange={handleChange} 
+                            placeholder="0" 
+                            required 
+                        />
                     </div>
 
-                    <div className="flex justify-end pt-4 border-t gap-2">
+                    <div>
+                        <label className="label">Metode Pembayaran</label>
+                        <select name="payment_method" className="input-field" value={formData.payment_method} onChange={handleChange}>
+                            <option value="cash">Kas Tunai</option>
+                            <option value="transfer">Transfer Bank</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="label">Keterangan / Keperluan</label>
+                        <textarea name="description" className="input-field h-24" value={formData.description} onChange={handleChange} placeholder="Deskripsi detail transaksi..." required></textarea>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-4 border-t mt-4">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className={`btn-primary ${trxType === 'income' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                        <button type="submit" className={`btn-primary ${activeTab==='expense'?'bg-red-600 hover:bg-red-700':'bg-green-600 hover:bg-green-700'}`}>
                             Simpan Transaksi
                         </button>
                     </div>

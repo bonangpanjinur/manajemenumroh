@@ -1,36 +1,96 @@
 <?php
-// File: includes/api/api-tasks.php
-// Menggunakan CRUD Controller untuk mengelola Tugas.
+/**
+ * API Handler untuk Manajemen Tugas (Tasks)
+ */
 
 if (!defined('ABSPATH')) {
-    exit; // Exit if accessed directly
+    exit;
 }
 
-// 1. Definisikan Skema Data (cocokkan dengan db-schema.php)
-$tasks_schema = [
-    'assigned_to_user_id' => ['type' => 'integer', 'required' => false, 'sanitize_callback' => 'absint'],
-    'created_by_user_id'  => ['type' => 'integer', 'required' => false, 'sanitize_callback' => 'absint'], // Akan diisi otomatis
-    'jamaah_id'           => ['type' => 'integer', 'required' => false, 'sanitize_callback' => 'absint'],
-    'title'               => ['type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field'],
-    'description'         => ['type' => 'string', 'required' => false, 'sanitize_callback' => 'sanitize_textarea_field'],
-    'due_date'            => ['type' => 'string', 'format' => 'date', 'required' => false, 'sanitize_callback' => 'sanitize_text_field'],
-    'status'              => ['type' => 'string', 'required' => false, 'default' => 'pending', 'enum' => ['pending', 'in_progress', 'completed']],
-    'priority'            => ['type' => 'string', 'required' => false, 'default' => 'medium', 'enum' => ['low', 'medium', 'high']],
-];
+class UMH_API_Tasks {
+    private $table_name;
 
-// 2. Definisikan Izin (Siapa boleh ngapain?)
-$tasks_permissions = [
-    // Semua staf bisa melihat tugas
-    'get_items'    => ['owner', 'admin_staff', 'finance_staff', 'marketing_staff', 'hr_staff'],
-    'get_item'     => ['owner', 'admin_staff', 'finance_staff', 'marketing_staff', 'hr_staff'],
-    // Hanya owner dan admin_staff yang bisa membuat tugas baru
-    'create_item'  => ['owner', 'admin_staff'],
-    // Siapapun bisa update tugas (misal: update status)
-    'update_item'  => ['owner', 'admin_staff', 'finance_staff', 'marketing_staff', 'hr_staff'],
-    // Hanya owner yang bisa menghapus
-    'delete_item'  => ['owner'],
-];
+    public function __construct() {
+        global $wpdb;
+        $this->table_name = $wpdb->prefix . 'umh_tasks';
+    }
 
-// 3. Inisialisasi Controller
-// Parameter: ('endpoint_base', 'slug_tabel_db', $skema, $izin)
-new UMH_CRUD_Controller('tasks', 'umh_tasks', $tasks_schema, $tasks_permissions);
+    public function register_routes() {
+        register_rest_route('umh/v1', '/tasks', [
+            'methods' => 'GET', 'callback' => [$this, 'get_tasks'], 'permission_callback' => [$this, 'check_permission']
+        ]);
+        register_rest_route('umh/v1', '/tasks', [
+            'methods' => 'POST', 'callback' => [$this, 'create_task'], 'permission_callback' => [$this, 'check_permission']
+        ]);
+        register_rest_route('umh/v1', '/tasks/(?P<id>\d+)', [
+            'methods' => 'PUT', 'callback' => [$this, 'update_task'], 'permission_callback' => [$this, 'check_permission']
+        ]);
+        register_rest_route('umh/v1', '/tasks/(?P<id>\d+)', [
+            'methods' => 'DELETE', 'callback' => [$this, 'delete_task'], 'permission_callback' => [$this, 'check_permission']
+        ]);
+    }
+
+    public function check_permission() {
+        return current_user_can('manage_options');
+    }
+
+    public function get_tasks($request) {
+        global $wpdb;
+        $employee_id = $request->get_param('employee_id');
+        
+        $where = "WHERE 1=1";
+        if ($employee_id) {
+            $where .= $wpdb->prepare(" AND assigned_to = %d", $employee_id);
+        }
+        
+        // Join ke Employee untuk dapat nama yang ditugaskan
+        $sql = "SELECT t.*, e.name as employee_name 
+                FROM {$this->table_name} t
+                LEFT JOIN {$wpdb->prefix}umh_hr_employees e ON t.assigned_to = e.id
+                $where ORDER BY t.due_date ASC";
+                
+        $items = $wpdb->get_results($sql);
+        return new WP_REST_Response(['success' => true, 'data' => $items], 200);
+    }
+
+    public function create_task($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+        
+        $wpdb->insert($this->table_name, [
+            'title' => sanitize_text_field($p['title']),
+            'description' => sanitize_textarea_field($p['description']),
+            'assigned_to' => intval($p['assigned_to']),
+            'due_date' => $p['due_date'], // YYYY-MM-DD
+            'priority' => $p['priority'] ?? 'medium',
+            'status' => 'pending'
+        ]);
+        
+        return new WP_REST_Response(['success' => true, 'id' => $wpdb->insert_id], 201);
+    }
+
+    public function update_task($request) {
+        global $wpdb;
+        $id = $request->get_param('id');
+        $p = $request->get_json_params();
+        
+        // Support update status parsial (misal drag & drop di kanban board)
+        $data = [];
+        if (isset($p['status'])) $data['status'] = $p['status'];
+        if (isset($p['priority'])) $data['priority'] = $p['priority'];
+        if (isset($p['assigned_to'])) $data['assigned_to'] = $p['assigned_to'];
+        
+        if (!empty($data)) {
+            $wpdb->update($this->table_name, $data, ['id' => $id]);
+        }
+        
+        return new WP_REST_Response(['success' => true, 'message' => 'Task updated'], 200);
+    }
+
+    public function delete_task($request) {
+        global $wpdb;
+        $id = $request->get_param('id');
+        $wpdb->delete($this->table_name, ['id' => $id]);
+        return new WP_REST_Response(['success' => true, 'message' => 'Task deleted'], 200);
+    }
+}

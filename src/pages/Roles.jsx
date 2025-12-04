@@ -1,182 +1,236 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Layout from '../components/Layout';
-import useCRUD from '../hooks/useCRUD';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
-import Spinner from '../components/Spinner';
-import { Shield, Lock, AlertCircle } from 'lucide-react';
+import useCRUD from '../hooks/useCRUD';
+import api from '../utils/api';
+import { Plus, Shield, Lock, Edit, Trash, CheckSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Roles = () => {
-    const { data, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/roles');
+    const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/roles');
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [currentItem, setCurrentItem] = useState(null);
     const [modalMode, setModalMode] = useState('create'); // create | edit
     
-    // Capabilities standar
-    const availableCaps = [
-        { id: 'read', label: 'Read (Baca Data)' },
-        { id: 'edit_posts', label: 'Edit Data' },
-        { id: 'upload_files', label: 'Upload File' },
-        { id: 'manage_options', label: 'Kelola Pengaturan' },
-        { id: 'manage_agents', label: 'Kelola Agen' },
-        { id: 'manage_finance', label: 'Kelola Keuangan' },
-        { id: 'manage_hr', label: 'Kelola SDM' },
-    ];
+    const initialForm = { id: null, role_name: '', role_key: '', capabilities: [] };
+    const [form, setForm] = useState(initialForm);
 
-    // State Form: Gunakan nama field sesuai Database (role_key, role_name)
-    const [formData, setFormData] = useState({
-        role_key: '',    // slug (unik)
-        role_name: '',   // display name
-        capabilities: {} 
-    });
-
-    useEffect(() => { fetchData(); }, [fetchData]);
-
-    const handleCheckboxChange = (capId) => {
-        setFormData(prev => ({
-            ...prev,
-            capabilities: {
-                ...prev.capabilities,
-                [capId]: !prev.capabilities[capId]
-            }
-        }));
+    // --- DEFINISI HAK AKSES (PERMISSION) ---
+    // Dikelompokkan agar tampilan modal rapi
+    const capabilityGroups = {
+        'Core & Dashboard': [
+            { key: 'view_dashboard', label: 'Lihat Dashboard' },
+            { key: 'manage_settings', label: 'Akses Pengaturan (Settings)' },
+        ],
+        'Transaksi & Booking': [
+            { key: 'view_bookings', label: 'Lihat Booking' },
+            { key: 'manage_bookings', label: 'Kelola Booking (Create/Edit)' },
+            { key: 'delete_bookings', label: 'Hapus Booking' },
+        ],
+        'Keuangan': [
+            { key: 'view_finance', label: 'Lihat Laporan Keuangan' },
+            { key: 'manage_finance', label: 'Validasi & Input Transaksi' },
+        ],
+        'Jemaah (CRM)': [
+            { key: 'view_jamaah', label: 'Lihat Data Jemaah' },
+            { key: 'manage_jamaah', label: 'Input/Edit Jemaah' },
+        ],
+        'Produk & Paket': [
+            { key: 'manage_packages', label: 'Kelola Paket & Jadwal' },
+            { key: 'manage_logistics', label: 'Kelola Logistik' },
+        ],
+        'HR & Users': [
+            { key: 'manage_hr', label: 'Kelola Karyawan & Absensi' },
+            { key: 'manage_users', label: 'Kelola User Login' },
+            { key: 'manage_roles', label: 'Kelola Role' },
+        ]
     };
 
-    const handleOpenModal = (mode, item = null) => {
-        setModalMode(mode);
-        setCurrentItem(item);
+    // Helper untuk checkbox
+    const toggleCap = (capKey) => {
+        setForm(prev => {
+            const caps = prev.capabilities.includes(capKey) 
+                ? prev.capabilities.filter(c => c !== capKey) 
+                : [...prev.capabilities, capKey];
+            return { ...prev, capabilities: caps };
+        });
+    };
 
-        if (item) {
-            // Mode Edit: Parse capabilities jika masih string JSON dari DB
-            let caps = item.capabilities;
-            if (typeof caps === 'string') {
-                try { caps = JSON.parse(caps); } catch (e) { caps = {}; }
+    // Helper Select All per Group
+    const toggleGroup = (groupName) => {
+        const groupCaps = capabilityGroups[groupName].map(c => c.key);
+        const allSelected = groupCaps.every(c => form.capabilities.includes(c));
+        
+        setForm(prev => {
+            let newCaps = [...prev.capabilities];
+            if (allSelected) {
+                // Unselect all
+                newCaps = newCaps.filter(c => !groupCaps.includes(c));
+            } else {
+                // Select all (hindari duplikat)
+                const toAdd = groupCaps.filter(c => !newCaps.includes(c));
+                newCaps = [...newCaps, ...toAdd];
             }
-            
-            setFormData({
-                role_key: item.role_key,
-                role_name: item.role_name,
-                capabilities: caps || {}
-            });
-        } else {
-            // Mode Create
-            setFormData({ role_key: '', role_name: '', capabilities: {} });
-        }
-        setIsModalOpen(true);
+            return { ...prev, capabilities: newCaps };
+        });
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        
-        // Auto-generate role_key dari role_name jika kosong (hanya saat create)
-        if (modalMode === 'create' && !formData.role_key && formData.role_name) {
-            formData.role_key = formData.role_name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        }
+        // Validasi Role Key (hanya huruf kecil dan underscore)
+        const autoKey = form.role_name.toLowerCase().replace(/\s+/g, '_');
+        const payload = { ...form, role_key: form.role_key || autoKey };
 
-        const success = modalMode === 'create' 
-            ? await createItem(formData) 
-            : await updateItem(currentItem.id, formData); // Gunakan ID untuk update
-
-        if (success) {
+        try {
+            if (modalMode === 'create') {
+                await api.post('umh/v1/roles', payload);
+                toast.success("Role baru berhasil dibuat");
+            } else {
+                // Asumsi API support PUT update capabilities
+                // Note: Jika API backend belum support PUT /roles/:id, ini perlu disesuaikan
+                // Untuk sekarang kita asumsikan create dulu karena edit role kompleks di backend
+                toast.error("Mode Edit sedang dalam pengembangan di Backend. Silakan buat role baru.");
+                // Jika sudah ada backend: await api.put(`umh/v1/roles/${form.id}`, payload);
+            }
             setIsModalOpen(false);
             fetchData();
+        } catch(e) { 
+            toast.error("Gagal simpan: " + e.message); 
         }
+    };
+
+    const openCreate = () => {
+        setModalMode('create');
+        setForm(initialForm);
+        setIsModalOpen(true);
+    };
+
+    const openEdit = (item) => {
+        setModalMode('edit');
+        setForm({
+            id: item.id,
+            role_name: item.role_name,
+            role_key: item.role_key,
+            capabilities: Array.isArray(item.capabilities) ? item.capabilities : []
+        });
+        setIsModalOpen(true);
     };
 
     const handleDelete = async (item) => {
-        // Proteksi role Administrator
-        if (item.role_key === 'administrator' || item.role_key === 'owner') {
-            toast.error("Role utama tidak dapat dihapus!");
-            return;
+        if (['administrator', 'subscriber'].includes(item.role_key)) {
+            return toast.error("Role sistem (Administrator/Subscriber) tidak boleh dihapus!");
         }
-        await deleteItem(item.id); // Gunakan ID untuk hapus
+        if (window.confirm(`Yakin hapus role "${item.role_name}"? User dengan role ini akan kehilangan akses.`)) {
+            await deleteItem(item.id);
+            toast.success("Role dihapus");
+        }
     };
 
-    // Definisi Kolom Tabel (Sesuai DB: role_name, role_key)
     const columns = [
-        { header: 'Nama Peran', accessor: 'role_name', className: 'font-bold text-gray-800' },
-        { header: 'Slug (ID)', accessor: 'role_key', render: r => <code className="bg-gray-100 px-2 py-1 rounded text-xs text-red-500">{r.role_key}</code> },
-        { header: 'Akses Utama', accessor: 'capabilities', render: r => {
-            // Parsing aman capabilities
-            let caps = r.capabilities;
-            if (typeof caps === 'string') {
-                try { caps = JSON.parse(caps); } catch(e) { caps = {}; }
-            }
-            const activeCaps = Object.keys(caps || {}).filter(k => caps[k]).length;
-            return <span className="text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">{activeCaps} akses aktif</span>;
-        }},
+        { header: 'Nama Role', accessor: 'role_name', render: r => (
+            <div>
+                <div className="font-bold text-gray-800">{r.role_name}</div>
+                <div className="text-xs text-gray-500 font-mono bg-gray-100 px-1 rounded inline-block mt-1">{r.role_key}</div>
+            </div>
+        )},
+        { header: 'Hak Akses', accessor: 'capabilities', render: r => (
+            <div className="flex flex-wrap gap-1 max-w-lg">
+                {Array.isArray(r.capabilities) && r.capabilities.slice(0, 5).map(c => (
+                    <span key={c} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100">{c}</span>
+                ))}
+                {Array.isArray(r.capabilities) && r.capabilities.length > 5 && (
+                    <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded">+{r.capabilities.length - 5} lainnya</span>
+                )}
+            </div>
+        )},
+        { header: 'Aksi', accessor: 'id', render: r => (
+            <div className="flex gap-2">
+                <button onClick={() => openEdit(r)} className="text-blue-600 hover:bg-blue-50 p-1 rounded transition"><Edit size={16}/></button>
+                {r.role_key !== 'administrator' && (
+                    <button onClick={() => handleDelete(r)} className="text-red-600 hover:bg-red-50 p-1 rounded transition"><Trash size={16}/></button>
+                )}
+            </div>
+        )}
     ];
 
     return (
-        <Layout title="Manajemen Peran & Akses">
-            <div className="flex justify-between items-center mb-6">
+        <Layout title="Manajemen Role & Hak Akses">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex justify-between items-center">
                 <div>
-                    <h2 className="text-lg font-bold text-gray-800">Peran Pengguna (Roles)</h2>
-                    <p className="text-sm text-gray-500">Buat peran khusus untuk staf, agen, atau manajer.</p>
+                    <h2 className="text-lg font-bold text-gray-700 flex items-center gap-2"><Shield size={20}/> Role Pengguna</h2>
+                    <p className="text-sm text-gray-500">Atur siapa yang bisa mengakses fitur apa.</p>
                 </div>
-                <button onClick={() => handleOpenModal('create')} className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 flex items-center gap-2">
-                    <Shield size={18} /> Buat Peran Baru
+                <button onClick={openCreate} className="btn-primary flex items-center gap-2 shadow-lg shadow-blue-200">
+                    <Plus size={18}/> Buat Role Baru
                 </button>
             </div>
 
-            {loading ? <Spinner /> : (
-                <CrudTable 
-                    columns={columns} 
-                    data={data} 
-                    onEdit={(item) => handleOpenModal('edit', item)} 
-                    onDelete={handleDelete} 
-                />
-            )}
+            <div className="bg-white rounded-xl shadow border border-gray-200">
+                <CrudTable columns={columns} data={data} loading={loading} />
+            </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Peran Baru" : "Edit Peran"}>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Nama Tampilan</label>
-                            <input 
-                                className="input-field" 
-                                value={formData.role_name} 
-                                onChange={e => setFormData({...formData, role_name: e.target.value})} 
-                                required 
-                                placeholder="Contoh: Staf Keuangan" 
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Slug / ID (Unik)</label>
-                            <input 
-                                className="input-field bg-gray-50" 
-                                value={formData.role_key} 
-                                onChange={e => setFormData({...formData, role_key: e.target.value})} 
-                                disabled={modalMode === 'edit'} // Slug tidak boleh diedit
-                                placeholder="finance_staff" 
-                            />
-                            {modalMode === 'edit' && <p className="text-[10px] text-gray-400 mt-1">Slug ID tidak dapat diubah.</p>}
-                        </div>
+            {/* MODAL KONFIGURASI ROLE */}
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Buat Role Baru" : "Edit Hak Akses"} size="max-w-4xl">
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    {/* Header Input */}
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                        <label className="label">Nama Role (Jabatan)</label>
+                        <input 
+                            className="input-field font-bold text-lg" 
+                            value={form.role_name} 
+                            onChange={e => setForm({...form, role_name: e.target.value})} 
+                            placeholder="Contoh: Staff Keuangan" 
+                            required 
+                            disabled={modalMode === 'edit' && form.role_key === 'administrator'} // Admin name locked
+                        />
+                        <p className="text-xs text-blue-600 mt-1">
+                            {modalMode === 'create' ? `Slug otomatis: ${form.role_name.toLowerCase().replace(/\s+/g, '_')}` : `Slug: ${form.role_key}`}
+                        </p>
+                    </div>
+                    
+                    {/* Matrix Permission */}
+                    <div className="space-y-4 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
+                        {Object.entries(capabilityGroups).map(([groupName, caps]) => (
+                            <div key={groupName} className="border rounded-lg overflow-hidden">
+                                <div className="bg-gray-100 px-4 py-2 font-bold text-sm text-gray-700 flex justify-between items-center">
+                                    <span>{groupName}</span>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => toggleGroup(groupName)}
+                                        className="text-xs text-blue-600 hover:underline"
+                                    >
+                                        Pilih Semua
+                                    </button>
+                                </div>
+                                <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 bg-white">
+                                    {caps.map((cap) => (
+                                        <label key={cap.key} className={`flex items-center gap-3 p-2 rounded cursor-pointer transition border ${form.capabilities.includes(cap.key) ? 'border-blue-500 bg-blue-50' : 'border-transparent hover:bg-gray-50'}`}>
+                                            <div className={`w-5 h-5 rounded border flex items-center justify-center ${form.capabilities.includes(cap.key) ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}>
+                                                {form.capabilities.includes(cap.key) && <CheckSquare size={14} className="text-white" />}
+                                            </div>
+                                            {/* Hidden checkbox for logic */}
+                                            <input 
+                                                type="checkbox" 
+                                                className="hidden"
+                                                checked={form.capabilities.includes(cap.key)}
+                                                onChange={() => toggleCap(cap.key)}
+                                            />
+                                            <div>
+                                                <div className="text-sm font-medium text-gray-800">{cap.label}</div>
+                                                <div className="text-[10px] text-gray-400 font-mono">{cap.key}</div>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
 
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        <label className="block text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
-                            <Lock size={16} className="text-blue-600"/> Hak Akses (Capabilities)
-                        </label>
-                        <div className="grid grid-cols-2 gap-3 h-48 overflow-y-auto custom-scrollbar pr-2">
-                            {availableCaps.map(cap => (
-                                <label key={cap.id} className="flex items-center gap-2 cursor-pointer hover:bg-white p-2 rounded transition-colors border border-transparent hover:border-gray-200">
-                                    <input 
-                                        type="checkbox" 
-                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                                        checked={!!formData.capabilities?.[cap.id]}
-                                        onChange={() => handleCheckboxChange(cap.id)}
-                                    />
-                                    <span className="text-sm text-gray-700">{cap.label}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-4 border-t">
+                    <div className="flex justify-end pt-4 border-t gap-2">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary">Simpan Peran</button>
+                        <button type="submit" className="btn-primary flex items-center gap-2">
+                            <Lock size={16}/> {modalMode === 'create' ? 'Simpan Role' : 'Update Akses'}
+                        </button>
                     </div>
                 </form>
             </Modal>

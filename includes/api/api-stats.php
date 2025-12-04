@@ -1,72 +1,88 @@
 <?php
-if (!defined('ABSPATH')) { exit; }
+/**
+ * API Handler untuk Dashboard Statistics
+ */
 
-class UMH_Stats_API {
-    public function __construct() {
-        add_action('rest_api_init', [$this, 'register_routes']);
-    }
-
-    public function register_routes() {
-        register_rest_route('umh/v1', '/dashboard-stats', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_dashboard_stats'],
-            'permission_callback' => function() { return current_user_can('read'); }
-        ]);
-    }
-
-    public function get_dashboard_stats() {
-        global $wpdb;
-
-        // 1. Total Jemaah Aktif (Belum Berangkat)
-        $total_active_jamaah = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}umh_jamaah WHERE status IN ('registered', 'dp', 'lunas')");
-
-        // 2. Omset Bulan Ini (Finance Income)
-        $current_month = date('Y-m');
-        $monthly_revenue = $wpdb->get_var("SELECT SUM(amount) FROM {$wpdb->prefix}umh_finance WHERE type = 'income' AND date LIKE '$current_month%'");
-
-        // 3. Keberangkatan Terdekat
-        $next_departure = $wpdb->get_row("
-            SELECT d.departure_date, p.name, d.quota, d.booked
-            FROM {$wpdb->prefix}umh_departures d
-            JOIN {$wpdb->prefix}umh_packages p ON d.package_id = p.id
-            WHERE d.departure_date >= CURDATE()
-            ORDER BY d.departure_date ASC
-            LIMIT 1
-        ");
-
-        // 4. Tasks Pending
-        $pending_tasks = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}umh_tasks WHERE status = 'pending'");
-
-        // 5. Grafik Pendaftaran 6 Bulan Terakhir
-        $chart_data = $wpdb->get_results("
-            SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count 
-            FROM {$wpdb->prefix}umh_jamaah 
-            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-            GROUP BY month 
-            ORDER BY month ASC
-        ");
-
-        // 6. List Keberangkatan Upcoming
-        $upcoming_departures = $wpdb->get_results("
-            SELECT d.id, p.name, d.departure_date, d.quota, d.booked, d.status
-            FROM {$wpdb->prefix}umh_departures d
-            JOIN {$wpdb->prefix}umh_packages p ON d.package_id = p.id
-            WHERE d.departure_date >= CURDATE()
-            ORDER BY d.departure_date ASC
-            LIMIT 5
-        ");
-
-        return rest_ensure_response([
-            'cards' => [
-                'active_jamaah' => $total_active_jamaah ?: 0,
-                'monthly_revenue' => $monthly_revenue ?: 0,
-                'next_departure' => $next_departure,
-                'pending_tasks' => $pending_tasks ?: 0
-            ],
-            'chart' => $chart_data,
-            'upcoming' => $upcoming_departures
-        ]);
-    }
+if (!defined('ABSPATH')) {
+    exit;
 }
 
-new UMH_Stats_API();
+class UMH_API_Stats {
+
+    public function register_routes() {
+        register_rest_route('umh/v1', '/stats/dashboard', [
+            'methods' => 'GET', 
+            'callback' => [$this, 'get_dashboard_stats'], 
+            'permission_callback' => [$this, 'check_permission']
+        ]);
+    }
+
+    public function check_permission() {
+        return current_user_can('manage_options');
+    }
+
+    public function get_dashboard_stats($request) {
+        global $wpdb;
+        
+        // 1. Total Jemaah (Master Data)
+        $total_jamaah = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}umh_jamaah");
+
+        // 2. Total Booking Aktif (Pending/Confirmed)
+        $active_bookings = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}umh_bookings WHERE status IN ('pending', 'confirmed')");
+
+        // 3. Omzet Bulan Ini (Income Verified)
+        $current_month = date('Y-m');
+        $monthly_income = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(amount) FROM {$wpdb->prefix}umh_finance 
+             WHERE type = 'income' AND status = 'verified' 
+             AND transaction_date LIKE %s", 
+            $current_month . '%'
+        ));
+
+        // 4. Keberangkatan Terdekat (Next Departure)
+        $next_departure = $wpdb->get_row(
+            "SELECT d.departure_date, p.name, d.seat_quota, d.seat_booked 
+             FROM {$wpdb->prefix}umh_departures d
+             JOIN {$wpdb->prefix}umh_packages p ON d.package_id = p.id
+             WHERE d.departure_date >= CURDATE() AND d.status = 'open'
+             ORDER BY d.departure_date ASC LIMIT 1"
+        );
+
+        // 5. Grafik 6 Bulan Terakhir (Income vs Expense)
+        $chart_data = $this->get_chart_data();
+
+        return new WP_REST_Response([
+            'success' => true,
+            'cards' => [
+                'total_jamaah' => (int)$total_jamaah,
+                'active_bookings' => (int)$active_bookings,
+                'monthly_revenue' => (float)$monthly_income,
+                'next_departure' => $next_departure
+            ],
+            'chart' => $chart_data
+        ], 200);
+    }
+
+    private function get_chart_data() {
+        global $wpdb;
+        // Ambil data 6 bulan terakhir
+        $sql = "SELECT 
+                    DATE_FORMAT(transaction_date, '%Y-%m') as month,
+                    type,
+                    SUM(amount) as total
+                FROM {$wpdb->prefix}umh_finance
+                WHERE status = 'verified' 
+                AND transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                GROUP BY month, type
+                ORDER BY month ASC";
+        
+        $results = $wpdb->get_results($sql);
+        
+        // Format ulang agar mudah dibaca Chart.js di frontend
+        $data = [];
+        foreach ($results as $row) {
+            $data[$row->month][$row->type] = $row->total;
+        }
+        return $data;
+    }
+}

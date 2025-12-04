@@ -1,110 +1,59 @@
 <?php
-if ( ! defined( 'ABSPATH' ) ) {
-	exit; // Exit if accessed directly.
-}
-
 /**
- * UTILITIES & HELPER FUNCTIONS
- * ---------------------------------------
- * Kumpulan fungsi bantuan untuk autentikasi dan permission.
+ * File: includes/utils.php
+ * Deskripsi: Fungsi bantuan global
  */
 
-if ( ! function_exists( 'umh_is_super_admin' ) ) {
-    function umh_is_super_admin() {
-        return current_user_can( 'manage_options' );
-    }
+if (!defined('ABSPATH')) {
+    exit;
 }
 
-if ( ! function_exists( 'umh_get_current_user_context' ) ) {
-    /**
-     * Mendapatkan konteks pengguna (Role & ID) baik dari Cookie WP atau Token.
-     */
-    function umh_get_current_user_context($request) {
-        // 1. Cek Super Admin via Cookie WP (Login Biasa)
-        $wp_user_id = get_current_user_id();
-        if ( $wp_user_id !== 0 && current_user_can('manage_options') ) {
-            return [
-                'role'    => 'super_admin',
-                'user_id' => $wp_user_id,
-            ];
-        }
-
-        // 2. Cek Token di Header (Login via App/Frontend)
-        $auth_header = $request->get_header('authorization');
-        if (empty($auth_header)) {
-            // Izinkan public access jika tidak ada header (nanti dicek di permission callback)
-            return new WP_Error('rest_unauthorized', 'Authorization header missing.', ['status' => 401]);
-        }
-        
-        $token = '';
-        if (sscanf($auth_header, 'Bearer %s', $token) !== 1) {
-             $token = $auth_header; // Fallback
-        }
-
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'umh_users';
-        
-        $user = $wpdb->get_row($wpdb->prepare(
-            "SELECT id, role FROM $table_name WHERE auth_token = %s AND token_expires > %s",
-            $token,
-            current_time('mysql')
-        ));
-
-        if (!$user) {
-             return new WP_Error('rest_invalid_token', 'Token expired or invalid.', ['status' => 403]);
-        }
-
-        return [
-            'role'    => $user->role,
-            'user_id' => $user->id,
-        ];
-    }
+// Format Rupiah
+function umh_format_idr($nominal) {
+    return 'Rp ' . number_format($nominal, 0, ',', '.');
 }
 
-if ( ! function_exists( 'umh_check_api_permission' ) ) {
-    /**
-     * Factory Function untuk Permission Callback.
-     * Mengembalikan fungsi closure yang valid untuk WP REST API.
-     */
-    function umh_check_api_permission( $allowed_roles = [] ) {
-        
-        return function(WP_REST_Request $request) use ($allowed_roles) {
-            // 1. Dapatkan context user
-            $context = umh_get_current_user_context($request);
+// Generate Booking Code: UMH-YYYYMM-XXXX
+function umh_generate_booking_code() {
+    global $wpdb;
+    $table = $wpdb->prefix . 'umh_bookings';
+    $prefix = 'UMH-' . date('Ym') . '-';
+    
+    // Cari booking terakhir di bulan ini
+    $sql = "SELECT booking_code FROM $table WHERE booking_code LIKE %s ORDER BY id DESC LIMIT 1";
+    $last_code = $wpdb->get_var($wpdb->prepare($sql, $prefix . '%'));
 
-            // Jika return WP_Error (token salah), kembalikan error tersebut
-            if (is_wp_error($context)) {
-                return $context;
-            }
-
-            $user_role = $context['role'];
-
-            // 2. Super Admin & Administrator selalu boleh
-            if ($user_role === 'super_admin' || $user_role === 'administrator') {
-                return true;
-            }
-
-            // 3. Jika roles kosong, berarti public (asal login)
-            if (empty($allowed_roles)) {
-                return true;
-            }
-
-            // 4. Cek apakah role user ada di daftar yang diizinkan
-            if (in_array($user_role, $allowed_roles, true)) {
-                return true;
-            }
-
-            return new WP_Error(
-                'rest_forbidden',
-                'Anda tidak memiliki izin untuk mengakses data ini.',
-                ['status' => 403]
-            );
-        };
+    if ($last_code) {
+        // Ambil 4 digit terakhir
+        $last_num = (int) substr($last_code, -4);
+        $new_num = $last_num + 1;
+    } else {
+        $new_num = 1;
     }
+
+    return $prefix . str_pad($new_num, 4, '0', STR_PAD_LEFT);
 }
 
-if ( ! function_exists( 'umh_format_currency' ) ) {
-    function umh_format_currency( $amount ) {
-        return 'Rp ' . number_format( (float)$amount, 0, ',', '.' );
-    }
+// Konversi Tanggal ke Format Indonesia (contoh: 2023-10-01 -> 1 Oktober 2023)
+function umh_date_indo($date) {
+    $bulan = [
+        1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    $split = explode('-', $date);
+    if(count($split) !== 3) return $date; // Invalid format return as is
+    
+    return $split[2] . ' ' . $bulan[(int)$split[1]] . ' ' . $split[0];
+}
+
+// Logging Aktivitas
+function umh_log_activity($user_id, $action, $details = '') {
+    global $wpdb;
+    $table = $wpdb->prefix . 'umh_activity_logs';
+    $wpdb->insert($table, [
+        'user_id' => $user_id,
+        'action' => $action,
+        'details' => is_array($details) ? json_encode($details) : $details,
+        'ip_address' => $_SERVER['REMOTE_ADDR']
+    ]);
 }

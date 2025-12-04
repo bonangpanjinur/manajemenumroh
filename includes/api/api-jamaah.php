@@ -1,153 +1,193 @@
 <?php
-if (!defined('ABSPATH')) exit;
-require_once plugin_dir_path(__FILE__) . '../class-umh-crud-controller.php';
+/**
+ * API Handler untuk Manajemen Data Jemaah (Profile Only)
+ * Sesuai DB Schema V4.0 (Tanpa data transaksi/paket di tabel ini)
+ */
 
-class UMH_Jamaah_API extends UMH_CRUD_Controller {
-    
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class UMH_API_Jamaah {
+    private $table_name;
+
     public function __construct() {
-        // Schema lengkap sesuai database
-        parent::__construct('jamaah', 'umh_jamaah', [
-            'registration_number' => ['type' => 'string'], // Akan di-generate otomatis
-            'full_name' => ['type' => 'string', 'required' => true],
-            'nik' => ['type' => 'string'],
-            'passport_number' => ['type' => 'string'],
-            'phone' => ['type' => 'string'],
-            'email' => ['type' => 'string'],
-            'address' => ['type' => 'string'],
-            'city' => ['type' => 'string'],
-            'gender' => ['type' => 'string'],
-            'birth_date' => ['type' => 'string'],
-            'birth_place' => ['type' => 'string'],
-            'job_title' => ['type' => 'string'],
-            'education' => ['type' => 'string'],
-            'clothing_size' => ['type' => 'string'],
-            'disease_history' => ['type' => 'string'],
-            'bpjs_number' => ['type' => 'string'],
-            'father_name' => ['type' => 'string'],
-            'mother_name' => ['type' => 'string'],
-            'spouse_name' => ['type' => 'string'],
-            'package_id' => ['type' => 'integer'],
-            'departure_id' => ['type' => 'integer'],
-            'agent_id' => ['type' => 'integer'],
-            'package_price' => ['type' => 'number'],
-            'room_type' => ['type' => 'string'],
-            'status' => ['type' => 'string', 'default' => 'registered'],
-            // Field Upload (URL)
-            'scan_ktp' => ['type' => 'string'],
-            'scan_kk' => ['type' => 'string'],
-            'scan_passport' => ['type' => 'string'],
-            'scan_photo' => ['type' => 'string'],
-            'scan_buku_nikah' => ['type' => 'string'],
-        ], [
-            // Permission Control
-            'get_items' => ['owner', 'admin_staff', 'marketing_staff', 'finance_staff'],
-            'get_item'  => ['owner', 'admin_staff', 'marketing_staff'],
-            'create_item' => ['owner', 'admin_staff', 'marketing_staff'],
-            'update_item' => ['owner', 'admin_staff', 'marketing_staff'],
-            'delete_item' => ['owner', 'admin_staff'],
+        global $wpdb;
+        $this->table_name = $wpdb->prefix . 'umh_jamaah';
+    }
+
+    public function register_routes() {
+        register_rest_route('umh/v1', '/jamaah', [
+            [
+                'methods' => 'GET',
+                'callback' => [$this, 'get_items'],
+                'permission_callback' => [$this, 'check_permission']
+            ],
+            [
+                'methods' => 'POST',
+                'callback' => [$this, 'create_item'],
+                'permission_callback' => [$this, 'check_permission']
+            ]
+        ]);
+
+        register_rest_route('umh/v1', '/jamaah/(?P<id>\d+)', [
+            [
+                'methods' => 'GET',
+                'callback' => [$this, 'get_item'],
+                'permission_callback' => [$this, 'check_permission']
+            ],
+            [
+                'methods' => 'PUT',
+                'callback' => [$this, 'update_item'],
+                'permission_callback' => [$this, 'check_permission']
+            ],
+            [
+                'methods' => 'DELETE',
+                'callback' => [$this, 'delete_item'],
+                'permission_callback' => [$this, 'check_permission']
+            ]
         ]);
     }
 
-    // Override Create untuk Auto-Generate Nomor Registrasi
+    public function check_permission() {
+        return current_user_can('manage_options'); // Sesuaikan nanti dengan role custom
+    }
+
+    // GET ALL
+    public function get_items($request) {
+        global $wpdb;
+        
+        $search = $request->get_param('search');
+        $page = $request->get_param('page') ? intval($request->get_param('page')) : 1;
+        $per_page = $request->get_param('per_page') ? intval($request->get_param('per_page')) : 10;
+        $offset = ($page - 1) * $per_page;
+
+        $where = "WHERE 1=1";
+        if ($search) {
+            $where .= $wpdb->prepare(" AND (full_name LIKE %s OR nik LIKE %s OR passport_number LIKE %s)", "%$search%", "%$search%", "%$search%");
+        }
+
+        $items = $wpdb->get_results("SELECT * FROM {$this->table_name} $where ORDER BY created_at DESC LIMIT $per_page OFFSET $offset");
+        $total = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} $where");
+
+        return new WP_REST_Response([
+            'success' => true,
+            'data' => $items,
+            'pagination' => [
+                'total' => (int)$total,
+                'per_page' => $per_page,
+                'current_page' => $page,
+                'total_pages' => ceil($total / $per_page)
+            ]
+        ], 200);
+    }
+
+    // GET SINGLE
+    public function get_item($request) {
+        global $wpdb;
+        $id = $request->get_param('id');
+        $item = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $id));
+
+        if (!$item) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Jemaah not found'], 404);
+        }
+
+        return new WP_REST_Response(['success' => true, 'data' => $item], 200);
+    }
+
+    // CREATE
     public function create_item($request) {
         global $wpdb;
         $params = $request->get_json_params();
 
-        // Generate No Reg jika kosong: REG-{YYYYMMDD}-{Sequence}
-        if (empty($params['registration_number'])) {
-            $date_code = date('Ymd');
-            $count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_name} WHERE DATE(created_at) = CURDATE()") + 1;
-            $params['registration_number'] = 'REG-' . $date_code . '-' . str_pad($count, 3, '0', STR_PAD_LEFT);
+        // Validasi Dasar
+        if (empty($params['full_name']) || empty($params['gender'])) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Nama dan Jenis Kelamin wajib diisi'], 400);
         }
 
-        // Set default user_id (jika integrasi user WP diperlukan nanti)
-        if (!isset($params['user_id'])) {
-            $params['user_id'] = 0;
+        // Cek NIK Duplikat (Agar tidak ada double data orang)
+        if (!empty($params['nik'])) {
+            $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$this->table_name} WHERE nik = %s", $params['nik']));
+            if ($exists) {
+                return new WP_REST_Response(['success' => false, 'message' => 'NIK sudah terdaftar'], 400);
+            }
         }
 
-        $request->set_body_params($params);
-        return parent::create_item($request);
+        // Data Mapping (Sesuai DB Schema V4.0)
+        $data = [
+            'nik' => isset($params['nik']) ? sanitize_text_field($params['nik']) : null,
+            'passport_number' => isset($params['passport_number']) ? sanitize_text_field($params['passport_number']) : null,
+            'full_name' => sanitize_text_field($params['full_name']),
+            'full_name_ar' => isset($params['full_name_ar']) ? sanitize_text_field($params['full_name_ar']) : null,
+            'gender' => sanitize_text_field($params['gender']),
+            'birth_place' => isset($params['birth_place']) ? sanitize_text_field($params['birth_place']) : null,
+            'birth_date' => isset($params['birth_date']) ? sanitize_text_field($params['birth_date']) : null,
+            'phone' => isset($params['phone']) ? sanitize_text_field($params['phone']) : null,
+            'email' => isset($params['email']) ? sanitize_email($params['email']) : null,
+            'address' => isset($params['address']) ? sanitize_textarea_field($params['address']) : null,
+            'city' => isset($params['city']) ? sanitize_text_field($params['city']) : null,
+            'clothing_size' => isset($params['clothing_size']) ? sanitize_text_field($params['clothing_size']) : null,
+            'disease_history' => isset($params['disease_history']) ? sanitize_textarea_field($params['disease_history']) : null,
+            'father_name' => isset($params['father_name']) ? sanitize_text_field($params['father_name']) : null,
+            'mother_name' => isset($params['mother_name']) ? sanitize_text_field($params['mother_name']) : null,
+            // File upload links (handle terpisah atau kirim URL)
+            'scan_ktp' => isset($params['scan_ktp']) ? esc_url_raw($params['scan_ktp']) : null,
+            'scan_passport' => isset($params['scan_passport']) ? esc_url_raw($params['scan_passport']) : null,
+        ];
+
+        $wpdb->insert($this->table_name, $data);
+
+        if ($wpdb->last_error) {
+            return new WP_REST_Response(['success' => false, 'message' => $wpdb->last_error], 500);
+        }
+
+        return new WP_REST_Response(['success' => true, 'message' => 'Data Jemaah berhasil disimpan', 'id' => $wpdb->insert_id], 201);
     }
 
-    // Override Get Items (Complex Query dengan JOIN)
-    public function get_items($request) {
+    // UPDATE
+    public function update_item($request) {
         global $wpdb;
+        $id = $request->get_param('id');
+        $params = $request->get_json_params();
+
+        // Data Mapping Update
+        $data = [];
+        // Loop through allowed fields
+        $allowed_fields = ['nik', 'passport_number', 'full_name', 'full_name_ar', 'gender', 'birth_place', 'birth_date', 'phone', 'email', 'address', 'city', 'clothing_size', 'disease_history', 'father_name', 'mother_name', 'scan_ktp', 'scan_passport'];
         
-        if (!$this->check_permission($request)) {
-            return new WP_Error('rest_forbidden', 'Akses ditolak.', ['status' => 401]);
-        }
-
-        $table_name = $this->table_name;
-        $table_packages = $wpdb->prefix . 'umh_packages';
-        $table_finance = $wpdb->prefix . 'umh_finance';
-        $table_agents = $wpdb->prefix . 'umh_agents';
-        $table_departures = $wpdb->prefix . 'umh_departures';
-
-        // Query Utama
-        $sql = "SELECT j.*, 
-                p.name as package_name, 
-                d.departure_date,
-                a.name as agent_name,
-                (
-                    SELECT COALESCE(SUM(amount), 0) 
-                    FROM $table_finance f 
-                    WHERE f.jamaah_id = j.id 
-                    AND f.type = 'income' 
-                    AND f.status = 'verified'
-                ) as total_paid
-                FROM $table_name j
-                LEFT JOIN $table_packages p ON j.package_id = p.id
-                LEFT JOIN $table_departures d ON j.departure_id = d.id
-                LEFT JOIN $table_agents a ON j.agent_id = a.id
-                WHERE 1=1";
-
-        // Filter Pencarian
-        if ($request->get_param('search')) {
-            $search = esc_sql($request->get_param('search'));
-            $sql .= " AND (j.full_name LIKE '%$search%' OR j.passport_number LIKE '%$search%' OR j.nik LIKE '%$search%' OR j.registration_number LIKE '%$search%')";
-        }
-
-        // Filter Status
-        if ($request->get_param('status')) {
-            $status = sanitize_text_field($request->get_param('status'));
-            $sql .= $wpdb->prepare(" AND j.status = %s", $status);
-        }
-
-        // Filter Keberangkatan (Untuk Manifest)
-        if ($request->get_param('departure_id')) {
-            $sql .= $wpdb->prepare(" AND j.departure_id = %d", $request->get_param('departure_id'));
-        }
-
-        // Filter Agen (Jika login sebagai agen - opsional)
-        if ($request->get_param('agent_id')) {
-            $sql .= $wpdb->prepare(" AND j.agent_id = %d", $request->get_param('agent_id'));
-        }
-
-        $sql .= " ORDER BY j.created_at DESC";
-
-        // Eksekusi Query
-        $results = $wpdb->get_results($sql, ARRAY_A);
-
-        // Post-Processing Data
-        foreach ($results as &$row) {
-            $price = floatval($row['package_price']);
-            $paid = floatval($row['total_paid']);
-            $row['remaining_payment'] = $price - $paid;
-            
-            // Label Status Pembayaran
-            if ($price > 0 && $row['remaining_payment'] <= 0) {
-                $row['payment_status_label'] = 'Lunas';
-            } elseif ($paid > 0) {
-                $row['payment_status_label'] = 'Dicicil';
-            } else {
-                $row['payment_status_label'] = 'Belum Bayar';
+        foreach ($allowed_fields as $field) {
+            if (isset($params[$field])) {
+                $data[$field] = $field === 'email' ? sanitize_email($params[$field]) : sanitize_text_field($params[$field]);
             }
-
-            // Decode JSON jika ada field JSON (untuk jaga-jaga)
-            // $row['meta_data'] = json_decode($row['meta_data']); 
         }
 
-        return rest_ensure_response($results);
+        if (empty($data)) {
+            return new WP_REST_Response(['success' => false, 'message' => 'No data to update'], 400);
+        }
+
+        $wpdb->update($this->table_name, $data, ['id' => $id]);
+
+        if ($wpdb->last_error) {
+            return new WP_REST_Response(['success' => false, 'message' => $wpdb->last_error], 500);
+        }
+
+        return new WP_REST_Response(['success' => true, 'message' => 'Data Jemaah berhasil diperbarui'], 200);
+    }
+
+    // DELETE
+    public function delete_item($request) {
+        global $wpdb;
+        $id = $request->get_param('id');
+
+        // Cek relasi dulu! Jangan hapus jika jemaah sudah pernah booking
+        $has_booking = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}umh_booking_passengers WHERE jamaah_id = %d", $id));
+        
+        if ($has_booking) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Gagal hapus: Jemaah ini memiliki riwayat transaksi/booking.'], 400);
+        }
+
+        $wpdb->delete($this->table_name, ['id' => $id]);
+
+        return new WP_REST_Response(['success' => true, 'message' => 'Data Jemaah dihapus'], 200);
     }
 }
-new UMH_Jamaah_API();

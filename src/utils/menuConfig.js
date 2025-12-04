@@ -1,50 +1,49 @@
 import { 
-    LayoutDashboard, Users, Plane, Calendar, Package, CreditCard, 
-    Hotel, Settings, Box, UserCheck, Shield, Tags, 
-    Briefcase, Megaphone, Wallet, Trash2 
+    LayoutDashboard, Users, Package, Calendar, 
+    ShoppingCart, Truck, Briefcase, 
+    Megaphone, DollarSign, Settings, 
+    Shield, Layers, Database
 } from 'lucide-react';
 
 export const menuItems = [
     {
-        section: 'Utama',
+        category: 'Utama',
         items: [
-            { label: 'Dashboard', path: '/', icon: LayoutDashboard },
-            { label: 'Data Jemaah', path: '/jamaah', icon: Users },
-            { label: 'Jadwal Keberangkatan', path: '/departures', icon: Calendar },
+            { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+            { path: '/bookings', label: 'Transaksi Booking', icon: ShoppingCart },
         ]
     },
     {
-        section: 'Produk & Layanan',
+        category: 'Produk & Layanan',
         items: [
-            { label: 'Katalog Paket', path: '/packages', icon: Package },
-            { label: 'Kategori Paket', path: '/package-categories', icon: Tags },
-            { label: 'Master Hotel', path: '/hotels', icon: Hotel },
-            { label: 'Master Maskapai', path: '/flights', icon: Plane },
+            { path: '/packages', label: 'Katalog Paket', icon: Package },
+            { path: '/departures', label: 'Jadwal Keberangkatan', icon: Calendar },
+            { path: '/package-categories', label: 'Kategori Paket', icon: Layers },
         ]
     },
     {
-        section: 'Keuangan & Aset',
+        category: 'Operasional',
         items: [
-            { label: 'Transaksi & Kasir', path: '/finance', icon: Wallet },
-            { label: 'Akun Keuangan (COA)', path: '/categories', icon: CreditCard },
-            { label: 'Logistik & Stok', path: '/logistics', icon: Box },
+            { path: '/jamaah', label: 'Data Master Jemaah', icon: Users },
+            { path: '/logistics', label: 'Logistik & Gudang', icon: Truck },
+            { path: '/marketing', label: 'Marketing & Leads', icon: Megaphone },
         ]
     },
     {
-        section: 'Tim & Marketing',
+        category: 'Back Office',
         items: [
-            { label: 'Marketing & Leads', path: '/marketing', icon: Megaphone },
-            { label: 'Agen & Mitra', path: '/agents', icon: UserCheck },
-            { label: 'SDM (HR) & Absensi', path: '/hr', icon: Briefcase },
+            { path: '/finance', label: 'Keuangan', icon: DollarSign },
+            { path: '/hr', label: 'HR & Karyawan', icon: Briefcase },
+            { path: '/agents', label: 'Kemitraan (Agen)', icon: Users }, // Icon sama gpp, konteks beda
         ]
     },
     {
-        section: 'Pengaturan Sistem',
+        category: 'Sistem',
         items: [
-            { label: 'Pengguna Sistem', path: '/users', icon: Users },
-            { label: 'Peran & Akses', path: '/roles', icon: Shield },
-            { label: 'Pengaturan', path: '/settings', icon: Settings },
-            // { label: 'Sampah (Trash)', path: '/trash', icon: Trash2 },
+            { path: '/masters', label: 'Data Master (Hotel/Pesawat)', icon: Database },
+            { path: '/users', label: 'Manajemen User', icon: Shield },
+            { path: '/roles', label: 'Hak Akses (Role)', icon: Shield },
+            { path: '/settings', label: 'Pengaturan', icon: Settings },
         ]
     }
 ];

@@ -1,42 +1,53 @@
 <?php
-if (!defined('ABSPATH')) exit;
-require_once plugin_dir_path(__FILE__) . '../class-umh-crud-controller.php';
+/**
+ * API Handler untuk Manajemen Role & Capabilities
+ */
 
-class UMH_Roles_API extends UMH_CRUD_Controller {
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class UMH_API_Roles {
+    private $table_name;
+
     public function __construct() {
-        // Schema harus sesuai dengan kolom di tabel umh_roles
-        $schema = [
-            'role_key'     => ['type' => 'string', 'required' => true],
-            'role_name'    => ['type' => 'string', 'required' => true],
-            'capabilities' => ['type' => 'string'], // JSON String
-        ];
+        global $wpdb;
+        $this->table_name = $wpdb->prefix . 'umh_roles';
+    }
 
-        parent::__construct('roles', 'umh_roles', $schema, [
-            'get_items' => ['administrator', 'owner'],
-            'create_item' => ['administrator', 'owner'],
-            'update_item' => ['administrator', 'owner'],
-            'delete_item' => ['administrator', 'owner']
+    public function register_routes() {
+        register_rest_route('umh/v1', '/roles', [
+            'methods' => 'GET', 'callback' => [$this, 'get_roles'], 'permission_callback' => [$this, 'check_permission']
+        ]);
+        register_rest_route('umh/v1', '/roles', [
+            'methods' => 'POST', 'callback' => [$this, 'create_role'], 'permission_callback' => [$this, 'check_permission']
         ]);
     }
 
-    // Override Create: Encode capabilities ke JSON sebelum simpan
-    public function create_item($request) {
-        $params = $request->get_json_params();
-        if (isset($params['capabilities']) && is_array($params['capabilities'])) {
-            $params['capabilities'] = json_encode($params['capabilities']);
-        }
-        $request->set_body_params($params);
-        return parent::create_item($request);
+    public function check_permission() {
+        return current_user_can('manage_options');
     }
 
-    // Override Update: Encode capabilities ke JSON sebelum update
-    public function update_item($request) {
-        $params = $request->get_json_params();
-        if (isset($params['capabilities']) && is_array($params['capabilities'])) {
-            $params['capabilities'] = json_encode($params['capabilities']);
+    public function get_roles($request) {
+        global $wpdb;
+        $items = $wpdb->get_results("SELECT * FROM {$this->table_name}");
+        // Decode JSON capabilities
+        foreach ($items as $item) {
+            $item->capabilities = json_decode($item->capabilities);
         }
-        $request->set_body_params($params);
-        return parent::update_item($request);
+        return new WP_REST_Response(['success' => true, 'data' => $items], 200);
+    }
+
+    public function create_role($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+        
+        $wpdb->insert($this->table_name, [
+            'role_key' => sanitize_title($p['role_name']),
+            'role_name' => sanitize_text_field($p['role_name']),
+            'capabilities' => json_encode($p['capabilities'] ?? []) // Array of permissions
+        ]);
+        
+        return new WP_REST_Response(['success' => true, 'id' => $wpdb->insert_id], 201);
     }
 }
-new UMH_Roles_API();

@@ -3,183 +3,225 @@ import Layout from '../components/Layout';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
-import { Package, Plus, Calendar, DollarSign, Hotel, Plane, CheckCircle, XCircle } from 'lucide-react';
+import api from '../utils/api';
+import { Plus, Trash, List, CheckSquare } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
+import toast from 'react-hot-toast';
 
 const Packages = () => {
-    // API Utama: umh/v1/packages
-    const { data: packages, loading, fetchData, createItem, updateItem, deleteItem } = useCRUD('umh/v1/packages');
+    const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/packages');
     
-    // API Pendukung (Dropdown)
-    const { data: categories } = useCRUD('umh/v1/package-categories'); 
-    const { data: airlines } = useCRUD('umh/v1/flights');             
-    const { data: hotels } = useCRUD('umh/v1/hotels');                
+    // State untuk Data Master Dropdown
+    const [categories, setCategories] = useState([]);
+    const [hotels, setHotels] = useState([]);
+    const [airlines, setAirlines] = useState([]);
+
+    useEffect(() => {
+        fetchData();
+        // Load Master Data untuk Dropdown (Kategori, Hotel, Maskapai)
+        const loadMasters = async () => {
+            try {
+                const [cats, hots, airs] = await Promise.all([
+                    api.get('umh/v1/package-categories'),
+                    api.get('umh/v1/masters/hotels'),
+                    api.get('umh/v1/masters/airlines')
+                ]);
+                // Handle struktur data response (res.data jika ada)
+                setCategories(cats.data || cats || []);
+                setHotels(hots.data || hots || []);
+                setAirlines(airs.data || airs || []);
+            } catch (e) { console.error("Error loading masters", e); }
+        };
+        loadMasters();
+    }, []);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('create');
-    const [currentId, setCurrentId] = useState(null);
+    const [activeTab, setActiveTab] = useState('info');
 
+    // Initial Form State yang lengkap
     const initialForm = {
-        name: '',
-        category_id: '',
-        airline_id: '',
-        hotel_makkah_id: '',
-        hotel_madinah_id: '',
-        duration_days: '9',
-        base_price: '',
-        description: '',
-        included_features: '',
-        excluded_features: '' 
+        category_id: '', name: '', description: '', duration_days: 9,
+        currency: 'IDR', base_price_quad: 0, base_price_triple: 0, base_price_double: 0,
+        hotel_makkah_id: '', hotel_madinah_id: '', airline_id: '',
+        itinerary: [], // Array of objects
+        facilities: [] // Array of objects
     };
     const [formData, setFormData] = useState(initialForm);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+    
+    // --- Logic Itinerary ---
+    const handleAddItinerary = () => {
+        setFormData(prev => ({
+            ...prev,
+            itinerary: [...prev.itinerary, { day_number: prev.itinerary.length + 1, title: '', description: '', meals: 'B/L/D' }]
+        }));
+    };
 
-    const handleOpenModal = (mode, item = null) => {
+    const handleItineraryChange = (idx, field, val) => {
+        const newItin = [...formData.itinerary];
+        newItin[idx][field] = val;
+        setFormData({ ...formData, itinerary: newItin });
+    };
+
+    const handleRemoveItinerary = (idx) => {
+        const newItin = formData.itinerary.filter((_, i) => i !== idx);
+        const reordered = newItin.map((item, i) => ({ ...item, day_number: i + 1 }));
+        setFormData({ ...formData, itinerary: reordered });
+    };
+
+    // --- Logic Fasilitas ---
+    const handleAddFacility = () => {
+        setFormData(prev => ({
+            ...prev,
+            facilities: [...prev.facilities, { item_name: '', type: 'include' }]
+        }));
+    };
+
+    const handleFacilityChange = (idx, field, val) => {
+        const newFac = [...formData.facilities];
+        newFac[idx][field] = val;
+        setFormData({ ...formData, facilities: newFac });
+    };
+
+    const handleRemoveFacility = (idx) => {
+        setFormData(prev => ({ ...prev, facilities: prev.facilities.filter((_, i) => i !== idx) }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            const apiPath = 'umh/v1/packages';
+            if (modalMode === 'create') {
+                await api.post(apiPath, formData);
+            } else {
+                toast.error("Fitur Edit Paket Lengkap sedang dalam pengembangan. Silakan buat baru untuk saat ini.");
+                return;
+                // Nanti: await api.put(`${apiPath}/${formData.id}`, formData);
+            }
+            toast.success("Paket berhasil disimpan");
+            setIsModalOpen(false);
+            fetchData();
+        } catch (err) {
+            toast.error("Gagal simpan paket: " + err.message);
+        }
+    };
+
+    const openModal = async (mode, item = null) => {
         setModalMode(mode);
-        if (item) {
-            setCurrentId(item.id);
-            setFormData(item);
+        setActiveTab('info');
+        if (mode === 'edit' && item) {
+            // Ambil detail lengkap dari API (karena di tabel cuma header)
+            try {
+                const detail = await api.get(`umh/v1/packages/${item.id}`);
+                if (detail.success || detail.data) {
+                    setFormData(detail.data || detail);
+                }
+            } catch (e) { console.error(e); }
         } else {
             setFormData(initialForm);
         }
         setIsModalOpen(true);
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        const success = modalMode === 'create' 
-            ? await createItem(formData) 
-            : await updateItem(currentId, formData);
-        
-        if (success) setIsModalOpen(false);
-    };
-
-    // Helper untuk menampilkan nama dari ID
-    const getAirlineName = (id) => airlines?.find(a => String(a.id) === String(id))?.name || '-';
-    const getCategoryName = (id) => categories?.find(c => String(c.id) === String(id))?.name || '-';
-    const getHotelName = (id) => hotels?.find(h => String(h.id) === String(id))?.name || '-';
-
-    // Kolom Tabel Paket
     const columns = [
-        { header: 'Nama Paket', accessor: 'name', className: 'font-bold text-gray-900' },
-        { header: 'Kategori', accessor: 'category_id', render: (row) => <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">{getCategoryName(row.category_id)}</span> },
-        { header: 'Maskapai', accessor: 'airline_id', render: (row) => <div className="flex items-center gap-1 text-sm"><Plane size={14}/> {getAirlineName(row.airline_id)}</div> },
-        { header: 'Durasi', accessor: 'duration_days', render: (row) => `${row.duration_days} Hari` },
-        { header: 'Harga Mulai', accessor: 'base_price', render: (row) => <span className="font-bold text-green-700">{formatCurrency(row.base_price)}</span> },
+        { header: 'Nama Paket', accessor: 'name', render: r => (
+            <div>
+                <div className="font-bold">{r.name}</div>
+                <div className="text-xs text-gray-500">{r.duration_days} Hari • {r.currency}</div>
+            </div>
+        )},
+        { header: 'Harga (Quad)', accessor: 'base_price_quad', render: r => formatCurrency(r.base_price_quad, r.currency) },
+        { header: 'Akomodasi', accessor: 'id', render: r => {
+            const makkah = hotels.find(h => h.id == r.hotel_makkah_id)?.name || '-';
+            return <div className="text-xs">Makkah: {makkah}</div>
+        }},
     ];
 
-    // Filter Hotel untuk Dropdown
-    const makkahHotels = hotels ? hotels.filter(h => h.city === 'Makkah') : [];
-    const madinahHotels = hotels ? hotels.filter(h => h.city === 'Madinah') : [];
-
     return (
-        <Layout title="Katalog Paket Umrah">
-            <div className="mb-6 flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div>
-                    <h2 className="font-bold text-gray-800 flex items-center gap-2">
-                        <Package size={20} className="text-blue-600"/> Daftar Paket
-                    </h2>
-                    <p className="text-xs text-gray-500">Master data produk paket perjalanan.</p>
-                </div>
-                <button onClick={() => handleOpenModal('create')} className="btn-primary flex items-center gap-2">
-                    <Plus size={18}/> Buat Paket Baru
-                </button>
+        <Layout title="Katalog Paket Umroh & Haji">
+            <div className="mb-6 flex justify-between">
+                <h2 className="text-xl font-bold">Daftar Paket</h2>
+                <button onClick={() => openModal('create')} className="btn-primary flex items-center gap-2"><Plus size={18}/> Buat Paket Baru</button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow border border-gray-200">
                 <CrudTable 
                     columns={columns} 
-                    data={packages} 
+                    data={data} 
                     loading={loading} 
-                    onEdit={(item) => handleOpenModal('edit', item)} 
-                    onDelete={(item) => deleteItem(item.id)} 
+                    onDelete={(item) => deleteItem(item.id)}
+                    onEdit={(item) => openModal('edit', item)}
                 />
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Buat Paket Baru" : "Edit Paket"} size="max-w-4xl">
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* INFO DASAR */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="col-span-2">
-                            <label className="label">Nama Paket</label>
-                            <input className="input-field" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required placeholder="Contoh: Umrah Akbar Ramadhan 2025" />
-                        </div>
-                        
-                        <div>
-                            <label className="label">Kategori Paket</label>
-                            <select className="input-field" value={formData.category_id} onChange={e => setFormData({...formData, category_id: e.target.value})}>
-                                <option value="">-- Pilih Kategori --</option>
-                                {categories && categories.map(cat => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode==='create'?"Buat Paket Baru":"Edit Paket"} size="max-w-6xl">
+                <form onSubmit={handleSubmit} className="flex flex-col h-[70vh]">
+                    <div className="flex border-b mb-4">
+                        {['info', 'itinerary', 'facilities'].map(tab => (
+                            <button key={tab} type="button" onClick={() => setActiveTab(tab)} 
+                                className={`px-6 py-3 font-medium capitalize border-b-2 ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
+                                {tab}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-1 custom-scrollbar">
+                        {activeTab === 'info' && (
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2"><label className="label">Nama Paket</label><input name="name" className="input-field" value={formData.name} onChange={handleChange} required /></div>
+                                <div><label className="label">Kategori</label><select name="category_id" className="input-field" value={formData.category_id} onChange={handleChange}><option value="">Pilih Kategori</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                                <div><label className="label">Durasi (Hari)</label><input type="number" name="duration_days" className="input-field" value={formData.duration_days} onChange={handleChange} /></div>
+                                
+                                <div className="col-span-2 border-t pt-4 font-bold text-gray-700">Konfigurasi Harga</div>
+                                <div><label className="label">Mata Uang</label><select name="currency" className="input-field" value={formData.currency} onChange={handleChange}><option value="IDR">IDR (Rupiah)</option><option value="USD">USD (Dolar)</option></select></div>
+                                <div><label className="label">Harga Quad (Sekamar 4)</label><input type="number" name="base_price_quad" className="input-field" value={formData.base_price_quad} onChange={handleChange} /></div>
+                                <div><label className="label">Harga Triple (Sekamar 3)</label><input type="number" name="base_price_triple" className="input-field" value={formData.base_price_triple} onChange={handleChange} /></div>
+                                <div><label className="label">Harga Double (Sekamar 2)</label><input type="number" name="base_price_double" className="input-field" value={formData.base_price_double} onChange={handleChange} /></div>
+
+                                <div className="col-span-2 border-t pt-4 font-bold text-gray-700">Akomodasi</div>
+                                <div><label className="label">Hotel Makkah</label><select name="hotel_makkah_id" className="input-field" value={formData.hotel_makkah_id} onChange={handleChange}><option value="">Pilih Hotel</option>{hotels.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}</select></div>
+                                <div><label className="label">Hotel Madinah</label><select name="hotel_madinah_id" className="input-field" value={formData.hotel_madinah_id} onChange={handleChange}><option value="">Pilih Hotel</option>{hotels.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}</select></div>
+                                <div><label className="label">Maskapai</label><select name="airline_id" className="input-field" value={formData.airline_id} onChange={handleChange}><option value="">Pilih Maskapai</option>{airlines.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                            </div>
+                        )}
+
+                        {activeTab === 'itinerary' && (
+                            <div className="space-y-4">
+                                {formData.itinerary.map((day, idx) => (
+                                    <div key={idx} className="border p-4 rounded bg-gray-50 flex gap-4 items-start">
+                                        <div className="w-16 pt-2 font-bold text-gray-500 text-center">Hari {day.day_number}</div>
+                                        <div className="flex-1 space-y-2">
+                                            <input className="input-field font-bold" placeholder="Judul Kegiatan" value={day.title} onChange={e => handleItineraryChange(idx, 'title', e.target.value)} />
+                                            <textarea className="input-field h-20" placeholder="Deskripsi detil..." value={day.description} onChange={e => handleItineraryChange(idx, 'description', e.target.value)} />
+                                            <input className="input-field" placeholder="Makan (B/L/D)" value={day.meals} onChange={e => handleItineraryChange(idx, 'meals', e.target.value)} />
+                                        </div>
+                                        <button type="button" onClick={() => handleRemoveItinerary(idx)} className="text-red-500 p-2"><Trash size={18}/></button>
+                                    </div>
                                 ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="label">Durasi (Hari)</label>
-                            <div className="relative">
-                                <Calendar size={18} className="absolute left-3 top-3 text-gray-400" />
-                                <input type="number" className="input-field pl-10" value={formData.duration_days} onChange={e => setFormData({...formData, duration_days: e.target.value})} required />
+                                <button type="button" onClick={handleAddItinerary} className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-500 rounded hover:bg-gray-50 flex justify-center items-center gap-2"><Plus size={18}/> Tambah Hari</button>
                             </div>
-                        </div>
+                        )}
+
+                        {activeTab === 'facilities' && (
+                            <div className="space-y-2">
+                                {formData.facilities.map((fac, idx) => (
+                                    <div key={idx} className="flex gap-2 items-center">
+                                        <select className="input-field w-32" value={fac.type} onChange={e => handleFacilityChange(idx, 'type', e.target.value)}>
+                                            <option value="include">Termasuk</option>
+                                            <option value="exclude">Tidak Termasuk</option>
+                                        </select>
+                                        <input className="input-field flex-1" placeholder="Nama Fasilitas" value={fac.item_name} onChange={e => handleFacilityChange(idx, 'item_name', e.target.value)} />
+                                        <button type="button" onClick={() => handleRemoveFacility(idx)} className="text-red-500 p-2"><Trash size={18}/></button>
+                                    </div>
+                                ))}
+                                <button type="button" onClick={handleAddFacility} className="btn-secondary w-full mt-4"><Plus size={16}/> Tambah Item</button>
+                            </div>
+                        )}
                     </div>
 
-                    {/* AKOMODASI */}
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        <h3 className="font-bold text-gray-700 mb-3 text-sm border-b pb-2">Akomodasi & Transportasi</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="label flex items-center gap-1"><Plane size={14}/> Maskapai</label>
-                                <select className="input-field" value={formData.airline_id} onChange={e => setFormData({...formData, airline_id: e.target.value})}>
-                                    <option value="">-- Pilih Maskapai --</option>
-                                    {airlines && airlines.map(air => (
-                                        <option key={air.id} value={air.id}>{air.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="label flex items-center gap-1"><Hotel size={14}/> Hotel Makkah</label>
-                                <select className="input-field" value={formData.hotel_makkah_id} onChange={e => setFormData({...formData, hotel_makkah_id: e.target.value})}>
-                                    <option value="">-- Pilih Hotel --</option>
-                                    {makkahHotels.map(h => (
-                                        <option key={h.id} value={h.id}>{h.name} ({h.rating}*)</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="label flex items-center gap-1"><Hotel size={14}/> Hotel Madinah</label>
-                                <select className="input-field" value={formData.hotel_madinah_id} onChange={e => setFormData({...formData, hotel_madinah_id: e.target.value})}>
-                                    <option value="">-- Pilih Hotel --</option>
-                                    {madinahHotels.map(h => (
-                                        <option key={h.id} value={h.id}>{h.name} ({h.rating}*)</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* FASILITAS & HARGA */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="label flex items-center gap-1 text-green-700"><CheckCircle size={14}/> Fasilitas Termasuk</label>
-                            <textarea className="input-field" rows="4" value={formData.included_features} onChange={e => setFormData({...formData, included_features: e.target.value})} placeholder="- Tiket PP&#10;- Visa&#10;- Makan 3x"></textarea>
-                        </div>
-                        <div>
-                            <label className="label flex items-center gap-1 text-red-700"><XCircle size={14}/> Tidak Termasuk</label>
-                            <textarea className="input-field" rows="4" value={formData.excluded_features} onChange={e => setFormData({...formData, excluded_features: e.target.value})} placeholder="- Paspor&#10;- Suntik Meningitis"></textarea>
-                        </div>
-                    </div>
-
-                    <div className="pt-2 border-t mt-2">
-                        <label className="label">Harga Dasar (IDR)</label>
-                        <div className="relative">
-                            <DollarSign size={18} className="absolute left-3 top-3 text-gray-400" />
-                            <input type="number" className="input-field pl-10 text-lg font-bold" value={formData.base_price} onChange={e => setFormData({...formData, base_price: e.target.value})} required placeholder="0" />
-                        </div>
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-4 border-t">
+                    <div className="border-t pt-4 mt-4 flex justify-end gap-2">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
                         <button type="submit" className="btn-primary">Simpan Paket</button>
                     </div>
