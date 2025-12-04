@@ -1,49 +1,72 @@
+import React from 'react';
 import { 
-    LayoutDashboard, Users, Package, Calendar, 
-    ShoppingCart, Truck, Briefcase, 
-    Megaphone, DollarSign, Settings, 
-    Shield, Layers, Database
-} from 'lucide-react';
+  HomeIcon, 
+  UsersIcon, 
+  ClipboardDocumentListIcon, 
+  BanknotesIcon, 
+  MegaphoneIcon, 
+  BriefcaseIcon, 
+  TruckIcon,
+  QrCodeIcon 
+} from '@heroicons/react/24/outline';
 
+// Perhatikan: Kita tambahkan 'export' di depan const agar menjadi Named Export
 export const menuItems = [
-    {
-        category: 'Utama',
-        items: [
-            { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-            { path: '/bookings', label: 'Transaksi Booking', icon: ShoppingCart },
-        ]
-    },
-    {
-        category: 'Produk & Layanan',
-        items: [
-            { path: '/packages', label: 'Katalog Paket', icon: Package },
-            { path: '/departures', label: 'Jadwal Keberangkatan', icon: Calendar },
-            { path: '/package-categories', label: 'Kategori Paket', icon: Layers },
-        ]
-    },
-    {
-        category: 'Operasional',
-        items: [
-            { path: '/jamaah', label: 'Data Master Jemaah', icon: Users },
-            { path: '/logistics', label: 'Logistik & Gudang', icon: Truck },
-            { path: '/marketing', label: 'Marketing & Leads', icon: Megaphone },
-        ]
-    },
-    {
-        category: 'Back Office',
-        items: [
-            { path: '/finance', label: 'Keuangan', icon: DollarSign },
-            { path: '/hr', label: 'HR & Karyawan', icon: Briefcase },
-            { path: '/agents', label: 'Kemitraan (Agen)', icon: Users }, // Icon sama gpp, konteks beda
-        ]
-    },
-    {
-        category: 'Sistem',
-        items: [
-            { path: '/masters', label: 'Data Master (Hotel/Pesawat)', icon: Database },
-            { path: '/users', label: 'Manajemen User', icon: Shield },
-            { path: '/roles', label: 'Hak Akses (Role)', icon: Shield },
-            { path: '/settings', label: 'Pengaturan', icon: Settings },
-        ]
-    }
+  {
+    title: 'Dashboard',
+    path: '/',
+    icon: <HomeIcon className="w-5 h-5" />,
+    roles: ['admin', 'staff', 'agent']
+  },
+  {
+    title: 'Manajemen Jamaah',
+    path: '/jamaah',
+    icon: <UsersIcon className="w-5 h-5" />,
+    roles: ['admin', 'staff']
+  },
+  {
+    title: 'Booking & Paket',
+    path: '/bookings',
+    icon: <ClipboardDocumentListIcon className="w-5 h-5" />,
+    roles: ['admin', 'staff']
+  },
+  {
+    title: 'Scan Absensi',
+    path: '/attendance-scan',
+    icon: <QrCodeIcon className="w-5 h-5" />,
+    roles: ['admin', 'staff', 'driver', 'handling']
+  },
+  {
+    title: 'Keuangan',
+    path: '/finance',
+    icon: <BanknotesIcon className="w-5 h-5" />,
+    roles: ['admin', 'finance']
+  },
+  {
+    title: 'HR & Absensi',
+    path: '/hr',
+    icon: <BriefcaseIcon className="w-5 h-5" />,
+    roles: ['admin', 'hr']
+  },
+  {
+    title: 'Logistik',
+    path: '/logistics',
+    icon: <TruckIcon className="w-5 h-5" />,
+    roles: ['admin', 'logistics']
+  },
+  {
+    title: 'Marketing',
+    path: '/marketing',
+    icon: <MegaphoneIcon className="w-5 h-5" />,
+    roles: ['admin', 'marketing']
+  },
+  {
+    title: 'Kemitraan Agen',
+    path: '/agents',
+    icon: <UsersIcon className="w-5 h-5" />,
+    roles: ['admin', 'marketing']
+  },
 ];
+
+// Kita juga sediakan default export untuk kompatibilitas
+export default menuItems;

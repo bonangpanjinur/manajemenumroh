@@ -1,17 +1,21 @@
 <?php
-if (!defined('ABSPATH')) {
+/**
+ * File: admin/dashboard-react.php
+ * Deskripsi: File ini adalah "kanvas" kosong tempat React akan dimuat.
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 ?>
 
 <div class="wrap">
-    <!-- Container untuk React App -->
-    <div id="umh-app-root"></div>
-    
-    <!-- Fallback jika React gagal load -->
-    <noscript>
-        <div class="notice notice-error">
-            <p>JavaScript diperlukan untuk menjalankan aplikasi ini. Harap aktifkan JavaScript di browser Anda.</p>
+    <!-- Penting: ID ini harus sama dengan document.getElementById di src/index.jsx -->
+    <div id="umroh-manager-app">
+        <!-- Tampilan Loading awal sebelum React mengambil alih -->
+        <div style="display: flex; justify-content: center; align-items: center; height: 50vh; flex-direction: column;">
+            <h2 style="color: #555;">Memuat Aplikasi Manajemen Umroh...</h2>
+            <div class="spinner is-active" style="float: none; margin-top: 10px;"></div>
         </div>
-    </noscript>
+    </div>
 </div>

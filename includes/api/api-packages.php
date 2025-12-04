@@ -1,154 +1,178 @@
 <?php
-/**
- * API Handler untuk Manajemen Paket (Header + Itinerary + Facilities)
- */
+// includes/api/api-packages.php
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-class UMH_API_Packages {
-    private $table_pkg;
-    private $table_itin;
-    private $table_fac;
-
-    public function __construct() {
-        global $wpdb;
-        $this->table_pkg = $wpdb->prefix . 'umh_packages';
-        $this->table_itin = $wpdb->prefix . 'umh_package_itineraries';
-        $this->table_fac = $wpdb->prefix . 'umh_package_facilities';
-    }
+class UMH_API_Packages extends UMH_Crud_Controller {
+    
+    protected $table_name = 'umh_packages';
 
     public function register_routes() {
-        register_rest_route('umh/v1', '/packages', [
-            [
-                'methods' => 'GET',
-                'callback' => [$this, 'get_items'],
-                'permission_callback' => [$this, 'check_permission']
-            ],
-            [
-                'methods' => 'POST',
-                'callback' => [$this, 'create_item'],
-                'permission_callback' => [$this, 'check_permission']
-            ]
-        ]);
-
-        register_rest_route('umh/v1', '/packages/(?P<id>\d+)', [
-            [
-                'methods' => 'GET',
-                'callback' => [$this, 'get_item'],
-                'permission_callback' => [$this, 'check_permission']
-            ],
-            [
-                'methods' => 'PUT',
-                'callback' => [$this, 'update_item'],
-                'permission_callback' => [$this, 'check_permission']
-            ],
-            [
-                'methods' => 'DELETE',
-                'callback' => [$this, 'delete_item'],
-                'permission_callback' => [$this, 'check_permission']
-            ]
-        ]);
+        parent::register_routes();
+        // Route khusus untuk cek manifest (jemaah di paket ini)
+        register_rest_route($this->namespace, '/' . $this->base . '/(?P<id>[\d]+)/manifest', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_manifest'),
+            'permission_callback' => array($this, 'check_permission'),
+        ));
     }
 
-    public function check_permission() {
-        return current_user_can('manage_options');
+    /**
+     * Override create_item untuk menangani relasi otomatis ke tabel Master
+     * (Kategori, Maskapai, Hotel)
+     */
+    public function create_item($request) {
+        $params = $request->get_json_params();
+        $params = $this->handle_master_data($params);
+        $request->set_body_params($params);
+        return parent::create_item($request);
     }
 
-    // GET ALL (Header Only for listing)
+    /**
+     * Override update_item untuk logika yang sama
+     */
+    public function update_item($request) {
+        $params = $request->get_json_params();
+        $params = $this->handle_master_data($params);
+        $request->set_body_params($params);
+        return parent::update_item($request);
+    }
+
+    /**
+     * Fungsi Cerdas: Cek apakah data master (String) sudah ada ID-nya.
+     * Jika belum, buat baru di tabel master dan ambil ID-nya.
+     */
+    private function handle_master_data($params) {
+        global $wpdb;
+
+        // 1. Handle Kategori
+        if (!empty($params['category']) && empty($params['category_id'])) {
+            $cat_table = $wpdb->prefix . 'umh_package_categories';
+            $cat_name = sanitize_text_field($params['category']);
+            $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $cat_table WHERE name = %s", $cat_name));
+            
+            if ($existing) {
+                $params['category_id'] = $existing;
+            } else {
+                $wpdb->insert($cat_table, ['name' => $cat_name, 'slug' => sanitize_title($cat_name), 'type' => 'umrah']);
+                $params['category_id'] = $wpdb->insert_id;
+            }
+            unset($params['category']); // Hapus field string agar tidak error di insert tabel paket
+        }
+
+        // 2. Handle Hotel Makkah
+        if (!empty($params['hotel_makkah']) && empty($params['hotel_makkah_id'])) {
+            $hotel_table = $wpdb->prefix . 'umh_master_hotels';
+            $hotel_name = sanitize_text_field($params['hotel_makkah']);
+            $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $hotel_table WHERE name = %s", $hotel_name));
+            
+            if ($existing) {
+                $params['hotel_makkah_id'] = $existing;
+            } else {
+                $wpdb->insert($hotel_table, ['name' => $hotel_name, 'city' => 'Makkah']);
+                $params['hotel_makkah_id'] = $wpdb->insert_id;
+            }
+            unset($params['hotel_makkah']);
+        }
+
+        // 3. Handle Hotel Madinah
+        if (!empty($params['hotel_madinah']) && empty($params['hotel_madinah_id'])) {
+            $hotel_table = $wpdb->prefix . 'umh_master_hotels';
+            $hotel_name = sanitize_text_field($params['hotel_madinah']);
+            $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $hotel_table WHERE name = %s", $hotel_name));
+            
+            if ($existing) {
+                $params['hotel_madinah_id'] = $existing;
+            } else {
+                $wpdb->insert($hotel_table, ['name' => $hotel_name, 'city' => 'Madinah']);
+                $params['hotel_madinah_id'] = $wpdb->insert_id;
+            }
+            unset($params['hotel_madinah']);
+        }
+
+        // 4. Handle Maskapai
+        if (!empty($params['airline']) && empty($params['airline_id'])) {
+            $airline_table = $wpdb->prefix . 'umh_master_airlines';
+            $airline_name = sanitize_text_field($params['airline']);
+            $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $airline_table WHERE name = %s", $airline_name));
+            
+            if ($existing) {
+                $params['airline_id'] = $existing;
+            } else {
+                $wpdb->insert($airline_table, ['name' => $airline_name, 'type' => 'International']);
+                $params['airline_id'] = $wpdb->insert_id;
+            }
+            unset($params['airline']);
+        }
+        
+        // Hapus field yang tidak ada di skema baru untuk mencegah error SQL
+        unset($params['hotel_transit']);
+        unset($params['hotel_plus']);
+        unset($params['price_details']);
+
+        return $params;
+    }
+
+    // Override get_items untuk join nama master agar muncul di tabel
     public function get_items($request) {
         global $wpdb;
-        $items = $wpdb->get_results("SELECT * FROM {$this->table_pkg} ORDER BY created_at DESC");
-        return new WP_REST_Response(['success' => true, 'data' => $items], 200);
-    }
-
-    // GET SINGLE (Include Itinerary & Facilities)
-    public function get_item($request) {
-        global $wpdb;
-        $id = $request->get_param('id');
+        $limit = 10;
+        $offset = 0;
         
-        $package = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->table_pkg} WHERE id = %d", $id));
-        if (!$package) return new WP_REST_Response(['success' => false, 'message' => 'Not found'], 404);
-
-        // Fetch Detail
-        $package->itinerary = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_itin} WHERE package_id = %d ORDER BY day_number ASC", $id));
-        $package->facilities = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$this->table_fac} WHERE package_id = %d", $id));
-
-        return new WP_REST_Response(['success' => true, 'data' => $package], 200);
-    }
-
-    // CREATE (Complex Transaction)
-    public function create_item($request) {
-        global $wpdb;
-        $params = $request->get_json_params();
-
-        // 1. Insert Header Paket
-        $data_pkg = [
-            'category_id' => $params['category_id'],
-            'name' => sanitize_text_field($params['name']),
-            'slug' => sanitize_title($params['name']),
-            'description' => wp_kses_post($params['description']), // Allow HTML basic
-            'duration_days' => intval($params['duration_days']),
-            'currency' => sanitize_text_field($params['currency'] ?? 'IDR'),
-            'base_price_quad' => floatval($params['base_price_quad']),
-            'base_price_triple' => floatval($params['base_price_triple']),
-            'base_price_double' => floatval($params['base_price_double']),
-            'hotel_makkah_id' => isset($params['hotel_makkah_id']) ? intval($params['hotel_makkah_id']) : null,
-            'hotel_madinah_id' => isset($params['hotel_madinah_id']) ? intval($params['hotel_madinah_id']) : null,
-            'airline_id' => isset($params['airline_id']) ? intval($params['airline_id']) : null,
-            'status' => 'draft'
-        ];
-
-        $wpdb->insert($this->table_pkg, $data_pkg);
-        $pkg_id = $wpdb->insert_id;
-
-        if (!$pkg_id) {
-            return new WP_REST_Response(['success' => false, 'message' => 'Gagal membuat paket header'], 500);
-        }
-
-        // 2. Insert Itinerary (Looping)
-        if (!empty($params['itinerary']) && is_array($params['itinerary'])) {
-            foreach ($params['itinerary'] as $day) {
-                $wpdb->insert($this->table_itin, [
-                    'package_id' => $pkg_id,
-                    'day_number' => intval($day['day_number']),
-                    'title' => sanitize_text_field($day['title']),
-                    'description' => sanitize_textarea_field($day['description']),
-                    'meals' => sanitize_text_field($day['meals'] ?? '')
-                ]);
-            }
-        }
-
-        // 3. Insert Facilities
-        if (!empty($params['facilities']) && is_array($params['facilities'])) {
-            foreach ($params['facilities'] as $fac) {
-                $wpdb->insert($this->table_fac, [
-                    'package_id' => $pkg_id,
-                    'item_name' => sanitize_text_field($fac['item_name']),
-                    'type' => in_array($fac['type'], ['include', 'exclude']) ? $fac['type'] : 'include'
-                ]);
-            }
-        }
-
-        return new WP_REST_Response(['success' => true, 'message' => 'Paket berhasil dibuat', 'id' => $pkg_id], 201);
-    }
-    
-    // UPDATE
-    public function update_item($request) {
-        // Logic Update mirip Create: Update Header -> Delete old Itinerary -> Insert new Itinerary
-        // Implementasikan sesuai logika Anda nanti
-        return new WP_REST_Response(['success' => true, 'message' => 'Update endpoint ready (logic pending)'], 200);
-    }
-    
-    public function delete_item($request) {
-        global $wpdb;
-        $id = $request->get_param('id');
-        // Delete childs first
-        $wpdb->delete($this->table_itin, ['package_id' => $id]);
-        $wpdb->delete($this->table_fac, ['package_id' => $id]);
-        $wpdb->delete($this->table_pkg, ['id' => $id]);
+        // Custom Query Join
+        $cat_table = $wpdb->prefix . 'umh_package_categories';
+        $pkg_table = $this->table_name;
         
-        return new WP_REST_Response(['success' => true, 'message' => 'Paket dihapus'], 200);
+        $sql = "SELECT p.*, c.name as category_name 
+                FROM $pkg_table p 
+                LEFT JOIN $cat_table c ON p.category_id = c.id 
+                WHERE p.status != 'archived' 
+                ORDER BY p.created_at DESC 
+                LIMIT $limit OFFSET $offset";
+                
+        $results = $wpdb->get_results($sql, ARRAY_A);
+        
+        // Format response agar cocok dengan frontend
+        foreach ($results as &$row) {
+            $row['category'] = $row['category_name']; // Map category_name ke category field
+        }
+        
+        return rest_ensure_response($results);
+    }
+
+    // Get Jemaah Manifest for this package
+    public function get_manifest($request) {
+        global $wpdb;
+        $package_id = $request['id'];
+        
+        // Perlu update query ini karena struktur tabel booking berubah (gunakan departure_id, bukan package_id langsung di header)
+        // Namun untuk kompatibilitas skema baru, kita harus join via departures
+        
+        $table_bookings = $wpdb->prefix . 'umh_bookings';
+        $table_booking_pax = $wpdb->prefix . 'umh_booking_passengers';
+        $table_jamaah = $wpdb->prefix . 'umh_jamaah';
+        $table_departures = $wpdb->prefix . 'umh_departures';
+
+        // Query: Cari booking pax yang terhubung ke departure yang terhubung ke package ini
+        $query = $wpdb->prepare("
+            SELECT 
+                b.booking_code,
+                b.payment_status,
+                bp.package_type as room_type,
+                j.full_name as jamaah_name,
+                j.nik,
+                j.gender,
+                j.phone
+            FROM $table_booking_pax bp
+            JOIN $table_bookings b ON bp.booking_id = b.id
+            JOIN $table_jamaah j ON bp.jamaah_id = j.id
+            JOIN $table_departures d ON b.departure_id = d.id
+            WHERE d.package_id = %d
+        ", $package_id);
+
+        $results = $wpdb->get_results($query, ARRAY_A);
+        return rest_ensure_response($results);
     }
 }

@@ -1,108 +1,119 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
-import toast from 'react-hot-toast';
 
-const useCRUD = (endpoint, initialParams = {}) => {
-    const [data, setData] = useState([]);
-    const [pagination, setPagination] = useState({ current_page: 1, total_pages: 1, total_items: 0 });
-    const [loading, setLoading] = useState(false);
+const useCRUD = (endpoint, initialData = []) => {
+  const [data, setData] = useState(initialData);
+  const [loading, setLoading] = useState(false); // Default false, will be set true on fetch
+  const [error, setError] = useState(null);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    perPage: 10
+  });
 
-    // 1. FETCH DATA (GET)
-    const fetchData = useCallback(async (params = {}) => {
-        setLoading(true);
-        try {
-            const queryParams = { ...initialParams, ...params };
-            const response = await api.get(endpoint, { params: queryParams });
-            
-            if (Array.isArray(response)) {
-                setData(response);
-            } else if (response && Array.isArray(response.items)) {
-                setData(response.items);
-                setPagination({
-                    current_page: parseInt(response.current_page || 1),
-                    total_pages: parseInt(response.total_pages || 1),
-                    total_items: parseInt(response.total_items || 0)
-                });
-            } else if (response && response.data) {
-                 setData(Array.isArray(response.data) ? response.data : []);
-            } else {
-                setData([]);
-            }
-        } catch (err) {
-            console.error(`Error fetching ${endpoint}:`, err);
-            // Optional: toast.error("Gagal memuat data.");
-        } finally {
-            setLoading(false);
-        }
-    }, [endpoint]);
+  // Fungsi fetch data yang stabil dengan useCallback
+  const fetchData = useCallback(async (page = 1, search = '', filters = {}) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Mengubah params menjadi query string
+      const params = { page, search, ...filters };
+      const response = await api.get(endpoint, { params });
+      
+      // Handle response structure dari WP REST API atau Custom PHP
+      const responseData = response.data.data || response.data;
+      const meta = response.data.meta || {};
 
-    // 2. CREATE ITEM (POST)
-    const createItem = async (newItem) => {
-        setLoading(true);
-        const toastId = toast.loading('Menyimpan data...');
-        try {
-            await api.post(endpoint, newItem);
-            toast.success('Berhasil disimpan!', { id: toastId });
-            await fetchData();
-            return true;
-        } catch (err) {
-            const msg = err.response?.data?.message || err.message || 'Gagal menyimpan';
-            toast.error(msg, { id: toastId });
-            return false;
-        } finally {
-            setLoading(false);
-        }
-    };
+      setData(Array.isArray(responseData) ? responseData : []);
+      
+      if (meta.total_pages) {
+        setPagination({
+          currentPage: meta.current_page || page,
+          totalPages: meta.total_pages || 1,
+          totalItems: meta.total_items || 0,
+          perPage: meta.per_page || 10
+        });
+      }
+    } catch (err) {
+      console.error(`Error fetching ${endpoint}:`, err);
+      setError(err.message || 'Terjadi kesalahan saat mengambil data');
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [endpoint]);
 
-    // 3. UPDATE ITEM (POST to ID)
-    const updateItem = async (id, updatedItem) => {
-        setLoading(true);
-        const toastId = toast.loading('Memperbarui data...');
-        try {
-            await api.post(`${endpoint}/${id}`, updatedItem);
-            toast.success('Berhasil diperbarui!', { id: toastId });
-            await fetchData();
-            return true;
-        } catch (err) {
-            const msg = err.response?.data?.message || err.message || 'Gagal update';
-            toast.error(msg, { id: toastId });
-            return false;
-        } finally {
-            setLoading(false);
-        }
-    };
+  // FIX: Otomatis fetch data saat komponen di-mount atau endpoint berubah
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-    // 4. DELETE ITEM (DELETE)
-    const deleteItem = async (id) => {
-        if (!window.confirm('Yakin ingin menghapus data ini?')) return false;
+  const createItem = async (newItem) => {
+    setLoading(true);
+    try {
+      await api.post(endpoint, newItem);
+      await fetchData(pagination.currentPage); // Refresh data setelah create
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.message || err.message };
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        setLoading(true);
-        const toastId = toast.loading('Menghapus...');
-        try {
-            await api.delete(`${endpoint}/${id}`); 
-            toast.success('Data telah dihapus', { id: toastId });
-            setData(prev => prev.filter(item => item.id !== id));
-            return true;
-        } catch (err) {
-            const msg = err.response?.data?.message || err.message || 'Gagal menghapus';
-            toast.error(msg, { id: toastId });
-            return false;
-        } finally {
-            setLoading(false);
-        }
-    };
+  const updateItem = async (id, updatedItem) => {
+    setLoading(true);
+    try {
+      await api.put(`${endpoint}/${id}`, updatedItem); // Asumsi RESTful: /endpoint/ID
+      await fetchData(pagination.currentPage);
+      return { success: true };
+    } catch (err) {
+      // Fallback untuk backend yang mungkin menggunakan POST untuk update
+      try {
+         await api.post(`${endpoint}/${id}`, updatedItem);
+         await fetchData(pagination.currentPage);
+         return { success: true };
+      } catch (retryErr) {
+         return { success: false, error: retryErr.response?.data?.message || retryErr.message };
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return {
-        data,
-        pagination,
-        loading,
-        fetchData,
-        createItem,
-        updateItem,
-        deleteItem,
-        changePage: (p) => fetchData({ page: p }),
-        changeLimit: (l) => fetchData({ per_page: l, page: 1 })
-    };
+  const deleteItem = async (id) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus data ini?')) return;
+    
+    setLoading(true);
+    try {
+      await api.delete(`${endpoint}/${id}`); // Asumsi RESTful
+      await fetchData(pagination.currentPage);
+      return { success: true };
+    } catch (err) {
+       // Fallback jika delete via POST query param
+       try {
+          await api.get(`${endpoint}?action=delete&id=${id}`);
+          await fetchData(pagination.currentPage);
+          return { success: true };
+       } catch (retryErr) {
+          return { success: false, error: retryErr.response?.data?.message || retryErr.message };
+       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return {
+    data,
+    loading,
+    error,
+    pagination,
+    fetchData,
+    createItem,
+    updateItem,
+    deleteItem
+  };
 };
 
 export default useCRUD;

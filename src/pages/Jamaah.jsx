@@ -1,221 +1,296 @@
-import React, { useState } from 'react';
-import Layout from '../components/Layout';
+import React, { useState, useEffect } from 'react';
+import useCRUD from '../hooks/useCRUD';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import SearchInput from '../components/SearchInput';
 import Pagination from '../components/Pagination';
-import useCRUD from '../hooks/useCRUD';
-import api from '../utils/api';
-import { Plus, User, FileText, Trash, Edit } from 'lucide-react';
-import toast from 'react-hot-toast';
+import Spinner from '../components/Spinner';
+import Alert from '../components/Alert';
 
 const Jamaah = () => {
-    // Menggunakan endpoint master jamaah
-    const { data, loading, pagination, fetchData, deleteItem, changePage, changeLimit } = useCRUD('umh/v1/jamaah');
+  const { data, loading, error, pagination, fetchData, createItem, updateItem, deleteItem } = useCRUD('/jamaah');
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [currentItem, setCurrentItem] = useState(null);
+  const [formData, setFormData] = useState({ name: '', passport_number: '', phone: '', address: '', status: 'Calon' });
+  const [search, setSearch] = useState('');
+  
+  // State untuk filter
+  const [statusFilter, setStatusFilter] = useState('');
 
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [modalMode, setModalMode] = useState('create');
-    const [activeTab, setActiveTab] = useState('pribadi');
-    const [uploading, setUploading] = useState(false);
+  // Kolom Tabel
+  const columns = [
+    { header: 'Nama Lengkap', accessor: 'name' },
+    { header: 'No. Paspor', accessor: 'passport_number' },
+    { header: 'Telepon', accessor: 'phone' },
+    { 
+      header: 'Status', 
+      accessor: (item) => (
+        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+          item.status === 'Berangkat' ? 'bg-green-100 text-green-800' : 
+          item.status === 'Pulang' ? 'bg-gray-100 text-gray-800' : 
+          item.status === 'Terdaftar' ? 'bg-blue-100 text-blue-800' :
+          'bg-yellow-100 text-yellow-800'
+        }`}>
+          {item.status}
+        </span>
+      ) 
+    },
+  ];
 
-    const initialForm = {
-        full_name: '', full_name_ar: '', nik: '', passport_number: '',
-        gender: 'L', birth_place: '', birth_date: '',
-        phone: '', email: '', address: '', city: '', 
-        clothing_size: 'L', disease_history: '', 
-        father_name: '', mother_name: '', spouse_name: ''
-    };
+  // Effect untuk refresh data saat filter berubah
+  useEffect(() => {
+    // Kita panggil fetchData dengan parameter filter
+    // Pastikan useCRUD dan API backend mendukung parameter 'status'
+    fetchData(1, search, { status: statusFilter });
+  }, [statusFilter]);
+
+  const handleSearch = (value) => {
+    setSearch(value);
+    fetchData(1, value, { status: statusFilter });
+  };
+
+  const handlePageChange = (page) => {
+    fetchData(page, search, { status: statusFilter });
+  };
+
+  const openModal = (item = null) => {
+    setCurrentItem(item);
+    setFormData(item || { name: '', passport_number: '', phone: '', address: '', status: 'Calon' });
+    setIsModalOpen(true);
+  };
+
+  const openDetailModal = (item) => {
+    setCurrentItem(item);
+    setIsDetailModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setIsDetailModalOpen(false);
+    setCurrentItem(null);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    let result;
+    if (currentItem) {
+      result = await updateItem(currentItem.id, formData);
+    } else {
+      result = await createItem(formData);
+    }
     
-    const [formData, setFormData] = useState(initialForm);
-    const [files, setFiles] = useState({ ktp: null, passport: null, photo: null });
+    if (result.success) {
+      closeModal();
+    } else {
+      alert('Gagal menyimpan: ' + result.error);
+    }
+  };
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
+  const handlePrintManifest = () => {
+      const printUrl = `/wp-admin/admin-ajax.php?action=umroh_print_manifest`; 
+      window.open(printUrl, '_blank');
+  };
 
-    const handleFileChange = (type, file) => setFiles(prev => ({ ...prev, [type]: file }));
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+        <h1 className="text-2xl font-bold text-gray-800">Manajemen Jamaah</h1>
+        <div className="flex gap-2">
+            <button
+                onClick={handlePrintManifest}
+                className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 flex items-center shadow-sm"
+            >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Cek Manifest
+            </button>
+            <button
+                onClick={() => openModal()}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center shadow-sm"
+            >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Tambah Jamaah
+            </button>
+        </div>
+      </div>
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        try {
-            let savedId = formData.id;
-            const apiPath = 'umh/v1/jamaah';
-            
-            // 1. Simpan Data Teks
-            if (modalMode === 'create') {
-                const res = await api.post(apiPath, formData);
-                // Handle jika response mengembalikan id langsung atau dalam object data
-                savedId = res.id || (res.data && res.data.id);
-            } else {
-                await api.put(`${apiPath}/${savedId}`, formData);
-            }
-            
-            if (!savedId) throw new Error("Gagal mendapatkan ID Jemaah untuk upload file.");
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-4 justify-between items-center">
+        <div className="w-full sm:w-1/2">
+            <SearchInput onSearch={handleSearch} placeholder="Cari nama atau paspor..." />
+        </div>
+        
+        {/* Dropdown Filter Status */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+            <label className="text-sm font-medium text-gray-600 whitespace-nowrap">Filter Status:</label>
+            <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="block w-full sm:w-48 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+            >
+                <option value="">Semua Status</option>
+                <option value="Calon">Calon</option>
+                <option value="Terdaftar">Terdaftar</option>
+                <option value="Berangkat">Berangkat</option>
+                <option value="Pulang">Pulang</option>
+            </select>
+        </div>
+      </div>
 
-            // 2. Upload File (Jika ada file baru dipilih)
-            const uploadPromises = [];
-            Object.keys(files).forEach(key => {
-                if (files[key]) {
-                    // Pastikan api.upload menghandle POST multipart/form-data
-                    uploadPromises.push(api.upload(files[key], `scan_${key}`, savedId));
-                }
-            });
+      {error && <Alert type="error" message={error} />}
 
-            if (uploadPromises.length > 0) {
-                setUploading(true);
-                await Promise.all(uploadPromises);
-            }
+      <CrudTable
+        columns={columns}
+        data={data}
+        isLoading={loading}
+        onEdit={(item) => openModal(item)}
+        onDelete={(item) => deleteItem(item.id)}
+        onDetail={(item) => openDetailModal(item)}
+      />
 
-            toast.success(modalMode === 'create' ? 'Jemaah berhasil didaftarkan!' : 'Data berhasil diperbarui!');
-            setIsModalOpen(false);
-            fetchData(); 
-        } catch (err) {
-            console.error(err);
-            toast.error(err.message || 'Terjadi kesalahan saat menyimpan.');
-        } finally {
-            setUploading(false);
-        }
-    };
+      <Pagination
+        currentPage={pagination.currentPage}
+        totalPages={pagination.totalPages}
+        onPageChange={handlePageChange}
+      />
 
-    const handleDelete = async (item) => {
-        if (!item || !item.id) return;
-        if (window.confirm("Yakin hapus data ini? Jemaah yang sudah pernah booking tidak bisa dihapus.")) {
-            const success = await deleteItem(item.id);
-            if (success) toast.success("Data jemaah dihapus.");
-        }
-    };
-
-    const openModal = (mode, item = null) => {
-        setModalMode(mode);
-        setFormData(item || initialForm);
-        setFiles({ ktp: null, passport: null, photo: null });
-        setActiveTab('pribadi');
-        setIsModalOpen(true);
-    };
-
-    const columns = [
-        { header: 'Nama Lengkap', accessor: 'full_name', render: r => (
+      {/* Modal Form Tambah/Edit */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        title={currentItem ? 'Edit Jamaah' : 'Tambah Jamaah Baru'}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Nama Lengkap</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+              required
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <div className="font-bold text-gray-900">{r.full_name}</div>
-                <div className="text-xs text-gray-500">{r.gender === 'L' ? 'Laki-laki' : 'Perempuan'}</div>
-            </div>
-        )},
-        { header: 'Identitas', accessor: 'nik', render: r => (
-            <div className="text-xs font-mono text-gray-600">
-                <div>NIK: {r.nik || '-'}</div>
-                <div>Paspor: {r.passport_number || '-'}</div>
-            </div>
-        )},
-        { header: 'Kontak', accessor: 'phone', render: r => (
-            <div>
-                <div className="text-sm text-gray-700">{r.phone}</div>
-                <div className="text-xs text-gray-400">{r.city}</div>
-            </div>
-        )},
-        { header: 'Dokumen', accessor: 'id', render: r => (
-            <div className="flex gap-2">
-                <span title="KTP" className={r.scan_ktp ? "text-green-500" : "text-gray-300"}><FileText size={16}/></span>
-                <span title="Paspor" className={r.scan_passport ? "text-green-500" : "text-gray-300"}><FileText size={16}/></span>
-            </div>
-        )},
-    ];
-
-    const TabButton = ({ id, label, icon: Icon }) => (
-        <button type="button" onClick={() => setActiveTab(id)} className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all ${activeTab === id ? 'border-blue-600 text-blue-600 bg-blue-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
-            <Icon size={16} /> {label}
-        </button>
-    );
-
-    return (
-        <Layout title="Database Jemaah (Master Data)">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="w-full md:w-1/3">
-                    <SearchInput onSearch={(q) => fetchData({ search: q })} placeholder="Cari nama, NIK, atau paspor..." />
-                </div>
-                <button onClick={() => openModal('create')} className="btn-primary flex items-center gap-2 shadow-lg shadow-blue-200">
-                    <Plus size={18}/> Tambah Jemaah Baru
-                </button>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <CrudTable 
-                    columns={columns} 
-                    data={data} 
-                    loading={loading} 
-                    onDelete={handleDelete} 
-                    onEdit={(item) => openModal('edit', item)} 
-                    actionLabel="Aksi"
+                <label className="block text-sm font-medium text-gray-700">Nomor Paspor</label>
+                <input
+                type="text"
+                value={formData.passport_number}
+                onChange={(e) => setFormData({ ...formData, passport_number: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                required
                 />
-                <Pagination pagination={pagination} onPageChange={changePage} onLimitChange={changeLimit} />
             </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700">Nomor Telepon</label>
+                <input
+                type="text"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Alamat</label>
+            <textarea
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              rows="3"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+            ></textarea>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Status</label>
+            <select
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+            >
+              <option value="Calon">Calon</option>
+              <option value="Terdaftar">Terdaftar</option>
+              <option value="Berangkat">Berangkat</option>
+              <option value="Pulang">Pulang</option>
+            </select>
+          </div>
+          <div className="flex justify-end pt-4">
+            <button
+              type="button"
+              onClick={closeModal}
+              className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md mr-2 hover:bg-gray-300"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center"
+            >
+              {loading && <Spinner size="sm" className="mr-2" />}
+              {currentItem ? 'Simpan Perubahan' : 'Simpan Data'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-            {/* MODAL INPUT JEMAAH */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'create' ? "Input Biodata Jemaah" : "Edit Biodata Jemaah"} size="max-w-4xl">
-                <form onSubmit={handleSubmit}>
-                    <div className="flex border-b border-gray-200 mb-6 overflow-x-auto scrollbar-hide">
-                        <TabButton id="pribadi" label="Data Pribadi" icon={User} />
-                        <TabButton id="dokumen" label="Upload Dokumen" icon={FileText} />
+      {/* Modal Detail Manifest */}
+      <Modal
+        isOpen={isDetailModalOpen}
+        onClose={closeModal}
+        title="Detail Data Jamaah"
+      >
+        {currentItem && (
+            <div className="space-y-4">
+                <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <p className="text-gray-500">Nama Lengkap</p>
+                            <p className="font-semibold text-gray-800">{currentItem.name}</p>
+                        </div>
+                        <div>
+                            <p className="text-gray-500">Nomor Paspor</p>
+                            <p className="font-semibold text-gray-800">{currentItem.passport_number}</p>
+                        </div>
+                        <div>
+                            <p className="text-gray-500">Telepon</p>
+                            <p className="font-semibold text-gray-800">{currentItem.phone || '-'}</p>
+                        </div>
+                        <div>
+                            <p className="text-gray-500">Status</p>
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                currentItem.status === 'Berangkat' ? 'bg-green-100 text-green-800' : 
+                                currentItem.status === 'Pulang' ? 'bg-gray-100 text-gray-800' : 
+                                'bg-yellow-100 text-yellow-800'
+                                }`}>
+                                {currentItem.status}
+                            </span>
+                        </div>
+                        <div className="col-span-2">
+                            <p className="text-gray-500">Alamat</p>
+                            <p className="font-semibold text-gray-800">{currentItem.address || '-'}</p>
+                        </div>
                     </div>
+                </div>
+                
+                <div className="flex justify-end pt-4">
+                    <button
+                        onClick={closeModal}
+                        className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300"
+                    >
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        )}
+      </Modal>
 
-                    <div className="max-h-[60vh] overflow-y-auto px-1 custom-scrollbar pb-4">
-                        {activeTab === 'pribadi' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 animate-fade-in">
-                                <div><label className="label">Nama Lengkap (Sesuai KTP)</label><input name="full_name" className="input-field" value={formData.full_name} onChange={handleChange} required /></div>
-                                <div><label className="label">Nama di Paspor (Opsional)</label><input name="full_name_ar" className="input-field" value={formData.full_name_ar} onChange={handleChange} placeholder="Sesuai buku paspor" /></div>
-                                
-                                <div><label className="label">NIK (KTP)</label><input name="nik" className="input-field" value={formData.nik} onChange={handleChange} /></div>
-                                <div><label className="label">Nomor Paspor</label><input name="passport_number" className="input-field" value={formData.passport_number} onChange={handleChange} /></div>
-                                
-                                <div><label className="label">Jenis Kelamin</label><select name="gender" className="input-field" value={formData.gender} onChange={handleChange}><option value="L">Laki-laki</option><option value="P">Perempuan</option></select></div>
-                                <div><label className="label">No. WhatsApp</label><input name="phone" className="input-field" value={formData.phone} onChange={handleChange} required /></div>
-
-                                <div><label className="label">Tempat Lahir</label><input name="birth_place" className="input-field" value={formData.birth_place} onChange={handleChange} /></div>
-                                <div><label className="label">Tanggal Lahir</label><input type="date" name="birth_date" className="input-field" value={formData.birth_date} onChange={handleChange} /></div>
-
-                                <div className="md:col-span-2"><label className="label">Alamat Lengkap</label><textarea name="address" className="input-field h-20" value={formData.address} onChange={handleChange}></textarea></div>
-                                
-                                <div><label className="label">Kota/Kabupaten</label><input name="city" className="input-field" value={formData.city} onChange={handleChange} /></div>
-                                <div><label className="label">Ukuran Baju</label><select name="clothing_size" className="input-field" value={formData.clothing_size} onChange={handleChange}><option value="S">S</option><option value="M">M</option><option value="L">L</option><option value="XL">XL</option><option value="XXL">XXL</option></select></div>
-                                
-                                <div><label className="label">Nama Ayah Kandung</label><input name="father_name" className="input-field" value={formData.father_name} onChange={handleChange} /></div>
-                                <div><label className="label">Riwayat Penyakit</label><input name="disease_history" className="input-field" value={formData.disease_history} onChange={handleChange} placeholder="Kosongkan jika sehat" /></div>
-                            </div>
-                        )}
-
-                        {activeTab === 'dokumen' && (
-                            <div className="space-y-6 animate-fade-in">
-                                <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 border border-yellow-200 mb-4">
-                                    Format file: JPG/PNG/PDF. Maksimal 2MB per file.
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="border p-4 rounded-lg bg-gray-50">
-                                        <label className="label font-bold mb-2 uppercase">Scan KTP</label>
-                                        <input type="file" className="block w-full text-sm" onChange={e => handleFileChange('ktp', e.target.files[0])} accept="image/*,application/pdf" />
-                                        {formData.scan_ktp && <a href={formData.scan_ktp} target="_blank" className="text-xs text-blue-600 mt-2 block hover:underline">Lihat File Saat Ini</a>}
-                                    </div>
-                                    <div className="border p-4 rounded-lg bg-gray-50">
-                                        <label className="label font-bold mb-2 uppercase">Scan Paspor</label>
-                                        <input type="file" className="block w-full text-sm" onChange={e => handleFileChange('passport', e.target.files[0])} accept="image/*,application/pdf" />
-                                        {formData.scan_passport && <a href={formData.scan_passport} target="_blank" className="text-xs text-blue-600 mt-2 block hover:underline">Lihat File Saat Ini</a>}
-                                    </div>
-                                    <div className="border p-4 rounded-lg bg-gray-50">
-                                        <label className="label font-bold mb-2 uppercase">Pas Foto Terbaru</label>
-                                        <input type="file" className="block w-full text-sm" onChange={e => handleFileChange('photo', e.target.files[0])} accept="image/*" />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-6 border-t border-gray-100 mt-4 bg-white sticky bottom-0">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary" disabled={uploading}>{uploading ? 'Mengupload...' : 'Simpan Data'}</button>
-                    </div>
-                </form>
-            </Modal>
-        </Layout>
-    );
+    </div>
+  );
 };
 
 export default Jamaah;

@@ -1,139 +1,191 @@
 <?php
-/**
- * API Handler untuk HR (Karyawan & Absensi)
- * Update: Menambahkan GET Attendance List & DELETE Employee
- */
-
-if (!defined('ABSPATH')) {
+if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class UMH_API_HR {
-    private $tbl_emp;
-    private $tbl_att;
+// Inisialisasi
+global $wpdb;
+$method = $_SERVER['REQUEST_METHOD'];
+$table_employees = $wpdb->prefix . 'umh_employees';
+$table_attendance = $wpdb->prefix . 'umh_attendance';
 
-    public function __construct() {
-        global $wpdb;
-        $this->tbl_emp = $wpdb->prefix . 'umh_hr_employees';
-        $this->tbl_att = $wpdb->prefix . 'umh_hr_attendance';
-    }
+// Deteksi Route Sederhana (Attendance vs Employees)
+// Asumsi router mengarahkan '/hr', '/employees', '/attendance' kesini
+$request_uri = $_SERVER['REQUEST_URI'];
+$is_attendance_route = strpos($request_uri, 'attendance') !== false;
 
-    public function register_routes() {
-        // EMPLOYEES
-        register_rest_route('umh/v1', '/hr/employees', [
-            'methods' => 'GET', 'callback' => [$this, 'get_employees'], 'permission_callback' => [$this, 'check_permission']
-        ]);
-        register_rest_route('umh/v1', '/hr/employees', [
-            'methods' => 'POST', 'callback' => [$this, 'create_employee'], 'permission_callback' => [$this, 'check_permission']
-        ]);
-        // Update Employee
-        register_rest_route('umh/v1', '/hr/employees/(?P<id>\d+)', [
-            'methods' => 'PUT', 'callback' => [$this, 'update_employee'], 'permission_callback' => [$this, 'check_permission']
-        ]);
-        register_rest_route('umh/v1', '/hr/employees/(?P<id>\d+)', [
-            'methods' => 'DELETE', 'callback' => [$this, 'delete_employee'], 'permission_callback' => [$this, 'check_permission']
-        ]);
+// ==========================================
+// ROUTE: ATTENDANCE (ABSENSI)
+// ==========================================
+if ($is_attendance_route) {
 
-        // ATTENDANCE
-        register_rest_route('umh/v1', '/hr/attendance', [
-            'methods' => 'GET', 'callback' => [$this, 'get_attendance_history'], 'permission_callback' => [$this, 'check_permission']
-        ]);
-        register_rest_route('umh/v1', '/hr/attendance', [
-            'methods' => 'POST', 'callback' => [$this, 'record_attendance'], 'permission_callback' => [$this, 'check_permission']
-        ]);
-    }
-
-    public function check_permission() {
-        return current_user_can('manage_options');
-    }
-
-    // --- EMPLOYEES ---
-    public function get_employees($request) {
-        global $wpdb;
-        $items = $wpdb->get_results("SELECT * FROM {$this->tbl_emp} ORDER BY name ASC");
-        return new WP_REST_Response(['success' => true, 'data' => $items], 200);
-    }
-
-    public function create_employee($request) {
-        global $wpdb;
-        $p = $request->get_json_params();
-        $wpdb->insert($this->tbl_emp, [
-            'name' => sanitize_text_field($p['name']),
-            'position' => sanitize_text_field($p['position']),
-            'department' => sanitize_text_field($p['department']),
-            'salary' => floatval($p['salary']),
-            'join_date' => $p['join_date'],
-            'status' => 'active'
-        ]);
-        return new WP_REST_Response(['success' => true, 'id' => $wpdb->insert_id], 201);
-    }
-
-    public function update_employee($request) {
-        global $wpdb;
-        $id = $request->get_param('id');
-        $p = $request->get_json_params();
+    // 1. GET DAILY ATTENDANCE
+    if ($method === 'GET') {
+        $date = isset($_GET['date']) ? sanitize_text_field($_GET['date']) : date('Y-m-d');
         
-        $data = [];
-        if(isset($p['name'])) $data['name'] = sanitize_text_field($p['name']);
-        if(isset($p['position'])) $data['position'] = sanitize_text_field($p['position']);
-        if(isset($p['department'])) $data['department'] = sanitize_text_field($p['department']);
-        if(isset($p['salary'])) $data['salary'] = floatval($p['salary']);
-        if(isset($p['status'])) $data['status'] = sanitize_text_field($p['status']);
-
-        if(!empty($data)) $wpdb->update($this->tbl_emp, $data, ['id' => $id]);
+        // Ambil data absensi join dengan nama karyawan
+        $sql = $wpdb->prepare("
+            SELECT a.*, e.name as employee_name, e.division 
+            FROM $table_attendance a
+            JOIN $table_employees e ON a.employee_id = e.id
+            WHERE a.date = %s
+        ", $date);
         
-        return new WP_REST_Response(['success' => true, 'message' => 'Updated'], 200);
-    }
-
-    public function delete_employee($request) {
-        global $wpdb;
-        $id = $request->get_param('id');
-        $wpdb->delete($this->tbl_emp, ['id' => $id]);
-        return new WP_REST_Response(['success' => true, 'message' => 'Deleted'], 200);
-    }
-
-    // --- ATTENDANCE ---
-    public function get_attendance_history($request) {
-        global $wpdb;
-        $date = $request->get_param('date') ? $request->get_param('date') : current_time('Y-m-d');
+        $results = $wpdb->get_results($sql);
         
-        // Join dengan tabel employee untuk ambil nama
-        $sql = "SELECT a.*, e.name as employee_name, e.position 
-                FROM {$this->tbl_att} a
-                JOIN {$this->tbl_emp} e ON a.employee_id = e.id
-                WHERE a.date = %s
-                ORDER BY a.check_in_time DESC";
-                
-        $items = $wpdb->get_results($wpdb->prepare($sql, $date));
-        return new WP_REST_Response(['success' => true, 'data' => $items], 200);
+        wp_send_json_success([
+            'data' => $results,
+            'date' => $date
+        ]);
     }
 
-    public function record_attendance($request) {
-        global $wpdb;
-        $p = $request->get_json_params();
-        $today = current_time('Y-m-d');
-        $emp_id = intval($p['employee_id']);
-        $time_now = current_time('H:i:s');
+    // 2. POST BATCH (ADMIN HR SAVE MANUAL)
+    if ($method === 'POST' && strpos($request_uri, 'batch') !== false) {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $date = sanitize_text_field($input['date']);
+        $details = $input['details']; // Array of { employee_id, status }
 
-        // Cek record hari ini
-        $exist = $wpdb->get_row($wpdb->prepare("SELECT id FROM {$this->tbl_att} WHERE employee_id = %d AND date = %s", $emp_id, $today));
-
-        if ($p['type'] === 'check_in') {
-            if ($exist) return new WP_REST_Response(['success' => false, 'message' => 'Karyawan ini sudah Check In hari ini'], 400);
-            
-            $wpdb->insert($this->tbl_att, [
-                'date' => $today,
-                'employee_id' => $emp_id,
-                'check_in_time' => $time_now,
-                'status' => 'present'
-            ]);
-        } else {
-            // Check out
-            if (!$exist) return new WP_REST_Response(['success' => false, 'message' => 'Belum Check In, tidak bisa Check Out'], 400);
-            
-            $wpdb->update($this->tbl_att, ['check_out_time' => $time_now], ['id' => $exist->id]);
+        if (!$date || !is_array($details)) {
+            wp_send_json_error(['message' => 'Invalid data'], 400);
         }
 
-        return new WP_REST_Response(['success' => true, 'message' => 'Absensi berhasil dicatat'], 200);
+        foreach ($details as $log) {
+            $emp_id = intval($log['employee_id']);
+            $status = sanitize_text_field($log['status']);
+            $method_log = isset($log['method']) ? sanitize_text_field($log['method']) : 'Manual Admin';
+
+            // Cek apakah sudah ada absen hari ini?
+            $exist_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM $table_attendance WHERE employee_id = %d AND date = %s",
+                $emp_id, $date
+            ));
+
+            if ($exist_id) {
+                // Update
+                $wpdb->update($table_attendance, 
+                    ['status' => $status], 
+                    ['id' => $exist_id]
+                );
+            } else {
+                // Insert Baru
+                $wpdb->insert($table_attendance, [
+                    'employee_id' => $emp_id,
+                    'date' => $date,
+                    'time' => current_time('H:i:s'),
+                    'status' => $status,
+                    'method' => $method_log
+                ]);
+            }
+        }
+        wp_send_json_success(['message' => 'Absensi berhasil disimpan']);
+    }
+
+    // 3. POST SUBMIT (SCAN QR / TUGAS LUAR)
+    if ($method === 'POST' && strpos($request_uri, 'submit') !== false) {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        // Validasi Input
+        $employee_id = isset($input['employee_id']) ? intval($input['employee_id']) : 0;
+        // Pada real app, employee_id diambil dari session login (current_user_id)
+        // Disini kita terima dari input simulasi frontend
+        
+        $lat = isset($input['latitude']) ? floatval($input['latitude']) : null;
+        $long = isset($input['longitude']) ? floatval($input['longitude']) : null;
+        $scan_method = sanitize_text_field($input['method']); // 'QR' or 'Manual'
+        $notes = sanitize_textarea_field($input['attendance_token']); // Isi QR atau Alasan
+        $date = date('Y-m-d');
+        $time = current_time('H:i:s');
+
+        // Insert Data
+        $inserted = $wpdb->insert($table_attendance, [
+            'employee_id' => $employee_id,
+            'date' => $date,
+            'time' => $time,
+            'status' => 'Hadir',
+            'method' => $scan_method,
+            'latitude' => $lat,
+            'longitude' => $long,
+            'notes' => $notes
+        ]);
+
+        if ($inserted) {
+            wp_send_json_success(['message' => 'Absensi diterima']);
+        } else {
+            wp_send_json_error(['message' => 'Gagal menyimpan absensi'], 500);
+        }
+    }
+    
+    exit; // Stop disini jika route attendance
+}
+
+// ==========================================
+// ROUTE: EMPLOYEES (CRUD KARYAWAN)
+// ==========================================
+
+// GET ALL
+if ($method === 'GET') {
+    $search = isset($_GET['search']) ? sanitize_text_field($_GET['search']) : '';
+    $where = "WHERE 1=1";
+    if ($search) {
+        $where .= " AND (name LIKE '%$search%' OR division LIKE '%$search%')";
+    }
+    
+    $results = $wpdb->get_results("SELECT * FROM $table_employees $where ORDER BY name ASC");
+    wp_send_json_success(['data' => $results]);
+}
+
+// CREATE NEW
+if ($method === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $data = [
+        'name' => sanitize_text_field($input['name']),
+        'division' => sanitize_text_field($input['division']),
+        'position' => sanitize_text_field($input['position']),
+        'phone' => sanitize_text_field($input['phone']),
+        'status' => sanitize_text_field($input['status']),
+        // Handling boolean allow_remote
+        'allow_remote' => (isset($input['allow_remote']) && $input['allow_remote']) ? 1 : 0
+    ];
+
+    $wpdb->insert($table_employees, $data);
+    wp_send_json_success(['id' => $wpdb->insert_id, 'message' => 'Karyawan ditambahkan']);
+}
+
+// UPDATE
+if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
+    $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+    // Fallback jika ID ada di URL path (tergantung router)
+    if (!$id) {
+        $path_parts = explode('/', trim($request_uri, '/'));
+        $id = end($path_parts);
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    $data = [
+        'name' => sanitize_text_field($input['name']),
+        'division' => sanitize_text_field($input['division']),
+        'position' => sanitize_text_field($input['position']),
+        'phone' => sanitize_text_field($input['phone']),
+        'status' => sanitize_text_field($input['status']),
+        'allow_remote' => (isset($input['allow_remote']) && $input['allow_remote']) ? 1 : 0
+    ];
+
+    $wpdb->update($table_employees, $data, ['id' => $id]);
+    wp_send_json_success(['message' => 'Data karyawan diperbarui']);
+}
+
+// DELETE
+if ($method === 'DELETE') {
+    // Ambil ID dari URL (Sederhana)
+    $path_parts = explode('/', trim($request_uri, '/'));
+    $id = intval(end($path_parts));
+    
+    if ($id) {
+        $wpdb->delete($table_employees, ['id' => $id]);
+        wp_send_json_success(['message' => 'Karyawan dihapus']);
+    } else {
+        wp_send_json_error(['message' => 'ID tidak valid'], 400);
     }
 }
