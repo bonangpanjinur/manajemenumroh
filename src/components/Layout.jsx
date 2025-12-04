@@ -1,40 +1,33 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Sidebar from './Sidebar';
-import Header from './Header';
+import Header from './Header'; // Optional if you have header logic
 
-const Layout = ({ children, title, subtitle }) => {
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
-    const toggleSidebar = () => {
-        setIsSidebarOpen(!isSidebarOpen);
-    };
-
+const Layout = ({ children, title, actions }) => {
     return (
-        <div className="flex h-screen bg-gray-50 overflow-hidden">
-            {/* Sidebar Navigation */}
-            <Sidebar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
+        <div className="flex min-h-screen bg-gray-50 font-sans text-gray-900">
+            {/* Sidebar Fixed */}
+            <Sidebar />
 
-            {/* Main Content Wrapper */}
-            <div className="flex-1 flex flex-col overflow-hidden relative">
-                {/* Top Header */}
-                <Header toggleSidebar={toggleSidebar} title={title} />
+            {/* Main Content Area - Offset by Sidebar Width */}
+            <main className="flex-1 ml-64 flex flex-col min-h-screen transition-all duration-300 ease-in-out">
+                {/* Header Area (Title & Actions) */}
+                <header className="bg-white border-b border-gray-200 px-8 py-5 flex justify-between items-center sticky top-0 z-40 shadow-sm">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {actions}
+                        {/* Optional: Add User Notification/Profile here if not in Sidebar */}
+                    </div>
+                </header>
 
-                {/* Page Content */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 md:p-6 custom-scrollbar">
-                    <div className="container mx-auto max-w-7xl animate-fade-in">
-                        {/* Page Title Section */}
-                        <div className="mb-6 flex justify-between items-end">
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
-                                {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
-                            </div>
-                        </div>
-                        
-                        {/* Dynamic Content */}
+                {/* Content Body */}
+                <div className="p-8 flex-1 overflow-x-hidden">
+                    <div className="max-w-7xl mx-auto">
                         {children}
                     </div>
-                </main>
-            </div>
+                </div>
+            </main>
         </div>
     );
 };
