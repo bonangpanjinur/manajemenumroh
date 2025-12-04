@@ -1,62 +1,81 @@
 <?php
-/*
-Plugin Name: Manajemen Umrah Hybrid Enterprise
-Plugin URI: https://umrohmanager.com
-Description: Sistem Manajemen Travel Umrah & Haji Terpadu (Hybrid React + WP API)
-Version: 3.0.0
-Author: Bonang Panji Nur
-Author URI: https://bonangpanjinur.com
-License: GPLv2 or later
-Text Domain: umroh-manager
-*/
+/**
+ * Plugin Name: Manajemen Travel Umroh & Haji (Enterprise V4.0)
+ * Plugin URI:  https://umrohweb.site
+ * Description: Sistem Manajemen Travel Umroh Terpadu dengan React Dashboard, Booking Engine, HR, dan Finance.
+ * Version:     4.0.0
+ * Author:      Bonang Panji Nur
+ * Author URI:  https://bonangpanjinur.com
+ * License:     GPL v2 or later
+ * Text Domain: umroh-manager
+ */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-// Define Constants
+// 1. Definisi Konstanta
 define('UMH_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('UMH_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('UMH_VERSION', '3.0.0');
+define('UMH_VERSION', '4.0.0');
 
-// Include Core Files
+// 2. Load File Dependensi Utama
+require_once UMH_PLUGIN_DIR . 'includes/utils.php';
 require_once UMH_PLUGIN_DIR . 'includes/db-schema.php';
+require_once UMH_PLUGIN_DIR . 'includes/cors.php';
 require_once UMH_PLUGIN_DIR . 'includes/class-umh-api-loader.php';
-require_once UMH_PLUGIN_DIR . 'includes/admin-login-customizer.php';
-require_once UMH_PLUGIN_DIR . 'includes/cors.php'; // Handle CORS for API
+require_once UMH_PLUGIN_DIR . 'includes/admin-login-customizer.php'; // Optional
 
-// Activation Hook
+// 3. Aktivasi Plugin (Membuat Tabel Database)
 register_activation_hook(__FILE__, 'umh_activate_plugin');
 
 function umh_activate_plugin() {
-    umh_run_migration_v3();
-    flush_rewrite_rules();
+    // Memanggil fungsi pembuatan tabel dari includes/db-schema.php
+    // Pastikan nama fungsi ini SAMA PERSIS dengan yang ada di db-schema.php
+    if (function_exists('umh_create_tables')) {
+        umh_create_tables();
+    } else {
+        // Fallback error logging jika fungsi tidak ketemu
+        error_log('UMH Error: Fungsi umh_create_tables tidak ditemukan saat aktivasi.');
+    }
+    
+    // Set role capability default
+    $role = get_role('administrator');
+    if ($role) {
+        $role->add_cap('manage_umroh');
+    }
 }
 
-// Admin Menu & Assets
-add_action('admin_menu', 'umh_register_admin_menu');
-add_action('admin_enqueue_scripts', 'umh_enqueue_admin_scripts');
+// 4. Inisialisasi API Loader
+function umh_init_api() {
+    $api_loader = new UMH_API_Loader();
+    $api_loader->init();
+}
+add_action('plugins_loaded', 'umh_init_api');
 
-function umh_register_admin_menu() {
+// 5. Menu Admin & Halaman React
+function umh_admin_menu() {
     add_menu_page(
-        'Manajemen Umrah',
-        'Manajemen Umrah',
-        'manage_options', // Capability
-        'umroh-manager', // Menu Slug
-        'umh_render_react_app', // Callback function
+        'Manajemen Travel',
+        'Manajemen Travel',
+        'manage_options',
+        'umroh-manager',
+        'umh_render_react_app',
         'dashicons-palmtree',
-        2
+        25
     );
 }
+add_action('admin_menu', 'umh_admin_menu');
 
+// 6. Render Halaman React (Container)
 function umh_render_react_app() {
-    // This file should contain <div id="umh-app-root"></div>
-    require_once UMH_PLUGIN_DIR . 'admin/dashboard-react.php';
+    echo '<div id="umh-app-root"></div>';
 }
 
+// 7. Enqueue Scripts (Load File Build React)
 function umh_enqueue_admin_scripts($hook) {
-    // Only load on our plugin page
-    if ($hook != 'toplevel_page_umroh-manager') {
+    // Hanya load di halaman plugin kita
+    if ($hook !== 'toplevel_page_umroh-manager') {
         return;
     }
 
@@ -77,14 +96,24 @@ function umh_enqueue_admin_scripts($hook) {
         $asset_file['version']
     );
 
-    // Pass data to React
-    wp_localize_script('umh-react-app', 'umhData', [
-        'apiUrl' => home_url('/wp-json/umh/v1/'),
-        'siteUrl' => home_url(),
+    // Kirim data penting ke React (Nonce & Info User)
+    wp_localize_script('umh-react-app', 'umh_vars', [
         'nonce' => wp_create_nonce('wp_rest'),
-        'currentUser' => wp_get_current_user()
+        'api_url' => get_rest_url(null, 'umh/v1/'),
+        'user_id' => get_current_user_id(),
+        'site_url' => site_url()
     ]);
 }
+add_action('admin_enqueue_scripts', 'umh_enqueue_admin_scripts');
 
-// Load API
-new UMH_API_Loader();
+// 8. Redirect setelah login (Optional - Langsung ke Dashboard App)
+function umh_login_redirect($redirect_to, $request, $user) {
+    if (isset($user->roles) && is_array($user->roles)) {
+        if (in_array('administrator', $user->roles) || in_array('editor', $user->roles)) {
+            // Uncomment baris di bawah jika ingin redirect paksa ke halaman plugin
+            // return admin_url('admin.php?page=umroh-manager');
+        }
+    }
+    return $redirect_to;
+}
+add_filter('login_redirect', 'umh_login_redirect', 10, 3);
