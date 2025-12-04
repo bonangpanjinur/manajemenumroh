@@ -37,8 +37,16 @@ const Sidebar = () => {
                                         }`
                                     }
                                 >
-                                    <item.icon size={18} className={({ isActive }) => isActive ? 'text-blue-600' : 'text-gray-400'} />
-                                    {item.label}
+                                    {({ isActive }) => (
+                                        <>
+                                            {/* Render Ikon sebagai Komponen */}
+                                            <item.icon 
+                                                size={18} 
+                                                className={isActive ? 'text-blue-600' : 'text-gray-400'} 
+                                            />
+                                            {item.label}
+                                        </>
+                                    )}
                                 </NavLink>
                             ))}
                         </div>
@@ -55,7 +63,7 @@ const Sidebar = () => {
                         </div>
                         <div className="text-xs">
                             <div className="font-bold text-gray-700 truncate w-24">Administrator</div>
-                            <div className="text-gray-500">Super Admin</div>
+                            <div className="text-xs text-gray-500">Super Admin</div>
                         </div>
                     </div>
                     <button 

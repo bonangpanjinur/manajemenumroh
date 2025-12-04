@@ -1,72 +1,69 @@
-import React from 'react';
 import { 
-  HomeIcon, 
-  UsersIcon, 
-  ClipboardDocumentListIcon, 
-  BanknotesIcon, 
-  MegaphoneIcon, 
-  BriefcaseIcon, 
-  TruckIcon,
-  QrCodeIcon 
-} from '@heroicons/react/24/outline';
+  Home, 
+  Users, 
+  ClipboardList, 
+  Calendar, 
+  Banknote, 
+  Megaphone, 
+  Briefcase, 
+  Truck,
+  QrCode,
+  Layers,
+  Package,
+  Settings,
+  Database,
+  ShieldCheck,
+  CheckSquare
+} from 'lucide-react';
 
-// Perhatikan: Kita tambahkan 'export' di depan const agar menjadi Named Export
 export const menuItems = [
   {
-    title: 'Dashboard',
-    path: '/',
-    icon: <HomeIcon className="w-5 h-5" />,
-    roles: ['admin', 'staff', 'agent']
+    category: "Utama",
+    items: [
+      { label: 'Dashboard', path: '/', icon: Home, roles: ['admin', 'staff'] }
+    ]
   },
   {
-    title: 'Manajemen Jamaah',
-    path: '/jamaah',
-    icon: <UsersIcon className="w-5 h-5" />,
-    roles: ['admin', 'staff']
+    category: "Produk & Layanan",
+    items: [
+      { label: 'Data Paket', path: '/packages', icon: Package, roles: ['admin', 'staff'] },
+      { label: 'Jadwal Keberangkatan', path: '/departures', icon: Calendar, roles: ['admin', 'staff'] },
+      { label: 'Kategori Paket', path: '/package-categories', icon: Layers, roles: ['admin'] },
+      { label: 'Data Booking', path: '/bookings', icon: ClipboardList, roles: ['admin', 'staff'] },
+    ]
   },
   {
-    title: 'Booking & Paket',
-    path: '/bookings',
-    icon: <ClipboardDocumentListIcon className="w-5 h-5" />,
-    roles: ['admin', 'staff']
+    category: "Operasional & CRM",
+    items: [
+      { label: 'Manajemen Jamaah', path: '/jamaah', icon: Users, roles: ['admin', 'staff'] },
+      { label: 'Logistik', path: '/logistics', icon: Truck, roles: ['admin', 'logistics'] },
+      { label: 'Kemitraan Agen', path: '/agents', icon: Users, roles: ['admin', 'marketing'] },
+      { label: 'Tugas (Tasks)', path: '/tasks', icon: CheckSquare, roles: ['admin', 'staff'] },
+    ]
   },
   {
-    title: 'Scan Absensi',
-    path: '/attendance-scan',
-    icon: <QrCodeIcon className="w-5 h-5" />,
-    roles: ['admin', 'staff', 'driver', 'handling']
+    category: "Keuangan & Marketing",
+    items: [
+      { label: 'Keuangan', path: '/finance', icon: Banknote, roles: ['admin', 'finance'] },
+      { label: 'Marketing', path: '/marketing', icon: Megaphone, roles: ['admin', 'marketing'] },
+    ]
   },
   {
-    title: 'Keuangan',
-    path: '/finance',
-    icon: <BanknotesIcon className="w-5 h-5" />,
-    roles: ['admin', 'finance']
+    category: "SDM & Internal",
+    items: [
+      { label: 'HR & Karyawan', path: '/hr', icon: Briefcase, roles: ['admin', 'hr'] },
+      { label: 'Scan Absensi', path: '/attendance-scan', icon: QrCode, roles: ['admin', 'staff'] },
+    ]
   },
   {
-    title: 'HR & Absensi',
-    path: '/hr',
-    icon: <BriefcaseIcon className="w-5 h-5" />,
-    roles: ['admin', 'hr']
-  },
-  {
-    title: 'Logistik',
-    path: '/logistics',
-    icon: <TruckIcon className="w-5 h-5" />,
-    roles: ['admin', 'logistics']
-  },
-  {
-    title: 'Marketing',
-    path: '/marketing',
-    icon: <MegaphoneIcon className="w-5 h-5" />,
-    roles: ['admin', 'marketing']
-  },
-  {
-    title: 'Kemitraan Agen',
-    path: '/agents',
-    icon: <UsersIcon className="w-5 h-5" />,
-    roles: ['admin', 'marketing']
-  },
+    category: "Sistem",
+    items: [
+      { label: 'Master Data', path: '/masters', icon: Database, roles: ['admin'] },
+      { label: 'Pengguna (Users)', path: '/users', icon: ShieldCheck, roles: ['admin'] },
+      { label: 'Role & Akses', path: '/roles', icon: ShieldCheck, roles: ['admin'] },
+      { label: 'Pengaturan', path: '/settings', icon: Settings, roles: ['admin'] },
+    ]
+  }
 ];
 
-// Kita juga sediakan default export untuk kompatibilitas
 export default menuItems;

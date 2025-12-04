@@ -1,0 +1,65 @@
+name: Deploy Plugin to WordPress via SFTP
+
+on:
+  push:
+    branches: [ "main" ] # Pastikan branch utama Anda bernama 'main' atau 'master'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Ambil kode dari repository GitHub
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Setup Node.js untuk build React
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      # 3. Install Dependencies & Build React
+      - name: Install & Build
+        run: |
+          npm ci
+          npm run build
+        env:
+          CI: false # Mencegah build gagal karena warning sepele
+
+      # 4. Hapus folder node_modules (Sangat Penting untuk Shared Hosting!)
+      #    Folder ini sangat besar dan berisi ribuan file kecil yang bisa membuat FTP lambat/gagal.
+      #    File ini tidak dibutuhkan di server produksi karena kode sudah di-bundle ke dalam folder 'build'.
+      - name: Remove node_modules
+        run: rm -rf node_modules
+
+      # 5. Upload ke Server via SFTP
+      - name: FTP Deploy
+        uses: SamKirkland/FTP-Deploy-Action@4.3.3
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          
+          # Gunakan 'ftp' jika shared hosting Anda belum support FTPS (SSL).
+          # Tapi coba 'ftps' dulu demi keamanan. Jika gagal, ganti jadi 'ftp'.
+          protocol: ftps 
+          port: 21
+          
+          # Upload seluruh isi folder proyek saat ini
+          local-dir: ./
+          
+          # GANTI PATH INI SESUAI LOKASI DI SHARED HOSTING ANDA
+          # Biasanya formatnya: /public_html/wp-content/plugins/nama-folder-plugin/
+          server-dir: /public_html/umrohweb.site/wp-content/plugins/manajemenumroh/
+          
+          # File/Folder yang JANGAN di-upload (menghemat waktu & kuota)
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            .github/**
+            src/** # Opsional: Source code mentah React tidak wajib ada di server
+            README.md
+            .gitignore
