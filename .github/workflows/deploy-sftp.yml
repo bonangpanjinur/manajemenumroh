@@ -51,7 +51,7 @@ jobs:
           
           # ⚠️ PENTING: Ganti path di bawah ini sesuai struktur folder di Hosting Anda.
           # Pastikan diakhiri dengan garis miring (/)
-          server-dir: /public_html/umrohweb.site/wp-content/plugins/manajemenumroh
+          server-dir: /public_html/umrohweb.site/wp-content/plugins/manajemenumroh/
           
           # File yang tidak akan di-upload/ditimpa
           exclude: |
