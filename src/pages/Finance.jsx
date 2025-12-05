@@ -36,7 +36,24 @@ const Finance = () => {
     const [form, setForm] = useState(initialForm);
 
     // Helper format uang
-    const formatMoney = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(n);
+    const formatMoney = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(n || 0);
+
+    // Helper kalkulasi aman (Safe Calculation)
+    // Mencegah crash "reduce of undefined" atau "filter of undefined"
+    const safeCalculate = (type) => {
+        if (!Array.isArray(data)) return 0;
+        
+        if (type === 'balance') {
+            return data.reduce((acc, curr) => {
+                const amt = Number(curr.amount) || 0;
+                return curr.type === 'income' ? acc + amt : acc - amt;
+            }, 0);
+        }
+
+        return data
+            .filter(i => i.type === type)
+            .reduce((a, b) => a + (Number(b.amount) || 0), 0);
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -91,11 +108,26 @@ const Finance = () => {
                 </div>
             </div>
 
-            {/* Dashboard Cards (Static Placeholder for demo, dynamic in real app implementation) */}
+            {/* Dashboard Cards dengan Kalkulasi Aman */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <FinanceCard title="Pemasukan (Est)" amount={formatMoney(data.filter(i=>i.type==='income').reduce((a,b)=>a+Number(b.amount),0))} type="income" icon={TrendingUp} />
-                <FinanceCard title="Pengeluaran (Est)" amount={formatMoney(data.filter(i=>i.type==='expense').reduce((a,b)=>a+Number(b.amount),0))} type="expense" icon={TrendingDown} />
-                <FinanceCard title="Saldo Kas" amount={formatMoney(data.reduce((acc, curr) => curr.type === 'income' ? acc + Number(curr.amount) : acc - Number(curr.amount), 0))} type="neutral" icon={DollarSign} />
+                <FinanceCard 
+                    title="Pemasukan (Est)" 
+                    amount={formatMoney(safeCalculate('income'))} 
+                    type="income" 
+                    icon={TrendingUp} 
+                />
+                <FinanceCard 
+                    title="Pengeluaran (Est)" 
+                    amount={formatMoney(safeCalculate('expense'))} 
+                    type="expense" 
+                    icon={TrendingDown} 
+                />
+                <FinanceCard 
+                    title="Saldo Kas" 
+                    amount={formatMoney(safeCalculate('balance'))} 
+                    type="neutral" 
+                    icon={DollarSign} 
+                />
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200">
