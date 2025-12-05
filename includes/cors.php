@@ -1,34 +1,35 @@
 <?php
 /**
- * Handle CORS headers untuk API
+ * Handle CORS and Header Pre-flight
+ * Hooked to 'init' to prevent "Headers already sent" error.
  */
 
-if (!defined('ABSPATH')) {
+if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-function umh_handle_cors() {
-    // Izinkan akses dari mana saja (atau batasi ke domain tertentu jika perlu)
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: POST, GET, OPTIONS, PUT, DELETE");
-    header("Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce");
-    header("Access-Control-Allow-Credentials: true");
+// Gunakan hook 'init' agar dijalankan sebelum output apapun
+add_action( 'init', 'umh_send_cors_headers', 1 );
 
-    if ('OPTIONS' === $_SERVER['REQUEST_METHOD']) {
-        status_header(200);
-        exit();
+function umh_send_cors_headers() {
+    // Pastikan ini adalah request API atau yang membutuhkan CORS
+    // (Opsional: Cek $_SERVER['REQUEST_URI'] jika ingin lebih spesifik)
+
+    // Allow from any origin
+    if ( isset( $_SERVER['HTTP_ORIGIN'] ) ) {
+        header( "Access-Control-Allow-Origin: {$_SERVER['HTTP_ORIGIN']}" );
+        header( 'Access-Control-Allow-Credentials: true' );
+        header( 'Access-Control-Max-Age: 86400' );    // cache for 1 day
+    }
+
+    // Access-Control headers are received during OPTIONS requests
+    if ( isset( $_SERVER['REQUEST_METHOD'] ) && $_SERVER['REQUEST_METHOD'] == 'OPTIONS' ) {
+        if ( isset( $_SERVER['HTTP_ACCESS_CONTROL_REQUEST_METHOD'] ) )
+            header( "Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE, PATCH" );         
+
+        if ( isset( $_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS'] ) )
+            header( "Access-Control-Allow-Headers: {$_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS']}" );
+
+        exit( 0 );
     }
 }
-add_action('init', 'umh_handle_cors');
-
-// Tambahan untuk memastikan REST API WP juga support CORS
-add_action('rest_api_init', function() {
-    remove_filter('rest_pre_serve_request', 'rest_send_cors_headers');
-    add_filter('rest_pre_serve_request', function($value) {
-        header('Access-Control-Allow-Origin: *');
-        header('Access-Control-Allow-Methods: POST, GET, OPTIONS, PUT, DELETE');
-        header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce');
-        header('Access-Control-Allow-Credentials: true');
-        return $value;
-    });
-}, 15);

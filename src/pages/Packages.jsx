@@ -3,33 +3,36 @@ import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Package, Plus, MapPin, DollarSign, Image as ImageIcon, Star } from 'lucide-react';
+import { Package, Plus, MapPin, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Packages = () => {
     const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/packages');
     
-    // State untuk Data Referensi (Relasi)
+    // State untuk Data Referensi (Array kosong default)
     const [hotels, setHotels] = useState([]);
     
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [mode, setMode] = useState('create');
     const [form, setForm] = useState({});
 
-    // Fetch Master Data Hotel saat komponen dimuat
+    // Fetch Master Data Hotel dengan Safety Check
     useEffect(() => {
         const fetchMasters = async () => {
             try {
                 const res = await api.get('umh/v1/masters/hotels');
-                setHotels(res.data || []);
+                // PERBAIKAN: Cek apakah data ada di res.data.data (wp_send_json_success) atau res.data (REST API standard)
+                const hotelList = Array.isArray(res.data) ? res.data : (res.data.data || []);
+                setHotels(hotelList);
             } catch (e) {
                 console.error("Gagal load data hotel", e);
+                setHotels([]); // Fallback ke array kosong
             }
         };
         fetchMasters();
     }, []);
 
-    // Filter Hotel berdasarkan Kota
+    // Filter Hotel: Aman karena hotels dijamin Array
     const makkahHotels = hotels.filter(h => h.city === 'Makkah');
     const madinahHotels = hotels.filter(h => h.city === 'Madinah');
 
@@ -55,15 +58,14 @@ const Packages = () => {
                 </div>
                 <div>
                     <div className="font-bold text-gray-900">{r.name}</div>
-                    <div className="text-xs text-gray-500">{r.duration_days} Hari • {r.type.toUpperCase()}</div>
+                    <div className="text-xs text-gray-500">{r.duration_days} Hari • {r.type ? r.type.toUpperCase() : 'UMRAH'}</div>
                 </div>
             </div>
         )},
-        { header: 'Akomodasi (Relasi)', accessor: 'hotels', render: r => (
+        { header: 'Akomodasi', accessor: 'hotels', render: r => (
             <div className="text-xs space-y-1">
-                {/* Menampilkan Nama Hotel dari ID Relasi (Backend harus join atau kita lookup) */}
-                <div className="flex items-center gap-1"><MapPin size={10} className="text-gray-400"/> <b>Makkah:</b> {r.hotel_makkah_name || 'TBA'}</div>
-                <div className="flex items-center gap-1"><MapPin size={10} className="text-gray-400"/> <b>Madinah:</b> {r.hotel_madinah_name || 'TBA'}</div>
+                <div className="flex items-center gap-1"><MapPin size={10} className="text-gray-400"/> <b>Makkah:</b> {r.hotel_makkah_name || '-'}</div>
+                <div className="flex items-center gap-1"><MapPin size={10} className="text-gray-400"/> <b>Madinah:</b> {r.hotel_madinah_name || '-'}</div>
             </div>
         )},
         { header: 'Harga Mulai', accessor: 'base_price', render: r => <span className="font-bold text-green-700 bg-green-50 px-2 py-1 rounded">{formatIDR(r.base_price_quad)}</span> },
@@ -100,7 +102,6 @@ const Packages = () => {
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode === 'create' ? "Tambah Paket Baru" : "Edit Paket"}>
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* Basic Info */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="md:col-span-2">
                             <label className="label">Nama Paket</label>
@@ -112,14 +113,13 @@ const Packages = () => {
                         </div>
                     </div>
 
-                    {/* RELASI HOTEL (DATA ASLI DARI MASTER) */}
                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
                         <h3 className="font-bold text-gray-700 text-xs border-b pb-2 uppercase tracking-wide flex items-center gap-2"><MapPin size={14}/> Konfigurasi Akomodasi (Master Data)</h3>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="label">Hotel Makkah</label>
                                 <select className="input-field" value={form.hotel_makkah_id || ''} onChange={e => setForm({...form, hotel_makkah_id: e.target.value})}>
-                                    <option value="">-- Pilih Hotel Makkah --</option>
+                                    <option value="">-- Pilih Hotel --</option>
                                     {makkahHotels.map(h => (
                                         <option key={h.id} value={h.id}>{h.name} ({'★'.repeat(h.rating)})</option>
                                     ))}
@@ -128,7 +128,7 @@ const Packages = () => {
                             <div>
                                 <label className="label">Hotel Madinah</label>
                                 <select className="input-field" value={form.hotel_madinah_id || ''} onChange={e => setForm({...form, hotel_madinah_id: e.target.value})}>
-                                    <option value="">-- Pilih Hotel Madinah --</option>
+                                    <option value="">-- Pilih Hotel --</option>
                                     {madinahHotels.map(h => (
                                         <option key={h.id} value={h.id}>{h.name} ({'★'.repeat(h.rating)})</option>
                                     ))}
@@ -137,7 +137,6 @@ const Packages = () => {
                         </div>
                     </div>
 
-                    {/* Pricing Grid */}
                     <div className="space-y-3">
                         <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2"><DollarSign size={14}/> Varian Harga (IDR)</h3>
                         <div className="grid grid-cols-3 gap-3">

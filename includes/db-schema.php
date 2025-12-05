@@ -1,7 +1,7 @@
 <?php
 /**
  * File: includes/db-schema.php
- * Deskripsi: Skema Database Final
+ * Deskripsi: Skema Database Final (Fixed for dbDelta)
  */
 
 if (!defined('ABSPATH')) {
@@ -13,9 +13,7 @@ function umh_create_db_tables() {
     $charset_collate = $wpdb->get_charset_collate();
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 
-    // ... (Tabel lain sama, saya fokus ke tabel yang error) ...
-
-    // 5. SDM (HRD & AGEN) - BAGIAN YANG ERROR
+    // 1. SDM (HRD & AGEN)
     $table_employees = $wpdb->prefix . 'umh_hr_employees';
     $sql_employees = "CREATE TABLE $table_employees (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -36,7 +34,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_employees);
 
-    // PERBAIKAN: Format KEY harus strict untuk dbDelta (1 spasi, tanpa backtick di nama key jika possible, atau format standar)
+    // PERBAIKAN UTAMA DISINI: Tambahkan spasi setelah koma pada KEY (employee_id, date)
     $table_attendance = $wpdb->prefix . 'umh_hr_attendance';
     $sql_attendance = "CREATE TABLE $table_attendance (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -52,13 +50,12 @@ function umh_create_db_tables() {
         time time DEFAULT NULL,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY  (id),
-        KEY emp_date (employee_id,date)
+        KEY emp_date (employee_id, date)
     ) $charset_collate;";
-    // Note: hapus spasi di (employee_id,date) agar dbDelta lebih konsisten
+    // Perhatikan spasi di (employee_id, date) ^
     dbDelta($sql_attendance);
 
-    // ... (Sisa tabel lainnya tetap sama seperti file asli, pastikan dipanggil semua) ...
-    // Untuk mempersingkat, saya sertakan tabel lain yang penting saja agar file lengkap
+    // ... Tabel Lainnya ...
 
     $table_locations = $wpdb->prefix . 'umh_master_locations';
     $sql_locations = "CREATE TABLE $table_locations (
@@ -571,5 +568,5 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_logs);
 
-    update_option('umh_db_version', '4.0.7'); 
+    update_option('umh_db_version', '4.0.8'); 
 }

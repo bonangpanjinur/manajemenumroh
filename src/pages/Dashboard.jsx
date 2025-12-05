@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import api from '../utils/api'; // Pastikan axios instance Anda benar
-import { Users, ShoppingCart, Plane, DollarSign, ArrowRight, Clock, TrendingUp, Loader } from 'lucide-react';
+import api from '../utils/api';
+import { Users, ShoppingCart, Plane, DollarSign, ArrowRight, Clock, TrendingUp } from 'lucide-react';
+import Spinner from '../components/Spinner';
 
 const StatCard = ({ title, value, subtext, icon: Icon, color, loading }) => (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-start justify-between hover:shadow-md transition-shadow">
@@ -22,14 +23,28 @@ const StatCard = ({ title, value, subtext, icon: Icon, color, loading }) => (
 );
 
 const Dashboard = () => {
-    const [stats, setStats] = useState(null);
+    // PERBAIKAN: Inisialisasi state dengan struktur default yang aman
+    const [stats, setStats] = useState({
+        total_jamaah: 0,
+        bookings_active: 0,
+        upcoming_departures: 0,
+        revenue_month: 0,
+        recent_bookings: [], // Array kosong agar .map tidak error
+        chart_data: []
+    });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
                 const res = await api.get('umh/v1/stats');
-                setStats(res.data);
+                // PERBAIKAN: Handle jika response dibungkus wp_send_json_success ({ success: true, data: ... })
+                // atau langsung dari REST API
+                const realData = res.data.data ? res.data.data : res.data;
+                
+                if (realData && !realData.code) { // Pastikan bukan object error WP
+                    setStats(realData);
+                }
             } catch (e) {
                 console.error("Gagal load stats", e);
             } finally {
@@ -40,10 +55,15 @@ const Dashboard = () => {
     }, []);
 
     const formatIDR = (num) => {
-        if (num >= 1000000000) return (num / 1000000000).toFixed(1) + 'M'; // Milyar
-        if (num >= 1000000) return (num / 1000000).toFixed(0) + 'jt'; // Juta
+        if (!num) return '0';
+        if (num >= 1000000000) return (num / 1000000000).toFixed(1) + 'M';
+        if (num >= 1000000) return (num / 1000000).toFixed(0) + 'jt';
         return new Intl.NumberFormat('id-ID').format(num);
     };
+
+    // Safety check untuk recent_bookings
+    const recentBookings = Array.isArray(stats?.recent_bookings) ? stats.recent_bookings : [];
+    const chartData = Array.isArray(stats?.chart_data) ? stats.chart_data : [];
 
     return (
         <div className="space-y-8">
@@ -60,27 +80,27 @@ const Dashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard 
                     title="Total Jamaah" 
-                    value={stats?.total_jamaah || 0} 
+                    value={stats.total_jamaah || 0} 
                     loading={loading}
                     icon={Users} color="bg-blue-600" 
                 />
                 <StatCard 
                     title="Booking Aktif" 
-                    value={stats?.bookings_active || 0} 
-                    subtext={`${stats?.bookings_need_confirm || 0} butuh konfirmasi`} 
+                    value={stats.bookings_active || 0} 
+                    subtext={`${stats.bookings_need_confirm || 0} butuh konfirmasi`} 
                     loading={loading}
                     icon={ShoppingCart} color="bg-emerald-500" 
                 />
                 <StatCard 
                     title="Keberangkatan" 
-                    value={stats?.upcoming_departures || 0} 
+                    value={stats.upcoming_departures || 0} 
                     subtext="30 Hari kedepan" 
                     loading={loading}
                     icon={Plane} color="bg-orange-500" 
                 />
                 <StatCard 
                     title="Omset Bulan Ini" 
-                    value={`Rp ${formatIDR(stats?.revenue_month || 0)}`} 
+                    value={`Rp ${formatIDR(stats.revenue_month || 0)}`} 
                     loading={loading}
                     icon={DollarSign} color="bg-indigo-600" 
                 />
@@ -108,11 +128,11 @@ const Dashboard = () => {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {loading ? (
-                                        <tr><td colSpan="4" className="p-6 text-center">Loading data...</td></tr>
-                                    ) : stats?.recent_bookings?.length === 0 ? (
+                                        <tr><td colSpan="4" className="p-6 text-center"><Spinner size={20} /></td></tr>
+                                    ) : recentBookings.length === 0 ? (
                                         <tr><td colSpan="4" className="p-6 text-center text-gray-400">Belum ada transaksi</td></tr>
                                     ) : (
-                                        stats?.recent_bookings.map((row, idx) => (
+                                        recentBookings.map((row, idx) => (
                                             <tr key={idx} className="hover:bg-gray-50 transition-colors">
                                                 <td className="px-6 py-4 font-mono text-xs text-blue-600 font-bold">{row.booking_code}</td>
                                                 <td className="px-6 py-4 font-medium text-gray-900">{row.contact_name}</td>
@@ -137,15 +157,14 @@ const Dashboard = () => {
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                         <h3 className="font-bold text-gray-700 mb-4">Tren Pendaftaran ({new Date().getFullYear()})</h3>
                         <div className="h-64 flex items-end justify-between gap-2 px-4 border-b border-gray-100 pb-2">
-                            {stats?.chart_data ? stats.chart_data.map((h, i) => {
-                                // Cari nilai max untuk skala grafik
-                                const maxVal = Math.max(...stats.chart_data, 10); 
+                            {chartData.length > 0 ? chartData.map((h, i) => {
+                                const maxVal = Math.max(...chartData, 10); 
                                 const heightPercent = (h / maxVal) * 100;
                                 return (
                                     <div key={i} className="w-full bg-blue-50 rounded-t-lg relative group h-full flex items-end">
                                         <div 
                                             className="w-full bg-blue-500 rounded-t-lg transition-all duration-500 hover:bg-blue-600 relative" 
-                                            style={{ height: `${heightPercent || 2}%` }} // Minimal 2% supaya terlihat bar kosong
+                                            style={{ height: `${heightPercent || 2}%` }} 
                                         >
                                             <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded pointer-events-none z-10 whitespace-nowrap">
                                                 {h} Booking
@@ -162,7 +181,6 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                {/* Sidebar Widget Statis (Bisa dibuat dinamis juga) */}
                 <div className="space-y-6">
                     <div className="bg-gradient-to-br from-indigo-700 to-purple-800 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
                         <div className="relative z-10">

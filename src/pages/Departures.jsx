@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 const Departures = () => {
     const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/departures');
     
-    // State Relasi
+    // State Relasi (Default Array Kosong)
     const [packages, setPackages] = useState([]);
     const [airlines, setAirlines] = useState([]);
 
@@ -17,7 +17,7 @@ const Departures = () => {
     const [mode, setMode] = useState('create');
     const [form, setForm] = useState({});
 
-    // Fetch Referensi saat modal dibuka
+    // Fetch Referensi
     useEffect(() => {
         if(isModalOpen) {
             const loadRefs = async () => {
@@ -26,8 +26,9 @@ const Departures = () => {
                         api.get('umh/v1/packages'),
                         api.get('umh/v1/masters/airlines')
                     ]);
-                    setPackages(pkgRes.data || []);
-                    setAirlines(airlineRes.data || []);
+                    // Extraction logic yang aman
+                    setPackages(Array.isArray(pkgRes.data) ? pkgRes.data : (pkgRes.data.data || []));
+                    setAirlines(Array.isArray(airlineRes.data) ? airlineRes.data : (airlineRes.data.data || []));
                 } catch(e) { console.error(e); }
             };
             loadRefs();
@@ -57,12 +58,12 @@ const Departures = () => {
             <div>
                 <div className="font-bold text-blue-700 text-sm">{r.package_name || 'Tanpa Paket'}</div>
                 <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                    <PlaneTakeoff size={12}/> {r.airline_name} ({r.flight_number_depart})
+                    <PlaneTakeoff size={12}/> {r.airline_name || 'TBA'} ({r.flight_number_depart || '-'})
                 </div>
             </div>
         )},
         { header: 'Status Seat', accessor: 'quota', render: r => {
-            const filled = r.quota - r.available_seats;
+            const filled = r.quota - (r.available_seats || r.quota);
             const percent = Math.min((filled / r.quota) * 100, 100);
             return (
                 <div className="w-32">
@@ -77,12 +78,7 @@ const Departures = () => {
             )
         }},
         { header: 'Status', accessor: 'status', render: r => (
-            <span className={`uppercase text-[10px] font-extrabold px-2 py-1 rounded border ${
-                r.status==='open'?'bg-green-50 text-green-700 border-green-200':
-                r.status==='closed'?'bg-red-50 text-red-700 border-red-200':'bg-gray-50 border-gray-200'
-            }`}>
-                {r.status}
-            </span>
+            <span className={`uppercase text-[10px] font-extrabold px-2 py-1 rounded border ${r.status==='open'?'bg-green-50 text-green-700 border-green-200':'bg-gray-50 border-gray-200'}`}>{r.status}</span>
         )},
     ];
 
@@ -112,7 +108,6 @@ const Departures = () => {
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode === 'create' ? "Buat Jadwal Baru" : "Edit Jadwal"}>
                 <form onSubmit={handleSubmit} className="space-y-5">
-                    {/* INFO JADWAL */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="label">Tanggal Berangkat</label>
@@ -124,7 +119,6 @@ const Departures = () => {
                         </div>
                     </div>
 
-                    {/* RELASI PAKET & MASKAPAI */}
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
                         <div className="flex items-center gap-2 text-blue-800 font-bold text-xs uppercase border-b border-blue-200 pb-2">
                             <AlertCircle size={14}/> Relasi Produk
@@ -137,7 +131,6 @@ const Departures = () => {
                                     <option key={p.id} value={p.id}>{p.name} ({p.duration_days} Hari)</option>
                                 ))}
                             </select>
-                            <p className="text-[10px] text-gray-500 mt-1">*Hotel dan Harga Dasar akan mengikuti paket ini.</p>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
@@ -156,7 +149,6 @@ const Departures = () => {
                         </div>
                     </div>
 
-                    {/* INVENTORY */}
                     <div className="grid grid-cols-3 gap-4">
                         <div className="col-span-1">
                             <label className="label">Total Kuota Seat</label>
@@ -168,7 +160,6 @@ const Departures = () => {
                                 <option value="open">🟢 Open Seat</option>
                                 <option value="closed">🔴 Closed / Full</option>
                                 <option value="waitlist">🟠 Waitlist</option>
-                                <option value="departed">✈️ Sudah Berangkat</option>
                             </select>
                         </div>
                     </div>
