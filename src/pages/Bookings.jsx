@@ -13,14 +13,28 @@ const Bookings = () => {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [mode, setMode] = useState('create');
-    const [form, setForm] = useState({});
+    
+    // Initial Form sesuai db-schema umh_bookings
+    const initialForm = {
+        booking_date: new Date().toISOString().split('T')[0],
+        total_pax: 1,
+        payment_status: 'unpaid',
+        contact_name: '',
+        contact_phone: '',
+        contact_email: '', // Added matched DB
+        departure_id: '',
+        package_id: '', // Hidden but required for relation
+        total_price: 0,
+        notes: ''
+    };
+    
+    const [form, setForm] = useState(initialForm);
 
     useEffect(() => {
         if (isModalOpen) {
             const loadDeps = async () => {
                 try {
                     const res = await api.get('umh/v1/departures?status=open');
-                    // SAFETY EXTRACTION
                     const list = Array.isArray(res.data) ? res.data : (res.data.data || []);
                     setDepartures(list);
                 } catch(e) { console.error(e); setDepartures([]); }
@@ -29,16 +43,17 @@ const Bookings = () => {
         }
     }, [isModalOpen]);
 
-    // Auto Calc
+    // Auto Calc & Set Package ID
     useEffect(() => {
-        if (form.departure_id && form.total_pax) {
+        if (form.departure_id) {
             const selectedDep = departures.find(d => d.id == form.departure_id);
             if (selectedDep) {
                 const unitPrice = selectedDep.price_quad || 0; 
                 setForm(prev => ({ 
                     ...prev, 
-                    total_price: unitPrice * prev.total_pax,
-                    package_name: selectedDep.package_name 
+                    total_price: unitPrice * (prev.total_pax || 1),
+                    package_name: selectedDep.package_name,
+                    package_id: selectedDep.package_id // Penting: Set Package ID untuk DB
                 }));
             }
         }
@@ -66,7 +81,10 @@ const Bookings = () => {
             </div>
         )},
         { header: 'Pemesan', accessor: 'contact_name', render: r => (
-            <div className="font-bold text-gray-800 text-sm">{r.contact_name}</div>
+            <div>
+                <div className="font-bold text-gray-800 text-sm">{r.contact_name}</div>
+                <div className="text-xs text-gray-500">{r.contact_email}</div>
+            </div>
         )},
         { header: 'Produk Travel', accessor: 'package_info', render: r => (
             <div className="bg-gray-50 p-2 rounded border border-gray-100 text-xs">
@@ -93,7 +111,7 @@ const Bookings = () => {
                     </div>
                 </div>
                 <button 
-                    onClick={() => { setForm({ booking_date: new Date().toISOString().split('T')[0], total_pax: 1, payment_status: 'unpaid' }); setMode('create'); setIsModalOpen(true); }}
+                    onClick={() => { setForm(initialForm); setMode('create'); setIsModalOpen(true); }}
                     className="btn-primary flex items-center gap-2 shadow-lg shadow-emerald-200"
                 >
                     <Plus size={18} /> Booking Baru
@@ -108,21 +126,25 @@ const Bookings = () => {
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
                         <h4 className="text-xs font-bold text-blue-800 uppercase mb-3">Data Kontak Pemesan</h4>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2">
                                 <label className="label">Nama Lengkap</label>
-                                <input className="input-field" value={form.contact_name || ''} onChange={e => setForm({...form, contact_name: e.target.value})} required />
+                                <input className="input-field" value={form.contact_name} onChange={e => setForm({...form, contact_name: e.target.value})} required />
                             </div>
                             <div>
                                 <label className="label">No. Telepon / WA</label>
-                                <input className="input-field" value={form.contact_phone || ''} onChange={e => setForm({...form, contact_phone: e.target.value})} required />
+                                <input className="input-field" value={form.contact_phone} onChange={e => setForm({...form, contact_phone: e.target.value})} required />
+                            </div>
+                            <div>
+                                <label className="label">Email</label>
+                                <input type="email" className="input-field" value={form.contact_email} onChange={e => setForm({...form, contact_email: e.target.value})} required />
                             </div>
                         </div>
                     </div>
 
                     <div>
                         <label className="label">Pilih Jadwal Keberangkatan</label>
-                        <select className="input-field" value={form.departure_id || ''} onChange={e => setForm({...form, departure_id: e.target.value})} required>
+                        <select className="input-field" value={form.departure_id} onChange={e => setForm({...form, departure_id: e.target.value})} required>
                             <option value="">-- Cari Tanggal & Paket --</option>
                             {departures.map(d => (
                                 <option key={d.id} value={d.id}>
@@ -130,17 +152,23 @@ const Bookings = () => {
                                 </option>
                             ))}
                         </select>
+                        <p className="text-xs text-gray-400 mt-1">*Paket akan otomatis terpilih berdasarkan jadwal.</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="label">Jumlah Pax (Jamaah)</label>
-                            <input type="number" min="1" className="input-field" value={form.total_pax || 1} onChange={e => setForm({...form, total_pax: e.target.value})} />
+                            <input type="number" min="1" className="input-field" value={form.total_pax} onChange={e => setForm({...form, total_pax: e.target.value})} />
                         </div>
                         <div>
                             <label className="label">Estimasi Total (Rp)</label>
-                            <input type="number" className="input-field font-bold text-gray-800" value={form.total_price || 0} onChange={e => setForm({...form, total_price: e.target.value})} />
+                            <input type="number" className="input-field font-bold text-gray-800" value={form.total_price} onChange={e => setForm({...form, total_price: e.target.value})} />
                         </div>
+                    </div>
+                    
+                    <div>
+                         <label className="label">Catatan Tambahan</label>
+                         <textarea className="input-field h-20" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}></textarea>
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4 border-t mt-4">

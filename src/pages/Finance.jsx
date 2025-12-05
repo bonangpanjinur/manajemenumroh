@@ -24,7 +24,16 @@ const Finance = () => {
     const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/finance');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [mode, setMode] = useState('create');
-    const [form, setForm] = useState({ type: 'income', amount: 0, title: '', transaction_date: new Date().toISOString().split('T')[0] });
+    
+    const initialForm = { 
+        type: 'income', 
+        amount: 0, 
+        title: '', 
+        category: 'General', // Added match DB
+        description: '',
+        transaction_date: new Date().toISOString().split('T')[0] 
+    };
+    const [form, setForm] = useState(initialForm);
 
     // Helper format uang
     const formatMoney = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(n);
@@ -43,7 +52,12 @@ const Finance = () => {
 
     const columns = [
         { header: 'Tanggal', accessor: 'transaction_date', render: r => <span className="text-gray-600">{r.transaction_date}</span> },
-        { header: 'Keterangan', accessor: 'title', render: r => <span className="font-medium text-gray-800">{r.title}</span> },
+        { header: 'Keterangan', accessor: 'title', render: r => (
+            <div>
+                <div className="font-medium text-gray-800">{r.title}</div>
+                <div className="text-xs text-gray-500">{r.category}</div>
+            </div>
+        )},
         { header: 'Tipe', accessor: 'type', render: r => (
             <span className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-bold uppercase ${r.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                 {r.type === 'income' ? <TrendingUp size={12}/> : <TrendingDown size={12}/>} {r.type === 'income' ? 'Pemasukan' : 'Pengeluaran'}
@@ -71,7 +85,7 @@ const Finance = () => {
                 </div>
                 <div className="flex gap-2">
                     <button className="btn-secondary flex items-center gap-2"><FileText size={18} /> Export</button>
-                    <button onClick={() => { setForm({ type: 'income', amount: 0, title: '', transaction_date: new Date().toISOString().split('T')[0] }); setMode('create'); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2">
+                    <button onClick={() => { setForm(initialForm); setMode('create'); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2">
                         <Plus size={18} /> Transaksi Baru
                     </button>
                 </div>
@@ -104,9 +118,22 @@ const Finance = () => {
                             <input type="date" className="input-field" value={form.transaction_date} onChange={e => setForm({...form, transaction_date: e.target.value})} required />
                         </div>
                     </div>
-                    <div>
-                        <label className="label">Judul / Keterangan</label>
-                        <input type="text" className="input-field" value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="Contoh: Pembayaran Vendor Hotel" required />
+                    <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <label className="label">Judul Transaksi</label>
+                            <input type="text" className="input-field" value={form.title} onChange={e => setForm({...form, title: e.target.value})} placeholder="Contoh: Bayar Vendor" required />
+                        </div>
+                        <div>
+                            <label className="label">Kategori</label>
+                            <select className="input-field" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+                                <option value="General">Umum</option>
+                                <option value="Operasional">Operasional</option>
+                                <option value="Marketing">Marketing</option>
+                                <option value="Gaji">Gaji Karyawan</option>
+                                <option value="Perlengkapan">Perlengkapan</option>
+                                <option value="Paket Umroh">Pembayaran Paket</option>
+                            </select>
+                        </div>
                     </div>
                     <div>
                         <label className="label">Nominal (Rp)</label>

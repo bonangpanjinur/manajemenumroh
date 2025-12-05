@@ -3,24 +3,38 @@ import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { User, Plus, FileText, Heart, Users, CreditCard } from 'lucide-react';
+import { User, Plus, FileText, Heart, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Jamaah = () => {
     const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/jamaah');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [mode, setMode] = useState('create');
-    const [activeTab, setActiveTab] = useState('personal'); // personal, docs, health, family
-    const [form, setForm] = useState({});
-
-    // Field sesuai db-schema.php
+    const [activeTab, setActiveTab] = useState('personal'); 
+    
+    // Initial State sesuai Database umh_jamaah
     const initialForm = {
-        nik: '', passport_number: '', full_name: '', gender: 'L',
-        birth_place: '', birth_date: '', phone: '', email: '',
-        address: '', city: '', job_title: '', clothing_size: 'L',
-        father_name: '', mother_name: '', disease_history: '', bpjs_number: '',
-        status: 'registered', payment_status: 'pending'
+        nik: '', 
+        passport_number: '', 
+        full_name: '', 
+        gender: 'L',
+        birth_place: '', 
+        birth_date: '', 
+        phone: '', 
+        email: '', // Added
+        address: '', 
+        city: '', // Added
+        job_title: '', 
+        clothing_size: 'L',
+        father_name: '', 
+        mother_name: '', 
+        disease_history: '', 
+        bpjs_number: '',
+        status: 'registered', 
+        payment_status: 'pending'
     };
+
+    const [form, setForm] = useState(initialForm);
 
     const handleCreate = () => {
         setForm(initialForm);
@@ -30,7 +44,13 @@ const Jamaah = () => {
     };
 
     const handleEdit = (item) => {
-        setForm(item);
+        // Pastikan nilai null dari DB diubah jadi string kosong agar input controlled tidak error
+        const safeItem = Object.keys(initialForm).reduce((acc, key) => {
+            acc[key] = item[key] || '';
+            return acc;
+        }, {});
+        
+        setForm({ ...safeItem, id: item.id });
         setMode('edit');
         setActiveTab('personal');
         setIsModalOpen(true);
@@ -70,18 +90,16 @@ const Jamaah = () => {
         { header: 'Kontak', accessor: 'phone', render: r => (
             <div className="text-sm">
                 <div className="flex items-center gap-1 text-gray-800">{r.phone}</div>
-                <div className="text-gray-400 text-xs">{r.city}</div>
+                <div className="text-gray-400 text-xs">{r.city || '-'}</div>
             </div>
         )},
         { header: 'Status', accessor: 'status', render: r => (
             <div className="flex flex-col gap-1">
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase w-fit ${r.status==='berangkat'?'bg-green-100 text-green-700':'bg-gray-100 text-gray-600'}`}>{r.status}</span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase w-fit ${r.payment_status==='lunas'?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700'}`}>{r.payment_status}</span>
             </div>
         )},
     ];
 
-    // Sub-components for Form Tabs
     const TabButton = ({ id, icon: Icon, label }) => (
         <button 
             type="button" 
@@ -113,10 +131,8 @@ const Jamaah = () => {
                 <CrudTable columns={columns} data={data} loading={loading} onEdit={handleEdit} onDelete={(item) => deleteItem(item.id)} />
             </div>
 
-            {/* HIGH UX MODAL */}
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode==='create' ? "Registrasi Jamaah" : `Edit: ${form.full_name}`}>
                 <form onSubmit={handleSubmit}>
-                    {/* Tab Navigation */}
                     <div className="flex mb-6 bg-gray-50 rounded-t-lg">
                         <TabButton id="personal" icon={User} label="Pribadi" />
                         <TabButton id="docs" icon={FileText} label="Dokumen" />
@@ -130,16 +146,16 @@ const Jamaah = () => {
                             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-4">
                                 <div>
                                     <label className="label">Nama Lengkap (Sesuai KTP)</label>
-                                    <input className="input-field" value={form.full_name || ''} onChange={e => setForm({...form, full_name: e.target.value})} required />
+                                    <input className="input-field" value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})} required />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="label">NIK / KTP</label>
-                                        <input className="input-field" value={form.nik || ''} onChange={e => setForm({...form, nik: e.target.value})} />
+                                        <input className="input-field" value={form.nik} onChange={e => setForm({...form, nik: e.target.value})} />
                                     </div>
                                     <div>
                                         <label className="label">Jenis Kelamin</label>
-                                        <select className="input-field" value={form.gender || 'L'} onChange={e => setForm({...form, gender: e.target.value})}>
+                                        <select className="input-field" value={form.gender} onChange={e => setForm({...form, gender: e.target.value})}>
                                             <option value="L">Laki-laki</option>
                                             <option value="P">Perempuan</option>
                                         </select>
@@ -148,28 +164,38 @@ const Jamaah = () => {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="label">Tempat Lahir</label>
-                                        <input className="input-field" value={form.birth_place || ''} onChange={e => setForm({...form, birth_place: e.target.value})} />
+                                        <input className="input-field" value={form.birth_place} onChange={e => setForm({...form, birth_place: e.target.value})} />
                                     </div>
                                     <div>
                                         <label className="label">Tanggal Lahir</label>
-                                        <input type="date" className="input-field" value={form.birth_date || ''} onChange={e => setForm({...form, birth_date: e.target.value})} />
+                                        <input type="date" className="input-field" value={form.birth_date} onChange={e => setForm({...form, birth_date: e.target.value})} />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="label">No. Telepon / WA</label>
-                                        <input className="input-field" value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})} />
+                                        <input className="input-field" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="label">Email</label>
+                                        <input type="email" className="input-field" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="label">Kota Domisili</label>
+                                        <input className="input-field" value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
                                     </div>
                                     <div>
                                         <label className="label">Ukuran Pakaian</label>
-                                        <select className="input-field" value={form.clothing_size || 'L'} onChange={e => setForm({...form, clothing_size: e.target.value})}>
+                                        <select className="input-field" value={form.clothing_size} onChange={e => setForm({...form, clothing_size: e.target.value})}>
                                             <option value="S">S</option> <option value="M">M</option> <option value="L">L</option> <option value="XL">XL</option> <option value="XXL">XXL</option>
                                         </select>
                                     </div>
                                 </div>
                                 <div>
                                     <label className="label">Alamat Lengkap</label>
-                                    <textarea className="input-field h-20" value={form.address || ''} onChange={e => setForm({...form, address: e.target.value})}></textarea>
+                                    <textarea className="input-field h-20" value={form.address} onChange={e => setForm({...form, address: e.target.value})}></textarea>
                                 </div>
                             </div>
                         )}
@@ -180,21 +206,22 @@ const Jamaah = () => {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="label">Nomor Paspor</label>
-                                        <input className="input-field font-mono" value={form.passport_number || ''} onChange={e => setForm({...form, passport_number: e.target.value})} placeholder="X0000000" />
+                                        <input className="input-field font-mono" value={form.passport_number} onChange={e => setForm({...form, passport_number: e.target.value})} placeholder="X0000000" />
                                     </div>
                                     <div>
                                         <label className="label">Pekerjaan</label>
-                                        <input className="input-field" value={form.job_title || ''} onChange={e => setForm({...form, job_title: e.target.value})} />
+                                        <input className="input-field" value={form.job_title} onChange={e => setForm({...form, job_title: e.target.value})} />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="label">Status Pendaftaran</label>
-                                    <select className="input-field" value={form.status || 'registered'} onChange={e => setForm({...form, status: e.target.value})}>
+                                    <select className="input-field" value={form.status} onChange={e => setForm({...form, status: e.target.value})}>
                                         <option value="registered">Terdaftar</option>
                                         <option value="dp">Sudah DP</option>
                                         <option value="lunas">Lunas</option>
                                         <option value="berangkat">Siap Berangkat</option>
                                         <option value="selesai">Selesai (Pulang)</option>
+                                        <option value="batal">Batal</option>
                                     </select>
                                 </div>
                             </div>
@@ -205,11 +232,11 @@ const Jamaah = () => {
                             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-4">
                                 <div>
                                     <label className="label">Riwayat Penyakit</label>
-                                    <textarea className="input-field h-24" value={form.disease_history || ''} onChange={e => setForm({...form, disease_history: e.target.value})} placeholder="Sebutkan jika ada diabetes, jantung, asma, dll..."></textarea>
+                                    <textarea className="input-field h-24" value={form.disease_history} onChange={e => setForm({...form, disease_history: e.target.value})} placeholder="Sebutkan jika ada diabetes, jantung, asma, dll..."></textarea>
                                 </div>
                                 <div>
                                     <label className="label">Nomor BPJS</label>
-                                    <input className="input-field" value={form.bpjs_number || ''} onChange={e => setForm({...form, bpjs_number: e.target.value})} />
+                                    <input className="input-field" value={form.bpjs_number} onChange={e => setForm({...form, bpjs_number: e.target.value})} />
                                 </div>
                             </div>
                         )}
@@ -219,11 +246,11 @@ const Jamaah = () => {
                             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-4">
                                 <div>
                                     <label className="label">Nama Ayah Kandung (Wajib untuk Visa)</label>
-                                    <input className="input-field" value={form.father_name || ''} onChange={e => setForm({...form, father_name: e.target.value})} required />
+                                    <input className="input-field" value={form.father_name} onChange={e => setForm({...form, father_name: e.target.value})} required />
                                 </div>
                                 <div>
                                     <label className="label">Nama Ibu Kandung</label>
-                                    <input className="input-field" value={form.mother_name || ''} onChange={e => setForm({...form, mother_name: e.target.value})} />
+                                    <input className="input-field" value={form.mother_name} onChange={e => setForm({...form, mother_name: e.target.value})} />
                                 </div>
                             </div>
                         )}
