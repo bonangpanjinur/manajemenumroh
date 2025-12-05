@@ -10,8 +10,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 ?>
 
 <div class="wrap">
-    <!-- Penting: ID ini harus sama dengan document.getElementById di src/index.jsx -->
-    <div id="umroh-manager-app">
+    <!-- PERBAIKAN: ID disamakan dengan src/index.jsx (umh-admin-app) -->
+    <div id="umh-admin-app">
         <!-- Tampilan Loading awal sebelum React mengambil alih -->
         <div style="display: flex; justify-content: center; align-items: center; height: 50vh; flex-direction: column;">
             <h2 style="color: #555;">Memuat Aplikasi Manajemen Umroh...</h2>

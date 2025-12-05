@@ -2,7 +2,7 @@
 /**
  * File: includes/db-schema.php
  * Deskripsi: Skema Database Enterprise V7.0 (Ultimate)
- * Fitur: UUID, Soft Deletes, Strict Relations, Dokumen Digital, Promo System, Refund System, Bus Manifest.
+ * PERBAIKAN: Menghapus komentar inline SQL yang menyebabkan error pada dbDelta
  */
 
 if (!defined('ABSPATH')) {
@@ -21,7 +21,7 @@ function umh_create_db_tables() {
     // Users: Central Identity
     $sql_users = "CREATE TABLE {$wpdb->prefix}umh_users (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        uuid char(36) NOT NULL, -- Global Unique ID (Migration Safe)
+        uuid char(36) NOT NULL,
         username varchar(60) NOT NULL,
         email varchar(100) NOT NULL,
         password_hash varchar(255) NOT NULL,
@@ -36,7 +36,7 @@ function umh_create_db_tables() {
         reset_expiry datetime,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        deleted_at datetime NULL, -- Soft Delete
+        deleted_at datetime NULL,
         PRIMARY KEY  (id),
         UNIQUE KEY uuid (uuid),
         UNIQUE KEY username (username),
@@ -103,8 +103,8 @@ function umh_create_db_tables() {
         check_out_time time,
         status varchar(50) DEFAULT 'present',
         method varchar(50) DEFAULT 'Manual',
-        location_lat varchar(50), -- GPS Tracking support
-        location_long varchar(50), -- GPS Tracking support
+        location_lat varchar(50),
+        location_long varchar(50),
         notes text,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY  (id),
@@ -234,7 +234,6 @@ function umh_create_db_tables() {
        4. TRANSACTION & COMMERCE (E-Commerce Ready)
        ========================================= */
 
-    // NEW V7: Kupon & Diskon System
     $sql_coupons = "CREATE TABLE {$wpdb->prefix}umh_coupons (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         uuid char(36) NOT NULL,
@@ -243,10 +242,10 @@ function umh_create_db_tables() {
         type enum('percentage', 'fixed') DEFAULT 'fixed',
         amount decimal(15,2) DEFAULT 0,
         min_transaction decimal(15,2) DEFAULT 0,
-        max_discount decimal(15,2) DEFAULT 0, -- Jika percentage, max nominalnya brp
+        max_discount decimal(15,2) DEFAULT 0, 
         start_date date,
         end_date date,
-        usage_limit int DEFAULT 0, -- 0 = unlimited
+        usage_limit int DEFAULT 0, 
         used_count int DEFAULT 0,
         is_active boolean DEFAULT 1,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
@@ -285,7 +284,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_jamaah);
 
-    // NEW V7: Digital Documents Management (Wajib untuk Visa)
     $sql_jamaah_docs = "CREATE TABLE {$wpdb->prefix}umh_jamaah_documents (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         jamaah_id bigint(20) UNSIGNED NOT NULL,
@@ -314,7 +312,7 @@ function umh_create_db_tables() {
         total_pax int DEFAULT 1,
         subtotal_price decimal(15,2) DEFAULT 0,
         discount_amount decimal(15,2) DEFAULT 0,
-        coupon_id bigint(20) UNSIGNED NULL, -- Link ke tabel coupons
+        coupon_id bigint(20) UNSIGNED NULL,
         total_price decimal(15,2) DEFAULT 0,
         total_paid decimal(15,2) DEFAULT 0,
         payment_status enum('unpaid', 'dp', 'partial', 'paid', 'overdue', 'refunded') DEFAULT 'unpaid',
@@ -408,7 +406,6 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_payments);
 
-    // NEW V7: Refund Management
     $sql_refunds = "CREATE TABLE {$wpdb->prefix}umh_refunds (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         uuid char(36) NOT NULL,
@@ -418,7 +415,7 @@ function umh_create_db_tables() {
         status enum('requested', 'approved', 'processed', 'rejected') DEFAULT 'requested',
         processed_at datetime NULL,
         processed_by bigint(20) UNSIGNED NULL,
-        bank_details text, -- Tujuan transfer refund
+        bank_details text,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY uuid (uuid),
@@ -532,11 +529,10 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_rooming);
 
-    // NEW V7: Bus / Transport Manifest
     $sql_transport = "CREATE TABLE {$wpdb->prefix}umh_transport_manifest (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         departure_id bigint(20) UNSIGNED NOT NULL,
-        transport_name varchar(100), -- Ex: Bus 1, Bus 2
+        transport_name varchar(100),
         seat_number varchar(10),
         jamaah_id bigint(20) UNSIGNED NULL,
         notes text,
@@ -618,11 +614,11 @@ function umh_create_db_tables() {
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         user_id bigint(20) UNSIGNED NOT NULL,
         action varchar(100) NOT NULL,
-        target_table varchar(50), -- Audit info
-        target_uuid char(36), -- Audit info
+        target_table varchar(50),
+        target_uuid char(36),
         details text,
         ip_address varchar(45),
-        user_agent text, -- Audit info
+        user_agent text,
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY  (id),
         KEY user_id (user_id),
