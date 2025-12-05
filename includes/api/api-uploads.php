@@ -1,14 +1,18 @@
 <?php
-// includes/api/api-uploads.php
+require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-defined('ABSPATH') || exit;
+class UMH_API_Uploads extends UMH_CRUD_Controller {
 
-class UMH_API_Uploads {
+    public function __construct() {
+        // Tidak pakai tabel khusus, ini utility controller
+        parent::__construct('posts'); 
+    }
+
     public function register_routes() {
         register_rest_route('umh/v1', '/upload', [
             'methods' => 'POST',
             'callback' => [$this, 'handle_upload'],
-            'permission_callback' => function() { return current_user_can('upload_files'); }
+            'permission_callback' => '__return_true', // Nanti amankan dengan nonce/auth
         ]);
     }
 
@@ -16,27 +20,27 @@ class UMH_API_Uploads {
         $files = $request->get_file_params();
         
         if (empty($files['file'])) {
-            return new WP_Error('no_file', 'No file uploaded', ['status' => 400]);
+            return new WP_REST_Response(['success' => false, 'message' => 'No file uploaded'], 400);
         }
 
         $file = $files['file'];
         
-        // Gunakan fungsi native WordPress untuk handle upload
+        // Gunakan wp_handle_upload untuk memproses file
         if (!function_exists('wp_handle_upload')) {
             require_once(ABSPATH . 'wp-admin/includes/file.php');
         }
 
-        $upload_overrides = ['test_form' => false];
+        $upload_overrides = array('test_form' => false);
         $movefile = wp_handle_upload($file, $upload_overrides);
 
         if ($movefile && !isset($movefile['error'])) {
-            return rest_ensure_response([
-                'url' => $movefile['url'],
-                'file' => $movefile['file'],
-                'type' => $movefile['type']
-            ]);
+            return new WP_REST_Response([
+                'success' => true, 
+                'url' => $movefile['url'], 
+                'file' => $movefile['file']
+            ], 201);
         } else {
-            return new WP_Error('upload_error', $movefile['error'], ['status' => 500]);
+            return new WP_REST_Response(['success' => false, 'message' => $movefile['error']], 500);
         }
     }
 }

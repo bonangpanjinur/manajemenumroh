@@ -1,179 +1,203 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { ShoppingCart, Plus, Calendar, UserCheck } from 'lucide-react';
+import { Calendar, CreditCard, CheckCircle, Clock, Upload, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Bookings = () => {
-    const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/bookings');
-    
-    const [departures, setDepartures] = useState([]); 
+    const { data, loading, fetchData } = useCRUD('umh/v1/bookings');
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [selectedBooking, setSelectedBooking] = useState(null);
+    const [paymentForm, setPaymentForm] = useState({ amount: 0, payment_method: 'transfer', proof_file: '' });
+    const [uploading, setUploading] = useState(false);
 
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [mode, setMode] = useState('create');
-    
-    // Initial Form sesuai db-schema umh_bookings
-    const initialForm = {
-        booking_date: new Date().toISOString().split('T')[0],
-        total_pax: 1,
-        payment_status: 'unpaid',
-        contact_name: '',
-        contact_phone: '',
-        contact_email: '', // Added matched DB
-        departure_id: '',
-        package_id: '', // Hidden but required for relation
-        total_price: 0,
-        notes: ''
+    const formatMoney = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(n || 0);
+
+    const handlePaymentClick = (booking) => {
+        setSelectedBooking(booking);
+        const remaining = parseFloat(booking.total_price) - parseFloat(booking.total_paid);
+        setPaymentForm({ amount: remaining, payment_method: 'transfer', proof_file: '' });
+        setIsPaymentModalOpen(true);
     };
-    
-    const [form, setForm] = useState(initialForm);
 
-    useEffect(() => {
-        if (isModalOpen) {
-            const loadDeps = async () => {
-                try {
-                    const res = await api.get('umh/v1/departures?status=open');
-                    const list = Array.isArray(res.data) ? res.data : (res.data.data || []);
-                    setDepartures(list);
-                } catch(e) { console.error(e); setDepartures([]); }
-            };
-            loadDeps();
-        }
-    }, [isModalOpen]);
+    // Handler Upload File
+    const handleFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-    // Auto Calc & Set Package ID
-    useEffect(() => {
-        if (form.departure_id) {
-            const selectedDep = departures.find(d => d.id == form.departure_id);
-            if (selectedDep) {
-                const unitPrice = selectedDep.price_quad || 0; 
-                setForm(prev => ({ 
-                    ...prev, 
-                    total_price: unitPrice * (prev.total_pax || 1),
-                    package_name: selectedDep.package_name,
-                    package_id: selectedDep.package_id // Penting: Set Package ID untuk DB
-                }));
+        const formData = new FormData();
+        formData.append('file', file);
+
+        setUploading(true);
+        try {
+            // Upload ke endpoint baru
+            const res = await api.post('umh/v1/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            
+            if (res.data.success) {
+                setPaymentForm(prev => ({ ...prev, proof_file: res.data.url }));
+                toast.success("Bukti berhasil diupload!");
             }
+        } catch (error) {
+            toast.error("Gagal upload bukti: " + error.message);
+        } finally {
+            setUploading(false);
         }
-    }, [form.departure_id, form.total_pax, departures]);
+    };
 
-    const formatIDR = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0);
-
-    const handleSubmit = async (e) => {
+    const handlePaymentSubmit = async (e) => {
         e.preventDefault();
         try {
-            if (mode === 'create') await api.post('umh/v1/bookings', form);
-            else await api.put(`umh/v1/bookings/${form.id}`, form);
-            
-            toast.success("Booking berhasil disimpan");
-            setIsModalOpen(false);
+            const id = selectedBooking.uuid || selectedBooking.id;
+            await api.post(`umh/v1/bookings/${id}/pay`, paymentForm);
+            toast.success("Pembayaran berhasil dicatat & menunggu verifikasi!");
+            setIsPaymentModalOpen(false);
             fetchData();
-        } catch (e) { toast.error("Gagal simpan: " + e.message); }
+        } catch (error) {
+            toast.error("Gagal: " + (error.response?.data?.message || error.message));
+        }
     };
 
     const columns = [
-        { header: 'Booking ID', accessor: 'booking_code', render: r => (
+        { header: 'Kode Booking', accessor: 'booking_code', render: r => (
             <div>
-                <span className="font-mono font-bold text-blue-600 tracking-wider block">{r.booking_code}</span>
-                <span className="text-[10px] text-gray-400">{r.booking_date}</span>
+                <div className="font-bold text-blue-600">{r.booking_code}</div>
+                <div className="text-xs text-gray-500">{r.contact_name}</div>
             </div>
         )},
-        { header: 'Pemesan', accessor: 'contact_name', render: r => (
-            <div>
-                <div className="font-bold text-gray-800 text-sm">{r.contact_name}</div>
-                <div className="text-xs text-gray-500">{r.contact_email}</div>
+        { header: 'Tanggal', accessor: 'booking_date', render: r => (
+            <span className="text-sm text-gray-600 flex items-center gap-1">
+                <Calendar size={12}/> {new Date(r.booking_date).toLocaleDateString('id-ID')}
+            </span>
+        )},
+        { header: 'Total Harga', accessor: 'total_price', render: r => (
+            <div className="font-mono text-sm">
+                <div>{formatMoney(r.total_price)}</div>
+                <div className="text-xs text-gray-400">Pax: {r.total_pax} Org</div>
             </div>
         )},
-        { header: 'Produk Travel', accessor: 'package_info', render: r => (
-            <div className="bg-gray-50 p-2 rounded border border-gray-100 text-xs">
-                <div className="font-bold text-gray-700 mb-1">{r.package_name || 'N/A'}</div>
-                <div className="flex gap-2">
-                    <span className="flex items-center gap-1"><Calendar size={10}/> {r.departure_date}</span>
-                    <span className="flex items-center gap-1"><UserCheck size={10}/> {r.total_pax} Pax</span>
+        { header: 'Status Bayar', accessor: 'payment_status', render: r => {
+            const statusColors = {
+                paid: 'bg-green-100 text-green-700',
+                partial: 'bg-yellow-100 text-yellow-700',
+                dp: 'bg-blue-100 text-blue-700',
+                unpaid: 'bg-red-100 text-red-700'
+            };
+            const paidPercent = (parseFloat(r.total_paid) / parseFloat(r.total_price)) * 100;
+            
+            return (
+                <div>
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${statusColors[r.payment_status] || 'bg-gray-100'}`}>
+                        {r.payment_status}
+                    </span>
+                    <div className="w-24 h-1 bg-gray-200 rounded-full mt-1">
+                        <div className="h-1 bg-green-500 rounded-full" style={{ width: `${paidPercent}%` }}></div>
+                    </div>
                 </div>
+            );
+        }},
+        { header: 'Aksi', accessor: 'id', render: r => (
+            <div className="flex gap-2">
+                {r.payment_status !== 'paid' && (
+                    <button 
+                        onClick={() => handlePaymentClick(r)}
+                        className="px-3 py-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 text-xs font-medium flex items-center gap-1"
+                    >
+                        <CreditCard size={14}/> Bayar
+                    </button>
+                )}
             </div>
-        )},
-        { header: 'Total', accessor: 'total_price', render: r => formatIDR(r.total_price) },
+        )}
     ];
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-br from-emerald-500 to-green-400 rounded-xl text-white shadow-md">
-                        <ShoppingCart size={24} />
-                    </div>
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-800">Transaksi Booking</h1>
+                    <p className="text-gray-500 text-sm">Pantau pesanan masuk dan status pembayaran.</p>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3">
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-lg"><Clock size={24}/></div>
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-800">Booking & Reservasi</h1>
-                        <p className="text-gray-500 text-sm">Pusat transaksi B2C & B2B (Agen).</p>
+                        <div className="text-sm text-gray-500">Menunggu Bayar</div>
+                        <div className="text-xl font-bold text-gray-800">
+                            {data.filter(i => i.payment_status === 'unpaid').length}
+                        </div>
                     </div>
                 </div>
-                <button 
-                    onClick={() => { setForm(initialForm); setMode('create'); setIsModalOpen(true); }}
-                    className="btn-primary flex items-center gap-2 shadow-lg shadow-emerald-200"
-                >
-                    <Plus size={18} /> Booking Baru
-                </button>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-center gap-3">
+                    <div className="p-3 bg-green-50 text-green-600 rounded-lg"><CheckCircle size={24}/></div>
+                    <div>
+                        <div className="text-sm text-gray-500">Lunas (Paid)</div>
+                        <div className="text-xl font-bold text-gray-800">
+                            {data.filter(i => i.payment_status === 'paid').length}
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <CrudTable columns={columns} data={data} loading={loading} onEdit={(item)=>{setForm(item); setMode('edit'); setIsModalOpen(true)}} onDelete={(item) => deleteItem(item.id)} />
+            <div className="bg-white rounded-xl shadow border border-gray-200">
+                <CrudTable columns={columns} data={data} loading={loading} onDelete={() => {}} />
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode === 'create' ? "Input Reservasi Baru" : "Edit Reservasi"}>
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
-                        <h4 className="text-xs font-bold text-blue-800 uppercase mb-3">Data Kontak Pemesan</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="md:col-span-2">
-                                <label className="label">Nama Lengkap</label>
-                                <input className="input-field" value={form.contact_name} onChange={e => setForm({...form, contact_name: e.target.value})} required />
-                            </div>
-                            <div>
-                                <label className="label">No. Telepon / WA</label>
-                                <input className="input-field" value={form.contact_phone} onChange={e => setForm({...form, contact_phone: e.target.value})} required />
-                            </div>
-                            <div>
-                                <label className="label">Email</label>
-                                <input type="email" className="input-field" value={form.contact_email} onChange={e => setForm({...form, contact_email: e.target.value})} required />
-                            </div>
+            <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title={`Konfirmasi Pembayaran`}>
+                <form onSubmit={handlePaymentSubmit} className="space-y-4">
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm">
+                        <div className="flex justify-between font-bold">
+                            <span>Sisa Tagihan:</span>
+                            <span>{formatMoney(parseFloat(selectedBooking?.total_price || 0) - parseFloat(selectedBooking?.total_paid || 0))}</span>
                         </div>
                     </div>
 
                     <div>
-                        <label className="label">Pilih Jadwal Keberangkatan</label>
-                        <select className="input-field" value={form.departure_id} onChange={e => setForm({...form, departure_id: e.target.value})} required>
-                            <option value="">-- Cari Tanggal & Paket --</option>
-                            {departures.map(d => (
-                                <option key={d.id} value={d.id}>
-                                    {d.departure_date} | {d.package_name} | Sisa {d.available_seats} Seat
-                                </option>
-                            ))}
+                        <label className="label">Nominal Pembayaran (Rp)</label>
+                        <input 
+                            type="number" 
+                            className="input-field text-xl font-bold" 
+                            value={paymentForm.amount} 
+                            onChange={e => setPaymentForm({...paymentForm, amount: e.target.value})} 
+                            required 
+                        />
+                    </div>
+
+                    <div>
+                        <label className="label">Metode Pembayaran</label>
+                        <select className="input-field" value={paymentForm.payment_method} onChange={e => setPaymentForm({...paymentForm, payment_method: e.target.value})}>
+                            <option value="transfer">Transfer Bank</option>
+                            <option value="cash">Tunai (Cash)</option>
                         </select>
-                        <p className="text-xs text-gray-400 mt-1">*Paket akan otomatis terpilih berdasarkan jadwal.</p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Jumlah Pax (Jamaah)</label>
-                            <input type="number" min="1" className="input-field" value={form.total_pax} onChange={e => setForm({...form, total_pax: e.target.value})} />
-                        </div>
-                        <div>
-                            <label className="label">Estimasi Total (Rp)</label>
-                            <input type="number" className="input-field font-bold text-gray-800" value={form.total_price} onChange={e => setForm({...form, total_price: e.target.value})} />
-                        </div>
-                    </div>
-                    
+                    {/* FIELD UPLOAD BUKTI */}
                     <div>
-                         <label className="label">Catatan Tambahan</label>
-                         <textarea className="input-field h-20" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}></textarea>
+                        <label className="label">Bukti Transfer (Struk)</label>
+                        <div className="mt-1 flex items-center gap-2">
+                            <label className="btn-secondary cursor-pointer flex items-center gap-2">
+                                <Upload size={16} /> 
+                                {uploading ? "Mengupload..." : "Pilih File"}
+                                <input type="file" className="hidden" onChange={handleFileChange} accept="image/*,application/pdf" />
+                            </label>
+                            {paymentForm.proof_file && (
+                                <a href={paymentForm.proof_file} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 underline flex items-center gap-1">
+                                    <FileText size={12}/> Lihat Bukti
+                                </a>
+                            )}
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1">*Format: JPG, PNG, PDF. Max 2MB.</p>
                     </div>
 
-                    <div className="flex justify-end gap-2 pt-4 border-t mt-4">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary w-full sm:w-auto">Buat Reservasi</button>
+                    <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
+                        <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="btn-secondary">Batal</button>
+                        <button type="submit" disabled={uploading} className="btn-primary">
+                            {uploading ? 'Processing...' : 'Kirim Pembayaran'}
+                        </button>
                     </div>
                 </form>
             </Modal>

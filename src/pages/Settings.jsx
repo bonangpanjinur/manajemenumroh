@@ -1,87 +1,82 @@
-import React from 'react';
-import { Save, Settings as SettingsIcon, Bell, Lock, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import api from '../utils/api';
+import { Save, Settings as SettingsIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Settings = () => {
-    
-    const handleSave = (e) => {
+    const [form, setForm] = useState({
+        company_name: '',
+        company_address: '',
+        company_phone: '',
+        currency_symbol: 'Rp',
+        logo_url: ''
+    });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.get('umh/v1/settings').then(res => {
+            if(res.data.success) setForm(res.data.data);
+            setLoading(false);
+        });
+    }, []);
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        toast.success("Pengaturan disimpan (Simulasi)");
+        try {
+            await api.post('umh/v1/settings', form);
+            toast.success("Pengaturan disimpan!");
+        } catch (e) {
+            toast.error("Gagal simpan");
+        }
     };
 
+    if(loading) return <div className="p-10">Loading...</div>;
+
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gray-100 rounded-lg">
-                        <SettingsIcon className="text-gray-600" size={24} />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-800">Pengaturan</h1>
-                        <p className="text-gray-500 text-sm">Konfigurasi umum aplikasi travel umroh.</p>
-                    </div>
+        <div className="max-w-4xl mx-auto space-y-6">
+            <div className="flex items-center gap-3 mb-6">
+                <div className="p-3 bg-gray-100 rounded-full"><SettingsIcon size={24}/></div>
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-800">Pengaturan Sistem</h1>
+                    <p className="text-gray-500">Konfigurasi profil perusahaan dan aplikasi.</p>
                 </div>
-                <button onClick={handleSave} className="btn-primary flex items-center gap-2">
-                    <Save size={18} /> Simpan Perubahan
-                </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="col-span-1 space-y-2">
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                        <h3 className="font-bold text-gray-700 mb-3 px-2">Menu Pengaturan</h3>
-                        <nav className="space-y-1">
-                            <button className="w-full text-left px-3 py-2 rounded-lg bg-blue-50 text-blue-700 font-medium flex items-center gap-2">
-                                <Globe size={16}/> Umum
-                            </button>
-                            <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center gap-2">
-                                <Lock size={16}/> Keamanan
-                            </button>
-                            <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center gap-2">
-                                <Bell size={16}/> Notifikasi
-                            </button>
-                        </nav>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="label">Nama Perusahaan Travel</label>
+                            <input className="input-field" value={form.company_name} onChange={e => setForm({...form, company_name: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="label">No. Telepon Kantor</label>
+                            <input className="input-field" value={form.company_phone} onChange={e => setForm({...form, company_phone: e.target.value})} />
+                        </div>
                     </div>
-                </div>
 
-                <div className="col-span-1 md:col-span-2 space-y-6">
-                    <form onSubmit={handleSave} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-6">
-                        <div>
-                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Informasi Travel</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label">Nama Perusahaan</label>
-                                    <input type="text" className="input-field" defaultValue="Travel Umroh Berkah" />
-                                </div>
-                                <div>
-                                    <label className="label">Nomor Izin PPIU</label>
-                                    <input type="text" className="input-field" defaultValue="PPIU/2024/001" />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="label">Alamat Kantor</label>
-                                    <textarea className="input-field" rows="3" defaultValue="Jl. Sudirman No. 1, Jakarta"></textarea>
-                                </div>
-                            </div>
-                        </div>
+                    <div>
+                        <label className="label">Alamat Lengkap</label>
+                        <textarea className="input-field" rows="3" value={form.company_address} onChange={e => setForm({...form, company_address: e.target.value})}></textarea>
+                    </div>
 
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Keuangan & Mata Uang</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="label">Mata Uang Default</label>
-                                    <select className="input-field">
-                                        <option>IDR (Rupiah)</option>
-                                        <option>USD (US Dollar)</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="label">Kurs Default (USD ke IDR)</label>
-                                    <input type="number" className="input-field" defaultValue="15500" />
-                                </div>
-                            </div>
+                            <label className="label">Mata Uang (Simbol)</label>
+                            <input className="input-field" value={form.currency_symbol} onChange={e => setForm({...form, currency_symbol: e.target.value})} />
                         </div>
-                    </form>
-                </div>
+                        <div>
+                            <label className="label">URL Logo Perusahaan</label>
+                            <input className="input-field" value={form.logo_url} onChange={e => setForm({...form, logo_url: e.target.value})} placeholder="https://..." />
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t flex justify-end">
+                        <button type="submit" className="btn-primary flex items-center gap-2 px-6">
+                            <Save size={18}/> Simpan Perubahan
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     );

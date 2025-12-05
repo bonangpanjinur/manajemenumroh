@@ -1,252 +1,126 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Plane, Building, MapPin, Plus, Trash2, Edit } from 'lucide-react';
+import { Building, Plane, Plus, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// Komponen Tab Button Sederhana
-const TabButton = ({ active, onClick, icon: Icon, label }) => (
-    <button
-        onClick={onClick}
-        className={`flex items-center gap-2 px-6 py-4 border-b-2 font-medium transition-all duration-200 ${
-            active 
-            ? 'border-blue-600 text-blue-600 bg-blue-50' 
-            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-        }`}
-    >
-        <Icon size={18} />
-        {label}
-    </button>
-);
-
 const Masters = () => {
-    const [activeTab, setActiveTab] = useState('airlines');
-    
-    // Kita gunakan state endpoint dinamis agar useCRUD bisa dipakai ulang
-    const getEndpoint = (tab) => {
-        if (tab === 'airlines') return 'umh/v1/masters/airlines'; // Sesuaikan path API Anda
-        if (tab === 'hotels') return 'umh/v1/masters/hotels';
-        return 'umh/v1/masters/locations';
-    };
-
-    // Inisialisasi useCRUD
-    // Catatan: Jika endpoint berubah, kita perlu trigger fetchData manual di useEffect bawah
-    const { data, loading, fetchData, deleteItem } = useCRUD(getEndpoint(activeTab));
-
+    const [activeTab, setActiveTab] = useState('hotels'); // hotels | airlines
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [modalMode, setModalMode] = useState('create');
-    const [formData, setFormData] = useState({});
+    const [mode, setMode] = useState('create');
+    const [form, setForm] = useState({});
 
-    // Fetch data ulang saat tab berubah
-    useEffect(() => {
-        fetchData();
-        // Reset form saat ganti tab
-        setFormData({});
-    }, [activeTab]);
+    // Hooks dinamis berdasarkan tab
+    const endpoint = activeTab === 'hotels' ? 'umh/v1/hotels' : 'umh/v1/airlines';
+    const { data, loading, fetchData, deleteItem } = useCRUD(endpoint);
 
-    // Konfigurasi Kolom Tabel Berdasarkan Tab
-    const getColumns = () => {
-        if (activeTab === 'airlines') {
-            return [
-                { header: 'Nama Maskapai', accessor: 'name', render: r => <span className="font-bold">{r.name}</span> },
-                { header: 'Kode', accessor: 'code', render: r => <span className="font-mono bg-gray-100 px-2 py-1 rounded text-xs">{r.code}</span> },
-                { header: 'Tipe', accessor: 'type' },
-                { header: 'Status', accessor: 'status', render: r => <span className={`text-xs px-2 py-1 rounded ${r.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{r.status}</span> },
-            ];
-        } else if (activeTab === 'hotels') {
-            return [
-                { header: 'Nama Hotel', accessor: 'name', render: r => <span className="font-bold">{r.name}</span> },
-                { header: 'Kota', accessor: 'city' },
-                { header: 'Rating', accessor: 'rating', render: r => <span className="text-yellow-500">{'★'.repeat(r.rating || 5)}</span> },
-                { header: 'Jarak (m)', accessor: 'distance_to_haram' },
-            ];
-        } else {
-            return [
-                { header: 'Nama Lokasi', accessor: 'name', render: r => <span className="font-bold">{r.name}</span> },
-                { header: 'Negara', accessor: 'country' },
-                { header: 'Tipe', accessor: 'type', render: r => <span className="uppercase text-xs font-bold">{r.type}</span> },
-            ];
-        }
-    };
-
-    // Handle Submit Universal
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const endpoint = getEndpoint(activeTab);
-        
         try {
-            if (modalMode === 'create') {
-                await api.post(endpoint, formData);
+            if (mode === 'create') {
+                await api.post(endpoint, form);
                 toast.success("Data berhasil ditambahkan");
             } else {
-                await api.put(`${endpoint}/${formData.id}`, formData);
+                const id = form.uuid || form.id;
+                await api.put(`${endpoint}/${id}`, form);
                 toast.success("Data berhasil diperbarui");
             }
             setIsModalOpen(false);
             fetchData();
-        } catch (error) {
-            toast.error("Gagal menyimpan: " + (error.message || "Error server"));
-        }
+        } catch (e) { toast.error("Gagal: " + e.message); }
     };
 
     const handleEdit = (item) => {
-        setFormData(item);
-        setModalMode('edit');
+        setForm(item);
+        setMode('edit');
         setIsModalOpen(true);
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Yakin hapus data ini?")) {
-            await deleteItem(id);
-        }
-    };
+    // Kolom Dinamis
+    const hotelColumns = [
+        { header: 'Nama Hotel', accessor: 'name', render: r => <span className="font-bold">{r.name}</span> },
+        { header: 'Kota', accessor: 'city', render: r => <span className="bg-gray-100 px-2 py-1 rounded text-xs">{r.city}</span> },
+        { header: 'Bintang', accessor: 'rating', render: r => <span className="text-yellow-500">{'★'.repeat(r.rating)}</span> },
+        { header: 'Jarak Haram', accessor: 'distance_to_haram', render: r => <span className="text-xs text-gray-500">{r.distance_to_haram} m</span> },
+    ];
 
-    // Render Form Fields Berdasarkan Tab
-    const renderFormFields = () => {
-        if (activeTab === 'airlines') {
-            return (
-                <>
-                    <div>
-                        <label className="label">Nama Maskapai</label>
-                        <input className="input-field" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Kode (IATA)</label>
-                            <input className="input-field" value={formData.code || ''} onChange={e => setFormData({...formData, code: e.target.value})} placeholder="Contoh: GA" />
-                        </div>
-                        <div>
-                            <label className="label">Tipe</label>
-                            <select className="input-field" value={formData.type || 'International'} onChange={e => setFormData({...formData, type: e.target.value})}>
-                                <option value="Domestic">Domestik</option>
-                                <option value="International">Internasional</option>
-                            </select>
-                        </div>
-                    </div>
-                </>
-            );
-        } else if (activeTab === 'hotels') {
-            return (
-                <>
-                    <div>
-                        <label className="label">Nama Hotel</label>
-                        <input className="input-field" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Kota</label>
-                            <select className="input-field" value={formData.city || 'Makkah'} onChange={e => setFormData({...formData, city: e.target.value})}>
-                                <option value="Makkah">Makkah</option>
-                                <option value="Madinah">Madinah</option>
-                                <option value="Jeddah">Jeddah</option>
-                                <option value="Lainnya">Lainnya</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="label">Rating Bintang</label>
-                            <select className="input-field" value={formData.rating || '5'} onChange={e => setFormData({...formData, rating: e.target.value})}>
-                                <option value="3">3 Bintang</option>
-                                <option value="4">4 Bintang</option>
-                                <option value="5">5 Bintang</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="label">Jarak ke Haram (meter)</label>
-                        <input type="number" className="input-field" value={formData.distance_to_haram || 0} onChange={e => setFormData({...formData, distance_to_haram: e.target.value})} />
-                    </div>
-                </>
-            );
-        } else {
-            return (
-                <>
-                    <div>
-                        <label className="label">Nama Lokasi / Bandara</label>
-                        <input className="input-field" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} required />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Tipe</label>
-                            <select className="input-field" value={formData.type || 'city'} onChange={e => setFormData({...formData, type: e.target.value})}>
-                                <option value="city">Kota</option>
-                                <option value="airport">Bandara</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="label">Negara</label>
-                            <input className="input-field" value={formData.country || 'Saudi Arabia'} onChange={e => setFormData({...formData, country: e.target.value})} />
-                        </div>
-                    </div>
-                </>
-            );
-        }
-    };
+    const airlineColumns = [
+        { header: 'Maskapai', accessor: 'name', render: r => <span className="font-bold">{r.name}</span> },
+        { header: 'Kode', accessor: 'code', render: r => <span className="font-mono bg-blue-50 text-blue-600 px-2 py-1 rounded">{r.code}</span> },
+        { header: 'Tipe', accessor: 'type', render: r => <span className="text-xs">{r.type}</span> },
+    ];
 
     return (
         <div className="space-y-6">
-            {/* Header Manual (Tanpa Layout Wrapper) */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Data Master</h1>
-                    <p className="text-gray-500 text-sm">Kelola referensi Maskapai, Hotel, dan Lokasi.</p>
+                    <h1 className="text-2xl font-bold text-gray-800">Master Data</h1>
+                    <p className="text-gray-500 text-sm">Database referensi Hotel dan Maskapai.</p>
                 </div>
-                <button 
-                    onClick={() => {
-                        setModalMode('create');
-                        setFormData({});
-                        setIsModalOpen(true);
-                    }} 
-                    className="btn-primary flex items-center gap-2"
-                >
-                    <Plus size={18} /> Tambah {activeTab === 'airlines' ? 'Maskapai' : activeTab === 'hotels' ? 'Hotel' : 'Lokasi'}
+                <button onClick={() => { setMode('create'); setForm({}); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2">
+                    <Plus size={18}/> Tambah {activeTab === 'hotels' ? 'Hotel' : 'Maskapai'}
                 </button>
             </div>
 
-            {/* Tab Navigation */}
-            <div className="bg-white rounded-t-xl border-b border-gray-200 px-4 flex overflow-x-auto shadow-sm">
-                <TabButton 
-                    active={activeTab === 'airlines'} 
-                    onClick={() => setActiveTab('airlines')} 
-                    icon={Plane} 
-                    label="Maskapai" 
-                />
-                <TabButton 
-                    active={activeTab === 'hotels'} 
-                    onClick={() => setActiveTab('hotels')} 
-                    icon={Building} 
-                    label="Hotel" 
-                />
-                <TabButton 
-                    active={activeTab === 'locations'} 
-                    onClick={() => setActiveTab('locations')} 
-                    icon={MapPin} 
-                    label="Lokasi / Bandara" 
-                />
+            {/* Tabs */}
+            <div className="flex border-b bg-white rounded-t-xl px-4 pt-2 shadow-sm">
+                <button 
+                    onClick={() => setActiveTab('hotels')}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'hotels' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
+                >
+                    <Building size={16}/> Hotel
+                </button>
+                <button 
+                    onClick={() => setActiveTab('airlines')}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'airlines' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
+                >
+                    <Plane size={16}/> Maskapai
+                </button>
             </div>
 
-            {/* Content Area */}
-            <div className="bg-white rounded-b-xl shadow-sm border border-gray-200 border-t-0 p-1">
+            <div className="bg-white rounded-b-xl shadow border border-gray-200 border-t-0">
                 <CrudTable 
-                    columns={getColumns()} 
+                    columns={activeTab === 'hotels' ? hotelColumns : airlineColumns} 
                     data={data} 
-                    loading={loading}
-                    onEdit={handleEdit}
-                    onDelete={(item) => handleDelete(item.id)}
+                    loading={loading} 
+                    onEdit={handleEdit} 
+                    onDelete={deleteItem} 
                 />
             </div>
 
-            {/* Modal Form Dinamis */}
-            <Modal 
-                isOpen={isModalOpen} 
-                onClose={() => setIsModalOpen(false)} 
-                title={`${modalMode === 'create' ? 'Tambah' : 'Edit'} ${activeTab === 'airlines' ? 'Maskapai' : activeTab === 'hotels' ? 'Hotel' : 'Lokasi'}`}
-            >
+            {/* Modal Dinamis */}
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode === 'create' ? "Tambah Data" : "Edit Data"}>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    {renderFormFields()}
-                    
-                    <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-gray-100">
+                    {activeTab === 'hotels' ? (
+                        <>
+                            <div><label className="label">Nama Hotel</label><input className="input-field" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} required /></div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="label">Kota</label>
+                                    <select className="input-field" value={form.city || 'Makkah'} onChange={e => setForm({...form, city: e.target.value})}>
+                                        <option value="Makkah">Makkah</option>
+                                        <option value="Madinah">Madinah</option>
+                                        <option value="Jeddah">Jeddah</option>
+                                    </select>
+                                </div>
+                                <div><label className="label">Rating Bintang</label><input type="number" max="7" className="input-field" value={form.rating || 5} onChange={e => setForm({...form, rating: e.target.value})} /></div>
+                            </div>
+                            <div><label className="label">Jarak ke Haram (m)</label><input type="number" className="input-field" value={form.distance_to_haram || 0} onChange={e => setForm({...form, distance_to_haram: e.target.value})} /></div>
+                        </>
+                    ) : (
+                        <>
+                            <div><label className="label">Nama Maskapai</label><input className="input-field" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} required /></div>
+                            <div><label className="label">Kode IATA</label><input className="input-field uppercase" maxLength="3" value={form.code || ''} onChange={e => setForm({...form, code: e.target.value})} placeholder="Ex: GA" /></div>
+                            <div><label className="label">Tipe</label>
+                                <select className="input-field" value={form.type || 'International'} onChange={e => setForm({...form, type: e.target.value})}>
+                                    <option value="International">International</option>
+                                    <option value="Domestic">Domestic</option>
+                                </select>
+                            </div>
+                        </>
+                    )}
+                    <div className="flex justify-end gap-2 pt-4 border-t">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
                         <button type="submit" className="btn-primary">Simpan</button>
                     </div>

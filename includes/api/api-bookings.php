@@ -1,123 +1,179 @@
 <?php
-defined('ABSPATH') || exit;
+require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-class UMH_API_Bookings {
+class UMH_API_Bookings extends UMH_CRUD_Controller {
+
+    public function __construct() {
+        parent::__construct('umh_bookings');
+    }
+
     public function register_routes() {
-        $base = 'umh/v1';
-        $endpoint = '/bookings';
-
-        register_rest_route($base, $endpoint, [
+        parent::register_routes();
+        
+        // Endpoint Cek Status
+        register_rest_route('umh/v1', '/bookings/status/(?P<code_or_uuid>[a-zA-Z0-9-]+)', [
             'methods' => 'GET',
-            'callback' => [$this, 'get_items'],
-            'permission_callback' => function() { return current_user_can('edit_posts'); }
+            'callback' => [$this, 'get_booking_status'],
+            'permission_callback' => '__return_true',
         ]);
 
-        register_rest_route($base, $endpoint, [
+        // Endpoint Pembayaran Manual (Verifikasi Transfer)
+        register_rest_route('umh/v1', '/bookings/(?P<id>[a-zA-Z0-9-]+)/pay', [
             'methods' => 'POST',
-            'callback' => [$this, 'create_item'],
-            'permission_callback' => function() { return current_user_can('edit_posts'); }
-        ]);
-
-        register_rest_route($base, $endpoint . '/(?P<id>\d+)', [
-            'methods' => 'PUT',
-            'callback' => [$this, 'update_item'],
-            'permission_callback' => function() { return current_user_can('edit_posts'); }
-        ]);
-        
-        register_rest_route($base, $endpoint . '/(?P<id>\d+)', [
-            'methods' => 'DELETE',
-            'callback' => [$this, 'delete_item'],
-            'permission_callback' => function() { return current_user_can('edit_posts'); }
+            'callback' => [$this, 'record_payment'],
+            'permission_callback' => '__return_true', // Nanti batasi ke Admin/Finance
         ]);
     }
 
-    public function get_items($request) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'umh_bookings';
-        
-        $page = isset($request['page']) ? intval($request['page']) : 1;
-        $per_page = isset($request['per_page']) ? intval($request['per_page']) : 10;
-        $offset = ($page - 1) * $per_page;
-        $search = isset($request['search']) ? sanitize_text_field($request['search']) : '';
-
-        // JOIN LENGKAP
-        $query = "SELECT b.*, 
-                  p.name as package_name, 
-                  d.departure_date, 
-                  d.return_date
-                  FROM $table b
-                  LEFT JOIN {$wpdb->prefix}umh_packages p ON b.package_id = p.id
-                  LEFT JOIN {$wpdb->prefix}umh_departures d ON b.departure_id = d.id
-                  WHERE 1=1";
-
-        if (!empty($search)) {
-            $query .= $wpdb->prepare(" AND (b.booking_code LIKE %s OR b.contact_name LIKE %s)", "%$search%", "%$search%");
-        }
-
-        $query .= " ORDER BY b.created_at DESC LIMIT $offset, $per_page";
-
-        $items = $wpdb->get_results($query);
-        $total_items = $wpdb->get_var("SELECT COUNT(*) FROM $table");
-
-        return rest_ensure_response([
-            'items' => $items,
-            'page' => $page,
-            'totalPages' => ceil($total_items / $per_page),
-            'totalItems' => $total_items
-        ]);
-    }
-
+    /**
+     * Override Create: Booking + Auto Invoice
+     */
     public function create_item($request) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'umh_bookings';
         $data = $request->get_json_params();
 
-        if (empty($data['booking_code'])) {
-            $data['booking_code'] = 'BK/' . date('ym') . '/' . rand(1000, 9999);
+        // 1. Validasi & Hitung Harga (Sama seperti sebelumnya)
+        $data['uuid'] = $this->generate_uuid();
+        $data['booking_code'] = $this->generate_booking_code();
+        $data['booking_date'] = current_time('mysql');
+        $data['status'] = 'pending';
+        $data['payment_status'] = 'unpaid';
+
+        if (empty($data['departure_id'])) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Departure ID wajib diisi'], 400);
         }
 
-        // Sanitasi Data Lengkap Sesuai DB Schema
-        $safe_data = [
-            'booking_code' => sanitize_text_field($data['booking_code']),
-            'contact_name' => sanitize_text_field($data['contact_name']),
-            'contact_phone' => sanitize_text_field($data['contact_phone']),
-            'contact_email' => sanitize_email($data['contact_email']), // Perbaikan: Field ini sebelumnya hilang
-            'package_id' => intval($data['package_id']),
-            'departure_id' => intval($data['departure_id']),
-            'total_pax' => intval($data['total_pax']),
-            'total_price' => floatval($data['total_price']),
-            'payment_status' => sanitize_text_field($data['payment_status']),
-            'booking_date' => $data['booking_date'],
-            'notes' => sanitize_textarea_field($data['notes'] ?? ''),
+        $departure = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->db->prefix}umh_departures WHERE id = %d", $data['departure_id']));
+        
+        if (!$departure || $departure->available_seats < ($data['total_pax'] ?? 1)) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Kuota penuh.'], 400);
+        }
+
+        $base_price = floatval($departure->price_quad); 
+        $subtotal = $base_price * intval($data['total_pax']);
+        $discount = 0; // Logika diskon bisa ditambah di sini
+        
+        $data['subtotal_price'] = $subtotal;
+        $data['discount_amount'] = $discount;
+        $data['total_price'] = $subtotal - $discount;
+        $data['total_paid'] = 0;
+
+        // 2. Simpan Booking
+        $format = array_fill(0, count($data), '%s');
+        $this->db->insert($this->table_name, $data, $format);
+        $booking_id = $this->db->insert_id;
+
+        // 3. Kurangi Kuota
+        $this->db->query($this->db->prepare(
+            "UPDATE {$this->db->prefix}umh_departures SET available_seats = available_seats - %d WHERE id = %d",
+            $data['total_pax'], $data['departure_id']
+        ));
+
+        // 4. AUTO-GENERATE INVOICE (Tagihan Pertama)
+        $this->generate_invoice($booking_id, $data['uuid'], $data['total_price']);
+
+        $new_booking = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $booking_id));
+        return new WP_REST_Response(['success' => true, 'data' => $new_booking], 201);
+    }
+
+    /**
+     * Helper: Buat Invoice Otomatis
+     */
+    private function generate_invoice($booking_id, $booking_uuid, $amount) {
+        $invoice_code = 'INV-' . date('Ymd') . '-' . strtoupper(substr($booking_uuid, 0, 4));
+        
+        $this->db->insert($this->db->prefix . 'umh_invoices', [
+            'uuid' => $this->generate_uuid(),
+            'invoice_number' => $invoice_code,
+            'booking_id' => $booking_id,
+            'amount' => $amount,
+            'due_date' => date('Y-m-d', strtotime('+3 days')), // Jatuh tempo 3 hari
+            'status' => 'unpaid',
+            'description' => 'Tagihan Booking Baru',
             'created_at' => current_time('mysql')
-        ];
+        ]);
+    }
 
-        $result = $wpdb->insert($table, $safe_data);
-
-        if ($result === false) {
-            return new WP_Error('db_error', 'Gagal menyimpan booking: ' . $wpdb->last_error, ['status' => 500]);
+    /**
+     * Custom Endpoint: Catat Pembayaran (Manual Transfer)
+     */
+    public function record_payment($request) {
+        $id = $request->get_param('id'); // Bisa ID atau UUID Booking
+        $data = $request->get_json_params();
+        
+        // Cari Booking
+        if (is_numeric($id)) {
+            $booking = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $id));
+        } else {
+            $booking = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE uuid = %s", $id));
         }
 
-        return rest_ensure_response(['id' => $wpdb->insert_id, 'message' => 'Booking Created']);
+        if (!$booking) return new WP_REST_Response(['message' => 'Booking tidak ditemukan'], 404);
+
+        $amount_paid = floatval($data['amount']);
+        
+        // 1. Simpan ke Tabel Payments
+        $this->db->insert($this->db->prefix . 'umh_payments', [
+            'uuid' => $this->generate_uuid(),
+            'booking_id' => $booking->id,
+            'amount' => $amount_paid,
+            'payment_date' => current_time('mysql'),
+            'payment_method' => $data['payment_method'] ?? 'transfer',
+            'status' => 'verified', // Anggap admin yang input sudah verifikasi
+            'verified_by' => 1, // Default Admin ID
+            'created_at' => current_time('mysql')
+        ]);
+
+        // 2. Update Total Paid di Booking
+        $new_total_paid = floatval($booking->total_paid) + $amount_paid;
+        $new_status = 'partial';
+        if ($new_total_paid >= floatval($booking->total_price)) {
+            $new_status = 'paid';
+        } elseif ($new_total_paid > 0) {
+            $new_status = 'dp'; // Jika baru bayar sebagian kecil
+        }
+
+        $this->db->update($this->table_name, [
+            'total_paid' => $new_total_paid,
+            'payment_status' => $new_status,
+            'status' => ($new_status === 'paid') ? 'confirmed' : $booking->status
+        ], ['id' => $booking->id]);
+
+        // 3. Update Status Invoice (Cari invoice unpaid terakhir)
+        $invoice = $this->db->get_row($this->db->prepare(
+            "SELECT * FROM {$this->db->prefix}umh_invoices WHERE booking_id = %d AND status != 'paid' ORDER BY created_at DESC LIMIT 1",
+            $booking->id
+        ));
+
+        if ($invoice) {
+            // Logika sederhana: jika bayar >= tagihan invoice, tandai paid
+            if ($amount_paid >= floatval($invoice->amount)) {
+                $this->db->update($this->db->prefix . 'umh_invoices', ['status' => 'paid'], ['id' => $invoice->id]);
+            } else {
+                $this->db->update($this->db->prefix . 'umh_invoices', ['status' => 'partial'], ['id' => $invoice->id]);
+            }
+        }
+
+        // 4. Catat ke Jurnal Keuangan (Finance)
+        $this->db->insert($this->db->prefix . 'umh_finance', [
+            'transaction_date' => current_time('mysql'),
+            'type' => 'income',
+            'category' => 'Pembayaran Paket',
+            'title' => 'Pembayaran Booking #' . $booking->booking_code,
+            'amount' => $amount_paid,
+            'description' => 'Pembayaran diterima via ' . ($data['payment_method'] ?? 'transfer'),
+            'reference_id' => $booking->id,
+            'reference_type' => 'booking',
+            'created_at' => current_time('mysql')
+        ]);
+
+        return new WP_REST_Response(['success' => true, 'message' => 'Pembayaran berhasil dicatat'], 200);
     }
 
-    public function update_item($request) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'umh_bookings';
-        $id = $request['id'];
-        $data = $request->get_json_params();
-
-        // Hapus field relasi virtual agar tidak error saat update
-        unset($data['id'], $data['package_name'], $data['departure_date'], $data['return_date']);
-
-        $wpdb->update($table, $data, ['id' => $id]);
-        return rest_ensure_response(['success' => true]);
-    }
-
-    public function delete_item($request) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'umh_bookings';
-        $wpdb->delete($table, ['id' => $request['id']]);
-        return rest_ensure_response(['success' => true]);
+    // ... (Helper generate_booking_code & generate_uuid sama seperti sebelumnya) ...
+    private function generate_booking_code() {
+        $prefix = 'BK'; 
+        $date = date('ym'); 
+        $random = strtoupper(substr(md5(uniqid()), 0, 5));
+        return $prefix . $date . $random;
     }
 }

@@ -1,53 +1,33 @@
 <?php
-/**
- * API Handler untuk Manajemen Role & Capabilities
- */
+require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-if (!defined('ABSPATH')) {
-    exit;
-}
-
-class UMH_API_Roles {
-    private $table_name;
+class UMH_API_Roles extends UMH_CRUD_Controller {
 
     public function __construct() {
-        global $wpdb;
-        $this->table_name = $wpdb->prefix . 'umh_roles';
+        parent::__construct('umh_roles');
     }
 
-    public function register_routes() {
-        register_rest_route('umh/v1', '/roles', [
-            'methods' => 'GET', 'callback' => [$this, 'get_roles'], 'permission_callback' => [$this, 'check_permission']
-        ]);
-        register_rest_route('umh/v1', '/roles', [
-            'methods' => 'POST', 'callback' => [$this, 'create_role'], 'permission_callback' => [$this, 'check_permission']
-        ]);
-    }
-
-    public function check_permission() {
-        return current_user_can('manage_options');
-    }
-
-    public function get_roles($request) {
-        global $wpdb;
-        $items = $wpdb->get_results("SELECT * FROM {$this->table_name}");
-        // Decode JSON capabilities
-        foreach ($items as $item) {
-            $item->capabilities = json_decode($item->capabilities);
+    // Menggunakan standar CRUD dari parent controller
+    // Bisa ditambahkan validasi khusus jika perlu, misal mencegah hapus role Administrator
+    
+    public function delete_item($request) {
+        $id = $request->get_param('id');
+        
+        // Cek ID atau UUID
+        $role = $this->get_record_by_id_or_uuid($id);
+        
+        if ($role && $role->role_key === 'administrator') {
+            return new WP_REST_Response(['message' => 'Role Administrator tidak boleh dihapus'], 403);
         }
-        return new WP_REST_Response(['success' => true, 'data' => $items], 200);
+        
+        return parent::delete_item($request);
     }
 
-    public function create_role($request) {
-        global $wpdb;
-        $p = $request->get_json_params();
-        
-        $wpdb->insert($this->table_name, [
-            'role_key' => sanitize_title($p['role_name']),
-            'role_name' => sanitize_text_field($p['role_name']),
-            'capabilities' => json_encode($p['capabilities'] ?? []) // Array of permissions
-        ]);
-        
-        return new WP_REST_Response(['success' => true, 'id' => $wpdb->insert_id], 201);
+    private function get_record_by_id_or_uuid($id) {
+        if (is_numeric($id)) {
+            return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $id));
+        } else {
+            return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE uuid = %s", $id));
+        }
     }
 }

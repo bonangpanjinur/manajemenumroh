@@ -3,204 +3,111 @@ import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Package, Truck, ClipboardList, Plus, AlertTriangle } from 'lucide-react';
+import { Package, UserCheck, Search, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Logistics = () => {
-    const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' or 'distribution'
+    // Tab 1: Inventory Barang
+    const { data: items, loading, fetchData, deleteItem } = useCRUD('umh/v1/inventory');
     
-    // Switch endpoint based on tab
-    const getEndpoint = () => activeTab === 'inventory' ? 'umh/v1/logistics/items' : 'umh/v1/logistics/distribution';
-    const { data, loading, fetchData, deleteItem } = useCRUD(getEndpoint());
-
+    // Tab 2: Riwayat Distribusi
+    const [history, setHistory] = useState([]);
+    
+    const [activeTab, setActiveTab] = useState('inventory');
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [mode, setMode] = useState('create');
-    const [form, setForm] = useState({});
+    const [isDistributeModalOpen, setIsDistributeModalOpen] = useState(false);
+    const [form, setForm] = useState({ item_name: '', stock_qty: 0, category: 'perlengkapan' });
+    const [distForm, setDistForm] = useState({ booking_id: '', jamaah_id: '', item_id: '', qty: 1 });
 
-    // Refetch when tab changes
-    useEffect(() => { 
-        setForm({}); // Reset form
-        fetchData(); 
+    // Load History saat tab pindah
+    useEffect(() => {
+        if(activeTab === 'distribution') {
+            api.get('umh/v1/logistics/distribution-history').then(res => {
+                if(res.data.success) setHistory(res.data.data);
+            });
+        }
     }, [activeTab]);
 
-    const handleSubmit = async (e) => {
+    const handleCreateItem = async (e) => {
         e.preventDefault();
         try {
-            const endpoint = getEndpoint();
-            if (mode === 'create') await api.post(endpoint, form);
-            else await api.put(`${endpoint}/${form.id}`, form);
-            
-            toast.success("Data berhasil disimpan");
+            await api.post('umh/v1/inventory', form);
+            toast.success("Barang ditambahkan");
             setIsModalOpen(false);
             fetchData();
-        } catch (e) { toast.error("Gagal simpan: " + e.message); }
+        } catch(e) { toast.error("Gagal"); }
     };
 
-    // Columns Definition
-    const getColumns = () => {
-        if (activeTab === 'inventory') {
-            return [
-                { header: 'Kode Barang', accessor: 'item_code', render: r => <code className="bg-gray-100 px-2 py-1 rounded text-xs">{r.item_code}</code> },
-                { header: 'Nama Barang', accessor: 'item_name', render: r => <span className="font-bold text-gray-800">{r.item_name}</span> },
-                { header: 'Kategori', accessor: 'category' },
-                { header: 'Stok', accessor: 'stock_qty', render: r => (
-                    <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${r.stock_qty < r.min_stock_alert ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                            {r.stock_qty} Pcs
-                        </span>
-                        {r.stock_qty < r.min_stock_alert && <AlertTriangle size={14} className="text-red-500" title="Stok Menipis!"/>}
-                    </div>
-                )},
-                { header: 'Harga Satuan', accessor: 'unit_cost', render: r => <span className="text-xs text-gray-500">Rp {Number(r.unit_cost).toLocaleString()}</span> },
-            ];
-        } else {
-            return [
-                { header: 'Nama Jamaah', accessor: 'jamaah_name', render: r => <div className="font-bold">{r.jamaah_name}</div> },
-                { header: 'Barang', accessor: 'item_name' },
-                { header: 'Qty', accessor: 'qty', render: r => <span className="font-mono">{r.qty}</span> },
-                { header: 'Tanggal Ambil', accessor: 'taken_date', render: r => <span className="text-xs text-gray-500">{r.taken_date || '-'}</span> },
-                { header: 'Status', accessor: 'status', render: r => (
-                    <span className={`px-2 py-1 rounded text-xs uppercase font-bold ${r.status==='taken'?'bg-green-100 text-green-700':r.status==='shipped'?'bg-blue-100 text-blue-700':'bg-yellow-100 text-yellow-800'}`}>
-                        {r.status}
-                    </span>
-                )},
-            ];
-        }
+    const handleDistribute = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post('umh/v1/logistics/distribute', distForm);
+            toast.success("Barang berhasil didistribusikan");
+            setIsDistributeModalOpen(false);
+            // Refresh stok dan history
+            fetchData(); 
+            if(activeTab === 'distribution') {
+                const res = await api.get('umh/v1/logistics/distribution-history');
+                setHistory(res.data.data);
+            }
+        } catch(e) { toast.error("Gagal: " + e.response?.data?.message); }
     };
 
-    // Form Renderer
-    const renderForm = () => {
-        if (activeTab === 'inventory') {
-            return (
-                <>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Kode Barang</label>
-                            <input className="input-field" value={form.item_code || ''} onChange={e => setForm({...form, item_code: e.target.value})} placeholder="INV-001" required />
-                        </div>
-                        <div>
-                            <label className="label">Kategori</label>
-                            <select className="input-field" value={form.category || 'perlengkapan'} onChange={e => setForm({...form, category: e.target.value})}>
-                                <option value="perlengkapan">Perlengkapan Umroh</option>
-                                <option value="dokumen">Dokumen</option>
-                                <option value="souvenir">Souvenir/Hadiah</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="label">Nama Barang</label>
-                        <input className="input-field" value={form.item_name || ''} onChange={e => setForm({...form, item_name: e.target.value})} required placeholder="Contoh: Koper Fiber 24 Inch" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                        <div>
-                            <label className="label">Stok Awal</label>
-                            <input type="number" className="input-field" value={form.stock_qty || 0} onChange={e => setForm({...form, stock_qty: e.target.value})} />
-                        </div>
-                        <div>
-                            <label className="label">Min. Alert</label>
-                            <input type="number" className="input-field" value={form.min_stock_alert || 10} onChange={e => setForm({...form, min_stock_alert: e.target.value})} />
-                        </div>
-                        <div>
-                            <label className="label">Harga Beli</label>
-                            <input type="number" className="input-field" value={form.unit_cost || 0} onChange={e => setForm({...form, unit_cost: e.target.value})} />
-                        </div>
-                    </div>
-                </>
-            );
-        } else {
-            return (
-                <>
-                    <div>
-                        <label className="label">Pilih Jamaah / Booking ID</label>
-                        <input className="input-field" type="number" placeholder="Masukkan ID Jamaah" value={form.jamaah_id || ''} onChange={e => setForm({...form, jamaah_id: e.target.value})} required />
-                    </div>
-                    <div>
-                        <label className="label">Barang yang Diambil</label>
-                        <select className="input-field" value={form.item_id || ''} onChange={e => setForm({...form, item_id: e.target.value})} required>
-                            <option value="">-- Pilih Barang --</option>
-                            <option value="1">Koper Set</option>
-                            <option value="2">Kain Ihram</option>
-                            <option value="3">Batik Seragam</option>
-                        </select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Jumlah (Qty)</label>
-                            <input type="number" className="input-field" value={form.qty || 1} onChange={e => setForm({...form, qty: e.target.value})} />
-                        </div>
-                        <div>
-                            <label className="label">Status Pengambilan</label>
-                            <select className="input-field" value={form.status || 'pending'} onChange={e => setForm({...form, status: e.target.value})}>
-                                <option value="pending">Disiapkan</option>
-                                <option value="ready">Siap Ambil</option>
-                                <option value="taken">Sudah Diambil</option>
-                                <option value="shipped">Dikirim Ekspedisi</option>
-                            </select>
-                        </div>
-                    </div>
-                    {form.status === 'shipped' && (
-                         <div>
-                            <label className="label">Nomor Resi Pengiriman</label>
-                            <input className="input-field" value={form.shipping_resi || ''} onChange={e => setForm({...form, shipping_resi: e.target.value})} />
-                        </div>
-                    )}
-                </>
-            );
-        }
-    };
+    const invColumns = [
+        { header: 'Nama Barang', accessor: 'item_name', render: r => <span className="font-bold">{r.item_name}</span> },
+        { header: 'Kategori', accessor: 'category', render: r => <span className="capitalize bg-gray-100 px-2 py-1 rounded text-xs">{r.category}</span> },
+        { header: 'Stok', accessor: 'stock_qty', render: r => <span className={`font-mono font-bold ${r.stock_qty < 10 ? 'text-red-600' : 'text-green-600'}`}>{r.stock_qty}</span> },
+    ];
+
+    const histColumns = [
+        { header: 'Tanggal', accessor: 'taken_date', render: r => <span className="text-xs">{new Date(r.taken_date).toLocaleDateString()}</span> },
+        { header: 'Barang', accessor: 'item_name', render: r => <span className="font-bold text-gray-800">{r.item_name} (x{r.qty})</span> },
+        { header: 'Penerima', accessor: 'jamaah_name', render: r => <span className="text-sm text-blue-600">{r.jamaah_name}</span> },
+        { header: 'Status', accessor: 'status', render: r => <span className="text-[10px] uppercase bg-green-100 text-green-700 px-2 py-1 rounded">{r.status}</span> },
+    ];
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-orange-100 rounded-lg text-orange-600">
-                        <Package size={24} />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-800">Logistik & Perlengkapan</h1>
-                        <p className="text-gray-500 text-sm">Manajemen stok koper, kain ihram, dan distribusi.</p>
-                    </div>
+                <h1 className="text-2xl font-bold text-gray-800">Logistik & Perlengkapan</h1>
+                <div className="flex gap-2">
+                    <button onClick={() => setIsDistributeModalOpen(true)} className="btn-secondary flex items-center gap-2"><UserCheck size={18}/> Bagikan Barang</button>
+                    <button onClick={() => { setForm({}); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2"><Plus size={18}/> Tambah Stok</button>
                 </div>
             </div>
 
-            {/* Tab Navigation */}
-            <div className="flex gap-6 border-b border-gray-200">
-                <button onClick={() => setActiveTab('inventory')} className={`pb-3 px-2 flex items-center gap-2 font-medium border-b-2 transition-colors ${activeTab==='inventory' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                    <ClipboardList size={18}/> Stok Barang
-                </button>
-                <button onClick={() => setActiveTab('distribution')} className={`pb-3 px-2 flex items-center gap-2 font-medium border-b-2 transition-colors ${activeTab==='distribution' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                    <Truck size={18}/> Distribusi Jamaah
-                </button>
+            <div className="flex border-b bg-white rounded-t-xl px-4 pt-2 shadow-sm">
+                <button onClick={() => setActiveTab('inventory')} className={`px-4 py-3 text-sm font-medium border-b-2 ${activeTab === 'inventory' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Stok Gudang</button>
+                <button onClick={() => setActiveTab('distribution')} className={`px-4 py-3 text-sm font-medium border-b-2 ${activeTab === 'distribution' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Riwayat Distribusi</button>
             </div>
 
-            <div className="bg-white rounded-xl shadow border border-gray-200">
-                <div className="p-4 flex justify-between items-center bg-gray-50 rounded-t-xl border-b">
-                    <h3 className="font-bold text-gray-700">
-                        {activeTab === 'inventory' ? 'Daftar Inventaris Gudang' : 'Riwayat Pengambilan Barang'}
-                    </h3>
-                    <button 
-                        onClick={() => { setForm({}); setMode('create'); setIsModalOpen(true); }}
-                        className="btn-primary flex items-center gap-2 text-sm"
-                    >
-                        <Plus size={16}/> {activeTab === 'inventory' ? 'Barang Baru' : 'Catat Pengambilan'}
-                    </button>
-                </div>
+            <div className="bg-white rounded-b-xl shadow border border-gray-200 border-t-0">
                 <CrudTable 
-                    columns={getColumns()} 
-                    data={data} 
-                    loading={loading}
-                    onEdit={(item) => { setForm(item); setMode('edit'); setIsModalOpen(true); }}
-                    onDelete={(item) => deleteItem(item.id)}
+                    columns={activeTab === 'inventory' ? invColumns : histColumns} 
+                    data={activeTab === 'inventory' ? items : history} 
+                    loading={loading} 
+                    onDelete={activeTab === 'inventory' ? deleteItem : null} 
                 />
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode==='create' ? (activeTab==='inventory'?"Tambah Barang":"Catat Distribusi") : "Edit Data"}>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {renderForm()}
-                    <div className="flex justify-end gap-2 pt-4 border-t mt-4">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary">Simpan</button>
-                    </div>
+            {/* Modal Tambah Barang */}
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Tambah Item Baru">
+                <form onSubmit={handleCreateItem} className="space-y-4">
+                    <div><label className="label">Nama Barang</label><input className="input-field" value={form.item_name || ''} onChange={e => setForm({...form, item_name: e.target.value})} required /></div>
+                    <div><label className="label">Stok Awal</label><input type="number" className="input-field" value={form.stock_qty || 0} onChange={e => setForm({...form, stock_qty: e.target.value})} /></div>
+                    <button type="submit" className="btn-primary w-full mt-4">Simpan</button>
+                </form>
+            </Modal>
+
+            {/* Modal Distribusi (Sederhana - Nanti bisa pakai Search Select) */}
+            <Modal isOpen={isDistributeModalOpen} onClose={() => setIsDistributeModalOpen(false)} title="Distribusikan Barang">
+                <form onSubmit={handleDistribute} className="space-y-4">
+                    <div className="bg-blue-50 p-3 rounded text-xs text-blue-700 mb-2">Pastikan ID Booking & ID Jemaah valid (Lihat di menu Booking).</div>
+                    <div><label className="label">ID Item (Barang)</label><input type="number" className="input-field" value={distForm.item_id} onChange={e => setDistForm({...distForm, item_id: e.target.value})} required placeholder="ID dari tabel Stok" /></div>
+                    <div><label className="label">ID Jemaah</label><input type="number" className="input-field" value={distForm.jamaah_id} onChange={e => setDistForm({...distForm, jamaah_id: e.target.value})} required /></div>
+                    <div><label className="label">ID Booking</label><input type="number" className="input-field" value={distForm.booking_id} onChange={e => setDistForm({...distForm, booking_id: e.target.value})} required /></div>
+                    <div><label className="label">Jumlah</label><input type="number" className="input-field" value={distForm.qty} onChange={e => setDistForm({...distForm, qty: e.target.value})} /></div>
+                    <button type="submit" className="btn-primary w-full mt-4">Serahkan Barang</button>
                 </form>
             </Modal>
         </div>

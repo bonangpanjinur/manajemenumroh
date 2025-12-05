@@ -1,67 +1,49 @@
 <?php
-defined('ABSPATH') || exit;
+require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-class UMH_API_Agents {
+class UMH_API_Agents extends UMH_CRUD_Controller {
+
+    public function __construct() {
+        parent::__construct('umh_agents');
+    }
+
     public function register_routes() {
-        register_rest_route('umh/v1', '/agents', [
-            'methods' => ['GET', 'POST'],
-            'callback' => [$this, 'handle_agents'],
-            'permission_callback' => function() { return current_user_can('edit_posts'); }
-        ]);
-        register_rest_route('umh/v1', '/agents/(?P<id>\d+)', [
-            'methods' => ['PUT', 'DELETE'],
-            'callback' => [$this, 'handle_single_agent'],
-            'permission_callback' => function() { return current_user_can('edit_posts'); }
+        parent::register_routes();
+
+        // Endpoint Kalkulasi Komisi Pending
+        register_rest_route('umh/v1', '/agents/(?P<id>\d+)/commissions', [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_agent_commissions'],
+            'permission_callback' => '__return_true',
         ]);
     }
 
-    public function handle_agents($request) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'umh_agents';
+    public function get_agent_commissions($request) {
+        $agent_id = $request->get_param('id');
+        $comm_table = $this->db->prefix . 'umh_agent_commissions';
+        $booking_table = $this->db->prefix . 'umh_bookings';
 
-        if ($request->get_method() === 'POST') {
-            $data = $request->get_json_params();
-            
-            // Data Lengkap Sesuai DB Schema
-            $insert_data = [
-                'name' => sanitize_text_field($data['name']),
-                'email' => sanitize_email($data['email']),
-                'phone' => sanitize_text_field($data['phone']),
-                'city' => sanitize_text_field($data['city']),
-                'type' => sanitize_text_field($data['type']),
-                'agency_name' => sanitize_text_field($data['agency_name'] ?? ''),
-                'bank_name' => sanitize_text_field($data['bank_name'] ?? ''),
-                'bank_account_number' => sanitize_text_field($data['bank_account_number'] ?? ''),
-                'bank_account_holder' => sanitize_text_field($data['bank_account_holder'] ?? ''),
-                'status' => 'active',
-                'joined_at' => current_time('mysql')
-            ];
+        // Ambil komisi yang tercatat
+        $commissions = $this->db->get_results($this->db->prepare("
+            SELECT c.*, b.booking_code, b.total_price 
+            FROM {$comm_table} c
+            JOIN {$booking_table} b ON c.booking_id = b.id
+            WHERE c.agent_id = %d
+            ORDER BY c.created_at DESC
+        ", $agent_id));
 
-            $wpdb->insert($table, $insert_data);
-            return ['id' => $wpdb->insert_id, 'message' => 'Agent Created'];
+        // Hitung Summary
+        $total_unpaid = 0;
+        foreach($commissions as $c) {
+            if($c->status === 'approved' || $c->status === 'pending') {
+                $total_unpaid += floatval($c->amount);
+            }
         }
 
-        // GET
-        $items = $wpdb->get_results("SELECT * FROM $table ORDER BY created_at DESC");
-        return ['items' => $items];
-    }
-
-    public function handle_single_agent($request) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'umh_agents';
-        $id = $request['id'];
-
-        if ($request->get_method() === 'DELETE') {
-            $wpdb->delete($table, ['id' => $id]);
-            return ['success' => true];
-        }
-
-        if ($request->get_method() === 'PUT') {
-            $data = $request->get_json_params();
-            // Cleanup ID
-            unset($data['id'], $data['created_at']);
-            $wpdb->update($table, $data, ['id' => $id]);
-            return ['success' => true];
-        }
+        return new WP_REST_Response([
+            'success' => true, 
+            'data' => $commissions,
+            'summary' => ['unpaid_total' => $total_unpaid]
+        ], 200);
     }
 }

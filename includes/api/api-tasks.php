@@ -1,96 +1,105 @@
 <?php
-/**
- * API Handler untuk Manajemen Tugas (Tasks)
- */
+require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-if (!defined('ABSPATH')) {
-    exit;
-}
-
-class UMH_API_Tasks {
-    private $table_name;
+class UMH_API_Tasks extends UMH_CRUD_Controller {
 
     public function __construct() {
-        global $wpdb;
-        $this->table_name = $wpdb->prefix . 'umh_tasks';
+        parent::__construct('umh_tasks');
     }
 
     public function register_routes() {
-        register_rest_route('umh/v1', '/tasks', [
-            'methods' => 'GET', 'callback' => [$this, 'get_tasks'], 'permission_callback' => [$this, 'check_permission']
+        parent::register_routes();
+        
+        // Endpoint: Assign Task to User
+        register_rest_route('umh/v1', '/tasks/(?P<id>[a-zA-Z0-9-]+)/assign', [
+            'methods' => 'POST',
+            'callback' => [$this, 'assign_task'],
+            'permission_callback' => '__return_true',
         ]);
-        register_rest_route('umh/v1', '/tasks', [
-            'methods' => 'POST', 'callback' => [$this, 'create_task'], 'permission_callback' => [$this, 'check_permission']
-        ]);
-        register_rest_route('umh/v1', '/tasks/(?P<id>\d+)', [
-            'methods' => 'PUT', 'callback' => [$this, 'update_task'], 'permission_callback' => [$this, 'check_permission']
-        ]);
-        register_rest_route('umh/v1', '/tasks/(?P<id>\d+)', [
-            'methods' => 'DELETE', 'callback' => [$this, 'delete_task'], 'permission_callback' => [$this, 'check_permission']
+        
+        // Endpoint: Update Status
+        register_rest_route('umh/v1', '/tasks/(?P<id>[a-zA-Z0-9-]+)/status', [
+            'methods' => 'PUT',
+            'callback' => [$this, 'update_task_status'],
+            'permission_callback' => '__return_true',
         ]);
     }
 
-    public function check_permission() {
-        return current_user_can('manage_options');
-    }
-
-    public function get_tasks($request) {
-        global $wpdb;
-        $employee_id = $request->get_param('employee_id');
-        
-        $where = "WHERE 1=1";
-        if ($employee_id) {
-            $where .= $wpdb->prepare(" AND assigned_to = %d", $employee_id);
-        }
-        
-        // Join ke Employee untuk dapat nama yang ditugaskan
-        $sql = "SELECT t.*, e.name as employee_name 
-                FROM {$this->table_name} t
-                LEFT JOIN {$wpdb->prefix}umh_hr_employees e ON t.assigned_to = e.id
-                $where ORDER BY t.due_date ASC";
-                
-        $items = $wpdb->get_results($sql);
-        return new WP_REST_Response(['success' => true, 'data' => $items], 200);
-    }
-
-    public function create_task($request) {
-        global $wpdb;
-        $p = $request->get_json_params();
-        
-        $wpdb->insert($this->table_name, [
-            'title' => sanitize_text_field($p['title']),
-            'description' => sanitize_textarea_field($p['description']),
-            'assigned_to' => intval($p['assigned_to']),
-            'due_date' => $p['due_date'], // YYYY-MM-DD
-            'priority' => $p['priority'] ?? 'medium',
-            'status' => 'pending'
-        ]);
-        
-        return new WP_REST_Response(['success' => true, 'id' => $wpdb->insert_id], 201);
-    }
-
-    public function update_task($request) {
-        global $wpdb;
+    public function assign_task($request) {
         $id = $request->get_param('id');
-        $p = $request->get_json_params();
+        $params = $request->get_json_params();
         
-        // Support update status parsial (misal drag & drop di kanban board)
-        $data = [];
-        if (isset($p['status'])) $data['status'] = $p['status'];
-        if (isset($p['priority'])) $data['priority'] = $p['priority'];
-        if (isset($p['assigned_to'])) $data['assigned_to'] = $p['assigned_to'];
-        
-        if (!empty($data)) {
-            $wpdb->update($this->table_name, $data, ['id' => $id]);
+        if (empty($params['assigned_to'])) {
+            return new WP_REST_Response(['message' => 'User ID wajib diisi'], 400);
         }
-        
-        return new WP_REST_Response(['success' => true, 'message' => 'Task updated'], 200);
+
+        $task = $this->get_record_by_id_or_uuid($id);
+        if (!$task) return new WP_REST_Response(['message' => 'Task not found'], 404);
+
+        $this->db->update($this->table_name, 
+            ['assigned_to' => $params['assigned_to']], 
+            ['id' => $task->id]
+        );
+
+        return new WP_REST_Response(['success' => true, 'message' => 'Tugas berhasil ditugaskan'], 200);
     }
 
-    public function delete_task($request) {
-        global $wpdb;
+    public function update_task_status($request) {
         $id = $request->get_param('id');
-        $wpdb->delete($this->table_name, ['id' => $id]);
-        return new WP_REST_Response(['success' => true, 'message' => 'Task deleted'], 200);
+        $params = $request->get_json_params();
+        
+        if (empty($params['status'])) {
+            return new WP_REST_Response(['message' => 'Status wajib diisi'], 400);
+        }
+
+        $task = $this->get_record_by_id_or_uuid($id);
+        if (!$task) return new WP_REST_Response(['message' => 'Task not found'], 404);
+
+        $this->db->update($this->table_name, 
+            ['status' => sanitize_text_field($params['status'])], 
+            ['id' => $task->id]
+        );
+
+        return new WP_REST_Response(['success' => true, 'message' => 'Status tugas diperbarui'], 200);
+    }
+
+    // Override get_items untuk join dengan nama user
+    public function get_items($request) {
+        $params = $request->get_params();
+        $page = isset($params['page']) ? intval($params['page']) : 1;
+        $per_page = isset($params['per_page']) ? intval($params['per_page']) : 10;
+        $offset = ($page - 1) * $per_page;
+
+        $user_table = $this->db->prefix . 'umh_users';
+        
+        $query = "SELECT t.*, u.username as assigned_user_name 
+                  FROM {$this->table_name} t
+                  LEFT JOIN {$user_table} u ON t.assigned_to = u.id
+                  WHERE t.deleted_at IS NULL ORDER BY t.created_at DESC";
+
+        $total_query = "SELECT COUNT(*) FROM {$this->table_name} WHERE deleted_at IS NULL";
+        $total_items = $this->db->get_var($total_query);
+        
+        $query .= $this->db->prepare(" LIMIT %d OFFSET %d", $per_page, $offset);
+        $items = $this->db->get_results($query);
+
+        return new WP_REST_Response([
+            'success' => true,
+            'data' => $items,
+            'pagination' => [
+                'page' => $page,
+                'per_page' => $per_page,
+                'total_items' => intval($total_items),
+                'total_pages' => ceil($total_items / $per_page)
+            ]
+        ], 200);
+    }
+
+    private function get_record_by_id_or_uuid($id) {
+        if (is_numeric($id)) {
+            return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $id));
+        } else {
+            return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE uuid = %s", $id));
+        }
     }
 }

@@ -1,128 +1,80 @@
 <?php
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
+require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-global $wpdb;
-$method = $_SERVER['REQUEST_METHOD'];
-// Sesuaikan nama tabel dengan db-schema terbaru
-$table_finance = $wpdb->prefix . 'umh_finance'; 
+class UMH_API_Finance extends UMH_CRUD_Controller {
 
-// ==========================================
-// CRUD FINANCE
-// ==========================================
-
-// 1. GET ALL
-if ($method === 'GET') {
-    $search = isset($_GET['search']) ? sanitize_text_field($_GET['search']) : '';
-    $type   = isset($_GET['type']) ? sanitize_text_field($_GET['type']) : '';
-    
-    $where = "WHERE 1=1";
-    
-    if ($search) {
-        $where .= " AND (title LIKE '%$search%' OR category LIKE '%$search%' OR reference_number LIKE '%$search%')";
-    }
-    if ($type && in_array($type, ['income', 'expense'])) {
-        $where .= " AND type = '$type'";
-    }
-    
-    $results = $wpdb->get_results("SELECT * FROM $table_finance $where ORDER BY transaction_date DESC, id DESC");
-    
-    wp_send_json_success(['data' => $results]);
-}
-
-// 2. CREATE NEW
-if ($method === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    // Validasi Data Wajib
-    if (empty($input['title']) || empty($input['amount'])) {
-        wp_send_json_error(['message' => 'Judul dan Nominal wajib diisi'], 400);
-        exit;
+    public function __construct() {
+        parent::__construct('umh_finance');
     }
 
-    $data = [
-        'transaction_date' => isset($input['date']) ? sanitize_text_field($input['date']) : date('Y-m-d'),
-        'type'             => sanitize_text_field($input['type']),
-        'category'         => sanitize_text_field($input['category']),
-        'title'            => sanitize_text_field($input['title']),
-        'amount'           => floatval($input['amount']),
-        'description'      => isset($input['description']) ? sanitize_textarea_field($input['description']) : '',
-        'reference_number' => isset($input['reference_number']) ? sanitize_text_field($input['reference_number']) : '',
+    public function register_routes() {
+        parent::register_routes();
+
+        // Endpoint Summary Laporan Keuangan
+        register_rest_route('umh/v1', '/finance/summary', [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_finance_summary'],
+            'permission_callback' => '__return_true',
+        ]);
+    }
+
+    /**
+     * Override Create: Catat Transaksi Keuangan (Manual)
+     * Digunakan untuk input Pengeluaran (Expense) atau Pemasukan Lain-lain
+     */
+    public function create_item($request) {
+        $data = $request->get_json_params();
+
+        // Validasi
+        if (empty($data['amount']) || empty($data['type']) || empty($data['title'])) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Data tidak lengkap'], 400);
+        }
+
+        $data['transaction_date'] = !empty($data['transaction_date']) ? $data['transaction_date'] : current_time('mysql');
         
-        // FIX: Tambahkan pengecekan isset/null coalescing untuk field opsional ini
-        // Menghilangkan Notice: Undefined index
-        'booking_id'       => !empty($input['booking_id']) ? intval($input['booking_id']) : null,
-        'related_id'       => !empty($input['related_id']) ? intval($input['related_id']) : null,
-        'related_name'     => !empty($input['related_name']) ? sanitize_text_field($input['related_name']) : '',
-        'proof_file'       => !empty($input['proof_file']) ? sanitize_text_field($input['proof_file']) : null,
+        // Simpan ke Database
+        $format = array_fill(0, count($data), '%s');
+        $this->db->insert($this->table_name, $data, $format);
+        $new_id = $this->db->insert_id;
+
+        $new_item = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $new_id));
+        return new WP_REST_Response(['success' => true, 'data' => $new_item], 201);
+    }
+
+    /**
+     * Custom Endpoint: Ringkasan Keuangan (Dashboard)
+     */
+    public function get_finance_summary($request) {
+        // Hitung Total Pemasukan
+        $income = $this->db->get_var("SELECT SUM(amount) FROM {$this->table_name} WHERE type = 'income' AND deleted_at IS NULL");
         
-        'status'           => 'verified',
-        'created_at'       => current_time('mysql')
-    ];
+        // Hitung Total Pengeluaran
+        $expense = $this->db->get_var("SELECT SUM(amount) FROM {$this->table_name} WHERE type = 'expense' AND deleted_at IS NULL");
 
-    $format = ['%s', '%s', '%s', '%s', '%f', '%s', '%s', '%d', '%d', '%s', '%s', '%s', '%s'];
+        // Saldo Saat Ini
+        $balance = floatval($income) - floatval($expense);
 
-    $inserted = $wpdb->insert($table_finance, $data, $format);
+        // Data Grafik (Per Bulan di Tahun Ini)
+        $current_year = date('Y');
+        $monthly_stats = $this->db->get_results("
+            SELECT 
+                MONTH(transaction_date) as month, 
+                SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+                SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
+            FROM {$this->table_name}
+            WHERE YEAR(transaction_date) = {$current_year} AND deleted_at IS NULL
+            GROUP BY MONTH(transaction_date)
+            ORDER BY month ASC
+        ");
 
-    if ($inserted) {
-        wp_send_json_success(['id' => $wpdb->insert_id, 'message' => 'Transaksi berhasil dicatat']);
-    } else {
-        wp_send_json_error(['message' => 'Gagal menyimpan ke database: ' . $wpdb->last_error], 500);
-    }
-}
-
-// 3. UPDATE
-if ($method === 'PUT' || ($method === 'POST' && isset($_GET['id']))) {
-    $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
-    
-    // Fallback ambil ID dari URL path
-    if (!$id) {
-        $uri_parts = explode('/', trim($_SERVER['REQUEST_URI'], '/'));
-        $id = end($uri_parts);
-    }
-
-    if (!$id) {
-        wp_send_json_error(['message' => 'ID Transaksi tidak ditemukan'], 400);
-        exit;
-    }
-
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    $data = [
-        'transaction_date' => isset($input['date']) ? sanitize_text_field($input['date']) : date('Y-m-d'),
-        'type'             => sanitize_text_field($input['type']),
-        'category'         => sanitize_text_field($input['category']),
-        'title'            => sanitize_text_field($input['title']),
-        'amount'           => floatval($input['amount']),
-        'description'      => isset($input['description']) ? sanitize_textarea_field($input['description']) : '',
-        'reference_number' => isset($input['reference_number']) ? sanitize_text_field($input['reference_number']) : '',
-        
-        // FIX: Sama seperti diatas, gunakan pengecekan
-        'booking_id'       => !empty($input['booking_id']) ? intval($input['booking_id']) : null,
-        'related_id'       => !empty($input['related_id']) ? intval($input['related_id']) : null,
-        'related_name'     => !empty($input['related_name']) ? sanitize_text_field($input['related_name']) : '',
-        'proof_file'       => !empty($input['proof_file']) ? sanitize_text_field($input['proof_file']) : null,
-    ];
-
-    $updated = $wpdb->update($table_finance, $data, ['id' => $id]);
-
-    if ($updated !== false) {
-        wp_send_json_success(['message' => 'Transaksi diperbarui']);
-    } else {
-        wp_send_json_error(['message' => 'Gagal update database'], 500);
-    }
-}
-
-// 4. DELETE
-if ($method === 'DELETE') {
-    $uri_parts = explode('/', trim($_SERVER['REQUEST_URI'], '/'));
-    $id = intval(end($uri_parts));
-    
-    if ($id) {
-        $wpdb->delete($table_finance, ['id' => $id]);
-        wp_send_json_success(['message' => 'Transaksi dihapus']);
-    } else {
-        wp_send_json_error(['message' => 'ID tidak valid'], 400);
+        return new WP_REST_Response([
+            'success' => true,
+            'summary' => [
+                'total_income' => floatval($income),
+                'total_expense' => floatval($expense),
+                'balance' => $balance
+            ],
+            'chart_data' => $monthly_stats
+        ], 200);
     }
 }

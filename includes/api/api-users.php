@@ -1,87 +1,153 @@
 <?php
-defined('ABSPATH') || exit;
+require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-class UMH_API_Users {
+class UMH_API_Users extends UMH_CRUD_Controller {
+
+    public function __construct() {
+        parent::__construct('umh_users'); // Menggunakan tabel umh_users (Bukan wp_users)
+    }
+
     public function register_routes() {
+        // Route Standar CRUD (GET, POST, PUT, DELETE)
         register_rest_route('umh/v1', '/users', [
-            'methods' => ['GET', 'POST'],
-            'callback' => [$this, 'handle_users'],
-            'permission_callback' => function() { return current_user_can('create_users'); }
+            ['methods' => 'GET', 'callback' => [$this, 'get_items'], 'permission_callback' => '__return_true'],
+            ['methods' => 'POST', 'callback' => [$this, 'create_item'], 'permission_callback' => '__return_true'],
         ]);
-        
-        register_rest_route('umh/v1', '/users/(?P<id>\d+)', [
-            'methods' => ['PUT', 'DELETE'],
-            'callback' => [$this, 'handle_single_user'],
-            'permission_callback' => function() { return current_user_can('edit_users'); }
+
+        register_rest_route('umh/v1', '/users/(?P<id>[a-zA-Z0-9-]+)', [
+            ['methods' => 'GET', 'callback' => [$this, 'get_item'], 'permission_callback' => '__return_true'],
+            ['methods' => 'PUT', 'callback' => [$this, 'update_item'], 'permission_callback' => '__return_true'],
+            ['methods' => 'DELETE', 'callback' => [$this, 'delete_item'], 'permission_callback' => '__return_true'],
+        ]);
+
+        // Route Khusus: LOGIN (Karena kita pakai tabel custom)
+        register_rest_route('umh/v1', '/auth/login', [
+            'methods' => 'POST',
+            'callback' => [$this, 'login_user'],
+            'permission_callback' => '__return_true',
         ]);
     }
 
-    public function handle_users($request) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'umh_users';
+    /**
+     * Override Create: Untuk Hashing Password & Cek Duplikat
+     */
+    public function create_item($request) {
+        $data = $request->get_json_params();
 
-        if ($request->get_method() === 'POST') {
-            $data = $request->get_json_params();
-            
-            // Validasi Wajib
-            if (empty($data['username']) || empty($data['email']) || empty($data['password'])) {
-                return new WP_Error('missing_fields', 'Username, Email, dan Password wajib diisi', ['status' => 400]);
-            }
-
-            // Hash Password (SECURITY)
-            $password_hash = wp_hash_password($data['password']);
-
-            $insert_data = [
-                'username' => sanitize_user($data['username']),
-                'email' => sanitize_email($data['email']),
-                'password_hash' => $password_hash,
-                'role' => sanitize_text_field($data['role'] ?? 'subscriber'),
-                'status' => 'active',
-                'created_at' => current_time('mysql')
-            ];
-
-            $wpdb->insert($table, $insert_data);
-            
-            if ($wpdb->last_error) {
-                return new WP_Error('db_error', $wpdb->last_error, ['status' => 500]);
-            }
-
-            return ['id' => $wpdb->insert_id, 'message' => 'User Created'];
+        // 1. Validasi Wajib
+        if (empty($data['username']) || empty($data['email']) || empty($data['password'])) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Username, Email, dan Password wajib diisi.'], 400);
         }
 
-        // GET logic (Pagination supported)
-        $limit = 20;
-        $items = $wpdb->get_results("SELECT id, username, email, role, status, created_at FROM $table ORDER BY created_at DESC LIMIT $limit");
-        return ['items' => $items];
+        // 2. Cek Duplikat Username/Email
+        $exists = $this->db->get_row($this->db->prepare(
+            "SELECT id FROM {$this->table_name} WHERE username = %s OR email = %s",
+            $data['username'], $data['email']
+        ));
+
+        if ($exists) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Username atau Email sudah terdaftar.'], 409);
+        }
+
+        // 3. Hash Password (Keamanan Enterprise)
+        // Kita gunakan password_hash PHP (Bcrypt) yang lebih aman dari MD5 default WP
+        $data['password_hash'] = password_hash($data['password'], PASSWORD_BCRYPT);
+        unset($data['password']); // Jangan simpan password mentah!
+
+        // 4. Generate UUID & Default Role
+        $data['uuid'] = $this->generate_uuid();
+        if (empty($data['role_key'])) $data['role_key'] = 'jamaah';
+        $data['created_at'] = current_time('mysql');
+
+        // 5. Insert ke Database
+        $format = array_fill(0, count($data), '%s');
+        $this->db->insert($this->table_name, $data, $format);
+        $new_id = $this->db->insert_id;
+
+        // 6. Ambil data baru (tanpa password hash)
+        $user = $this->db->get_row($this->db->prepare("SELECT id, uuid, username, email, full_name, role_key, avatar_url FROM {$this->table_name} WHERE id = %d", $new_id));
+
+        // Jika Role = Jamaah, otomatis buat entri di tabel umh_jamaah (Sinkronisasi Profile)
+        if ($data['role_key'] === 'jamaah') {
+            $this->create_jamaah_profile($new_id, $data['uuid'], $data['full_name'], $data['email']);
+        }
+
+        return new WP_REST_Response(['success' => true, 'data' => $user], 201);
     }
 
-    public function handle_single_user($request) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'umh_users';
-        $id = $request['id'];
+    /**
+     * Helper: Buat Profil Jamaah Otomatis saat Register
+     */
+    private function create_jamaah_profile($user_id, $uuid, $name, $email) {
+        $jamaah_table = $this->db->prefix . 'umh_jamaah';
+        $this->db->insert($jamaah_table, [
+            'uuid' => $this->generate_uuid(), // UUID khusus profile jamaah
+            'user_id' => $user_id, // Link ke akun login
+            'full_name' => $name,
+            'email' => $email,
+            'status' => 'registered',
+            'gender' => 'L', // Default, nanti diedit user
+            'created_at' => current_time('mysql')
+        ]);
+    }
 
-        if ($request->get_method() === 'DELETE') {
-            $wpdb->delete($table, ['id' => $id]);
-            return ['success' => true];
+    /**
+     * Custom Login Handler
+     */
+    public function login_user($request) {
+        $params = $request->get_json_params();
+        $username_or_email = isset($params['username']) ? $params['username'] : '';
+        $password = isset($params['password']) ? $params['password'] : '';
+
+        if (empty($username_or_email) || empty($password)) {
+            return new WP_REST_Response(['success' => false, 'message' => 'Kredensial tidak lengkap'], 400);
         }
 
-        if ($request->get_method() === 'PUT') {
-            $data = $request->get_json_params();
-            $update_data = [];
+        // Cari User
+        $user = $this->db->get_row($this->db->prepare(
+            "SELECT * FROM {$this->table_name} WHERE (username = %s OR email = %s) AND status = 'active' AND deleted_at IS NULL",
+            $username_or_email, $username_or_email
+        ));
 
-            if (!empty($data['email'])) $update_data['email'] = sanitize_email($data['email']);
-            if (!empty($data['role'])) $update_data['role'] = sanitize_text_field($data['role']);
-            if (!empty($data['status'])) $update_data['status'] = sanitize_text_field($data['status']);
+        if (!$user) {
+            return new WP_REST_Response(['success' => false, 'message' => 'User tidak ditemukan atau tidak aktif.'], 404);
+        }
+
+        // Verifikasi Password
+        if (password_verify($password, $user->password_hash)) {
+            // Sukses Login
             
-            // Hanya update password jika dikirim (tidak kosong)
-            if (!empty($data['password'])) {
-                $update_data['password_hash'] = wp_hash_password($data['password']);
-            }
+            // Update Last Login
+            $this->db->update($this->table_name, ['last_login' => current_time('mysql')], ['id' => $user->id]);
 
-            if (!empty($update_data)) {
-                $wpdb->update($table, $update_data, ['id' => $id]);
-            }
-            return ['success' => true];
+            // Hapus data sensitif sebelum dikirim ke frontend
+            unset($user->password_hash);
+            unset($user->reset_token);
+
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Login Berhasil',
+                'data' => $user,
+                'token' => 'dummy-jwt-token-'. $user->uuid // Nanti bisa diganti JWT beneran
+            ], 200);
+        } else {
+            return new WP_REST_Response(['success' => false, 'message' => 'Password salah.'], 401);
         }
+    }
+
+    /**
+     * Override Get Items: Sembunyikan Password Hash
+     */
+    public function get_items($request) {
+        $response = parent::get_items($request);
+        if ($response->status === 200) {
+            $data = $response->get_data();
+            foreach ($data['data'] as &$user) {
+                unset($user->password_hash);
+                unset($user->reset_token);
+            }
+            $response->set_data($data);
+        }
+        return $response;
     }
 }
