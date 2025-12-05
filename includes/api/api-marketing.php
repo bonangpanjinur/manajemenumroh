@@ -5,5 +5,4 @@ class UMH_API_Marketing extends UMH_CRUD_Controller {
     public function __construct() {
         parent::__construct('umh_leads');
     }
-    // Menggunakan CRUD default controller sudah cukup untuk leads management
 }

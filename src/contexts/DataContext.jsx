@@ -1,40 +1,26 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import api from '../utils/api';
+import React, { createContext, useContext, useState } from 'react';
 
 const DataContext = createContext();
 
 export const useData = () => useContext(DataContext);
 
-const DataProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [globalLoading, setGlobalLoading] = useState(false);
+// PERBAIKAN: Gunakan 'export' biasa agar menjadi NAMED EXPORT
+export const DataProvider = ({ children }) => {
+    const [globalState, setGlobalState] = useState({
+        user: null,
+        settings: {},
+        notifications: []
+    });
 
-    // Initial Data Load (Cek Login)
-    useEffect(() => {
-        const checkAuth = async () => {
-            try {
-                // Opsional: Cek session user ke backend jika perlu
-                // const res = await api.get('umh/v1/users/me');
-                // setUser(res);
-            } catch (error) {
-                console.log("User belum login atau sesi habis");
-            }
-        };
-        checkAuth();
-    }, []);
-
-    const value = {
-        user,
-        setUser,
-        globalLoading,
-        setGlobalLoading
+    const updateGlobalState = (key, value) => {
+        setGlobalState(prev => ({ ...prev, [key]: value }));
     };
 
     return (
-        <DataContext.Provider value={value}>
+        <DataContext.Provider value={{ globalState, updateGlobalState }}>
             {children}
         </DataContext.Provider>
     );
 };
 
-export default DataProvider;
+export default DataProvider; // Opsional: Default export juga boleh ada

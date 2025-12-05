@@ -1,38 +1,25 @@
 import axios from 'axios';
 
-// Konfigurasi default mengambil dari variabel global WordPress
-// Jika tidak ada (mode dev), gunakan fallback
-const config = window.umh_vars || {
-  root: '/wp-json/',
-  nonce: '',
-  site_url: ''
-};
+// Ambil settings dari wp_localize_script
+const settings = window.umhSettings || {};
 
-// Buat instance Axios
 const api = axios.create({
-  baseURL: config.root,
-  headers: {
-    'X-WP-Nonce': config.nonce,
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  }
+    baseURL: settings.root || '/wp-json/', // Fallback aman
+    headers: {
+        'X-WP-Nonce': settings.nonce || ''
+    }
 });
 
-// Interceptor untuk menangani response dan error global
+// Interceptor untuk handle error global
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  (error) => {
-    // Jika error 403 (Nonce expired) atau 401 (Unauthorized), bisa dihandle disini
-    if (error.response && (error.response.status === 403 || error.response.status === 401)) {
-        console.warn('Sesi kadaluarsa atau tidak memiliki akses.');
+    response => response,
+    error => {
+        // Jika 404, berarti endpoint belum terdaftar (file PHP belum diload)
+        if (error.response && error.response.status === 404) {
+            console.error("API Endpoint Not Found:", error.config.url);
+        }
+        return Promise.reject(error);
     }
-    return Promise.reject(error);
-  }
 );
 
-// PENTING: Export sebagai Named Export DAN Default Export
-// Ini memperbaiki warning: export 'api' (imported as 'api') was not found
-export { api };
 export default api;
