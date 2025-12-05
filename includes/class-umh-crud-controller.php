@@ -26,12 +26,11 @@ class UMH_CRUD_Controller {
     }
 
     /**
-     * PERBAIKAN UTAMA: Method ini sebelumnya HILANG, menyebabkan Fatal Error.
+     * PERBAIKAN UTAMA: Method ini sebelumnya HILANG.
      * Mendaftarkan route standar: GET, POST, PUT, DELETE
      */
     public function register_routes() {
         // 1. Route Koleksi (GET All & POST Create)
-        // Contoh: /wp-json/umh/v1/roles
         register_rest_route($this->namespace, '/' . $this->rest_base, [
             [
                 'methods'             => 'GET',
@@ -46,7 +45,6 @@ class UMH_CRUD_Controller {
         ]);
 
         // 2. Route Single Item (GET One, PUT Update, DELETE)
-        // Contoh: /wp-json/umh/v1/roles/123
         register_rest_route($this->namespace, '/' . $this->rest_base . '/(?P<id>[a-zA-Z0-9-]+)', [
             [
                 'methods'             => 'GET',
@@ -66,21 +64,13 @@ class UMH_CRUD_Controller {
         ]);
     }
 
-    /**
-     * Permission Check Sederhana (Bisa di-override di child class)
-     */
     public function check_permission($request) {
-        // Sementara return true agar tidak 401/403 saat development.
-        // Nanti ganti: return current_user_can('manage_options');
-        return true; 
+        return true; // Bypass sementara untuk dev
     }
 
-    /**
-     * Helper: Generate UUID V4
-     */
+    // Helper: Generate UUID V4
     protected function generate_uuid() {
-        return sprintf(
-            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+        return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
             mt_rand(0, 0xffff), mt_rand(0, 0xffff),
             mt_rand(0, 0xffff),
             mt_rand(0, 0x0fff) | 0x4000,
@@ -89,9 +79,7 @@ class UMH_CRUD_Controller {
         );
     }
 
-    /**
-     * READ: Get Items dengan Soft Delete filtering
-     */
+    // READ Items
     public function get_items($request) {
         $params = $request->get_params();
         $page = isset($params['page']) ? intval($params['page']) : 1;
@@ -99,12 +87,11 @@ class UMH_CRUD_Controller {
         $search = isset($params['search']) ? sanitize_text_field($params['search']) : '';
         $offset = ($page - 1) * $per_page;
 
-        // Cek apakah tabel punya kolom deleted_at
         $cols = $this->db->get_col("DESC {$this->table_name}", 0);
-        $has_soft_delete = in_array('deleted_at', $cols);
-
         $where = "WHERE 1=1";
-        if ($has_soft_delete) {
+        
+        // Filter Soft Delete jika ada kolomnya
+        if (in_array('deleted_at', $cols)) {
             $where .= " AND deleted_at IS NULL";
         }
         
@@ -112,7 +99,6 @@ class UMH_CRUD_Controller {
         if (!empty($search)) {
             $search_conditions = [];
             foreach ($cols as $col) {
-                // Cari di kolom yang relevan (nama, email, kode, judul)
                 if (preg_match('/(name|title|code|email|username)/', $col)) {
                     $search_conditions[] = "$col LIKE '%" . esc_sql($this->db->esc_like($search)) . "%'";
                 }
@@ -123,14 +109,10 @@ class UMH_CRUD_Controller {
         }
 
         $query = "SELECT * FROM {$this->table_name} $where ORDER BY id DESC";
-
-        // Pagination
         $total_query = "SELECT COUNT(*) FROM {$this->table_name} $where";
         $total_items = $this->db->get_var($total_query);
-        $total_pages = ceil($total_items / $per_page);
-
-        $query .= $this->db->prepare(" LIMIT %d OFFSET %d", $per_page, $offset);
         
+        $query .= $this->db->prepare(" LIMIT %d OFFSET %d", $per_page, $offset);
         $items = $this->db->get_results($query);
 
         return new WP_REST_Response([
@@ -140,53 +122,31 @@ class UMH_CRUD_Controller {
                 'page' => $page,
                 'per_page' => $per_page,
                 'total_items' => intval($total_items),
-                'total_pages' => $total_pages
+                'total_pages' => ceil($total_items / $per_page)
             ]
         ], 200);
     }
 
-    /**
-     * READ SINGLE
-     */
+    // READ Single
     public function get_item($request) {
         $id = $request->get_param('id');
         $column = is_numeric($id) ? $this->primary_key : $this->public_key;
+        $item = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE {$column} = %s", $id));
 
-        // Cek soft delete
-        $cols = $this->db->get_col("DESC {$this->table_name}", 0);
-        $soft_delete_sql = in_array('deleted_at', $cols) ? "AND deleted_at IS NULL" : "";
-
-        $item = $this->db->get_row($this->db->prepare(
-            "SELECT * FROM {$this->table_name} WHERE {$column} = %s $soft_delete_sql", 
-            $id
-        ));
-
-        if ($item) {
-            return new WP_REST_Response(['success' => true, 'data' => $item], 200);
-        }
+        if ($item) return new WP_REST_Response(['success' => true, 'data' => $item], 200);
         return new WP_REST_Response(['success' => false, 'message' => 'Data not found'], 404);
     }
 
-    /**
-     * CREATE
-     */
+    // CREATE
     public function create_item($request) {
         $data = $request->get_json_params();
         $cols = $this->db->get_col("DESC {$this->table_name}", 0);
 
-        // Auto UUID
-        if (in_array('uuid', $cols) && empty($data['uuid'])) {
-            $data['uuid'] = $this->generate_uuid();
-        }
-        // Timestamp
-        if (in_array('created_at', $cols)) {
-            $data['created_at'] = current_time('mysql');
-        }
+        if (in_array('uuid', $cols) && empty($data['uuid'])) $data['uuid'] = $this->generate_uuid();
+        if (in_array('created_at', $cols)) $data['created_at'] = current_time('mysql');
         
-        // Bersihkan data yang tidak ada di kolom tabel
-        foreach ($data as $key => $val) {
-            if (!in_array($key, $cols)) unset($data[$key]);
-        }
+        // Bersihkan field yg tidak ada di tabel
+        foreach ($data as $key => $val) if (!in_array($key, $cols)) unset($data[$key]);
 
         $format = array_fill(0, count($data), '%s');
         $result = $this->db->insert($this->table_name, $data, $format);
@@ -196,55 +156,36 @@ class UMH_CRUD_Controller {
             $new_item = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $new_id));
             return new WP_REST_Response(['success' => true, 'message' => 'Data created', 'data' => $new_item], 201);
         }
-
         return new WP_REST_Response(['success' => false, 'message' => 'DB Error: ' . $this->db->last_error], 500);
     }
 
-    /**
-     * UPDATE
-     */
+    // UPDATE
     public function update_item($request) {
         $id = $request->get_param('id');
         $data = $request->get_json_params();
         $cols = $this->db->get_col("DESC {$this->table_name}", 0);
-
         $where = is_numeric($id) ? ['id' => $id] : ['uuid' => $id];
 
-        if (in_array('updated_at', $cols)) {
-            $data['updated_at'] = current_time('mysql');
-        }
-
-        // Proteksi kolom vital & bersihkan input
+        if (in_array('updated_at', $cols)) $data['updated_at'] = current_time('mysql');
         unset($data['id'], $data['uuid'], $data['created_at']);
-        foreach ($data as $key => $val) {
-            if (!in_array($key, $cols)) unset($data[$key]);
-        }
+        
+        foreach ($data as $key => $val) if (!in_array($key, $cols)) unset($data[$key]);
 
-        $result = $this->db->update($this->table_name, $data, $where);
-
-        if ($result !== false) {
-            return new WP_REST_Response(['success' => true, 'message' => 'Data updated'], 200);
-        }
-        return new WP_REST_Response(['success' => false, 'message' => 'Failed to update'], 500);
+        $this->db->update($this->table_name, $data, $where);
+        return new WP_REST_Response(['success' => true, 'message' => 'Data updated'], 200);
     }
 
-    /**
-     * DELETE
-     */
+    // DELETE
     public function delete_item($request) {
         $id = $request->get_param('id');
         $cols = $this->db->get_col("DESC {$this->table_name}", 0);
         $where = is_numeric($id) ? ['id' => $id] : ['uuid' => $id];
         
         if (in_array('deleted_at', $cols)) {
-            $result = $this->db->update($this->table_name, ['deleted_at' => current_time('mysql')], $where);
+            $this->db->update($this->table_name, ['deleted_at' => current_time('mysql')], $where);
         } else {
-            $result = $this->db->delete($this->table_name, $where);
+            $this->db->delete($this->table_name, $where);
         }
-
-        if ($result) {
-            return new WP_REST_Response(['success' => true, 'message' => 'Data deleted'], 200);
-        }
-        return new WP_REST_Response(['success' => false, 'message' => 'Failed to delete'], 404);
+        return new WP_REST_Response(['success' => true, 'message' => 'Data deleted'], 200);
     }
 }

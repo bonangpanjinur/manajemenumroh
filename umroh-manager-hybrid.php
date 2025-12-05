@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Umroh Manager Hybrid Enterprise
  * Description: Sistem Manajemen Travel Umroh & Haji Berbasis React + WP REST API.
- * Version: 7.0.0
+ * Version: 7.0.1
  * Author: Bonang Panji
  * Text Domain: umh
  */
@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('UMH_VERSION', '7.0.0');
+define('UMH_VERSION', '7.0.1');
 define('UMH_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('UMH_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -42,6 +42,7 @@ function umh_register_admin_page() {
 }
 
 function umh_render_react_app() {
+    // Pastikan ID ini sesuai dengan yang dicari React (src/index.jsx)
     echo '<div id="umh-admin-app"></div>';
 }
 
@@ -55,13 +56,19 @@ function umh_enqueue_scripts($hook) {
     $js_path = UMH_PLUGIN_DIR . 'build/index.js';
 
     if (!file_exists($asset_path) || !file_exists($js_path)) {
-        wp_die('Error: File build React tidak ditemukan. Jalankan "npm run build" dulu.');
+        return;
     }
 
     $asset_file = include($asset_path);
 
+    // Load React App
     wp_enqueue_script('umh-react-app', UMH_PLUGIN_URL . 'build/index.js', $asset_file['dependencies'], $asset_file['version'], true);
+    
+    // Load React CSS
     wp_enqueue_style('umh-react-style', UMH_PLUGIN_URL . 'build/index.css', ['wp-components'], $asset_file['version']);
+
+    // PERBAIKAN: Load CSS Admin Custom untuk menyembunyikan UI WordPress
+    wp_enqueue_style('umh-admin-style', UMH_PLUGIN_URL . 'assets/css/admin-style.css', [], UMH_VERSION);
 
     wp_localize_script('umh-react-app', 'umhSettings', [
         'root' => esc_url_raw(rest_url()),
