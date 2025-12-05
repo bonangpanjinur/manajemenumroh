@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import Layout from '../components/Layout';
+// HAPUS: import Layout from '../components/Layout';  <-- Tidak perlu Layout di sini karena sudah ada di index.jsx
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Plus, Layers } from 'lucide-react'; // Hapus Tag karena tidak dipakai
+import { Plus, Layers } from 'lucide-react'; 
 import toast from 'react-hot-toast';
 
 const PackageCategories = () => {
@@ -56,8 +56,14 @@ const PackageCategories = () => {
         { header: 'Jumlah Paket', accessor: 'package_count', render: r => <span className="bg-gray-100 px-2 py-1 rounded text-xs">{r.package_count || 0} Paket</span> },
     ];
 
+    // PERBAIKAN: Ganti Layout dengan div biasa
     return (
-        <Layout title="Kategori Paket">
+        <div className="space-y-6"> {/* Ganti Layout dengan div wrapper biasa */}
+            {/* Header Halaman Manual (karena tidak lewat props Layout) */}
+            <div className="flex justify-between items-center">
+                 <h1 className="text-2xl font-bold text-gray-800">Kategori Paket</h1>
+            </div>
+
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex justify-between items-center">
                 <h2 className="text-lg font-bold text-gray-700 flex items-center gap-2"><Layers size={20}/> Daftar Kategori</h2>
                 <button onClick={() => { setModalMode('create'); setForm({ name: '', type: 'umroh', description: '' }); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2">
@@ -99,7 +105,7 @@ const PackageCategories = () => {
                     </div>
                 </form>
             </Modal>
-        </Layout>
+        </div>
     );
 };
 

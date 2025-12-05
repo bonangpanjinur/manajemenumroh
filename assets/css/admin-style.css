@@ -51,8 +51,8 @@ body.toplevel_page_umroh-manager #wpbody {
     padding-top: 0 !important;
 }
 
-/* 4. Container Utama Aplikasi React (PERBAIKAN ID DISINI) */
-#umroh-manager-app {
+/* 4. Container Utama Aplikasi React (PERBAIKAN ID SELEKTOR) */
+#umroh-manager-app { 
     position: fixed;
     top: 0;
     left: 0;
