@@ -26,10 +26,6 @@ class UMH_API_Packages {
         }
 
         // GET with JOIN Hotels
-        // Note: Asumsi kita menyimpan nama hotel di tabel packages ATAU kita join ke master_hotels
-        // Sesuai db-schema yang kita buat sebelumnya, ada kolom hotel_makkah_id.
-        // Mari kita JOIN.
-        
         $query = "SELECT p.*, 
                   h_makkah.name as hotel_makkah_name, 
                   h_madinah.name as hotel_madinah_name
@@ -40,7 +36,7 @@ class UMH_API_Packages {
 
         $items = $wpdb->get_results($query);
         
-        // Format response agar frontend mudah baca (support pagination format jika diperlukan)
+        // Format response standard
         return ['items' => $items, 'totalItems' => count($items), 'page' => 1, 'totalPages' => 1];
     }
 

@@ -34,7 +34,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_employees);
 
-    // PERBAIKAN UTAMA DISINI: Tambahkan spasi setelah koma pada KEY (employee_id, date)
+    // PERBAIKAN: Tambahkan spasi setelah koma di (employee_id, date)
     $table_attendance = $wpdb->prefix . 'umh_hr_attendance';
     $sql_attendance = "CREATE TABLE $table_attendance (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -52,10 +52,10 @@ function umh_create_db_tables() {
         PRIMARY KEY  (id),
         KEY emp_date (employee_id, date)
     ) $charset_collate;";
-    // Perhatikan spasi di (employee_id, date) ^
     dbDelta($sql_attendance);
 
-    // ... Tabel Lainnya ...
+    // ... (Tabel-tabel master tetap sama, pastikan dimuat semua) ...
+    // Saya sertakan tabel-tabel utama lainnya untuk memastikan integritas file
 
     $table_locations = $wpdb->prefix . 'umh_master_locations';
     $sql_locations = "CREATE TABLE $table_locations (

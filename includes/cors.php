@@ -12,9 +12,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action( 'init', 'umh_send_cors_headers', 1 );
 
 function umh_send_cors_headers() {
-    // Pastikan ini adalah request API atau yang membutuhkan CORS
-    // (Opsional: Cek $_SERVER['REQUEST_URI'] jika ingin lebih spesifik)
-
     // Allow from any origin
     if ( isset( $_SERVER['HTTP_ORIGIN'] ) ) {
         header( "Access-Control-Allow-Origin: {$_SERVER['HTTP_ORIGIN']}" );
