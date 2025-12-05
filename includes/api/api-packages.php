@@ -1,178 +1,62 @@
 <?php
-// includes/api/api-packages.php
+defined('ABSPATH') || exit;
 
-if (!defined('ABSPATH')) {
-    exit;
-}
-
-class UMH_API_Packages extends UMH_Crud_Controller {
-    
-    protected $table_name = 'umh_packages';
-
+class UMH_API_Packages {
     public function register_routes() {
-        parent::register_routes();
-        // Route khusus untuk cek manifest (jemaah di paket ini)
-        register_rest_route($this->namespace, '/' . $this->base . '/(?P<id>[\d]+)/manifest', array(
-            'methods' => 'GET',
-            'callback' => array($this, 'get_manifest'),
-            'permission_callback' => array($this, 'check_permission'),
-        ));
+        register_rest_route('umh/v1', '/packages', [
+            'methods' => ['GET', 'POST'],
+            'callback' => [$this, 'handle_packages'],
+            'permission_callback' => function() { return current_user_can('edit_posts'); }
+        ]);
+        register_rest_route('umh/v1', '/packages/(?P<id>\d+)', [
+            'methods' => ['PUT', 'DELETE'],
+            'callback' => [$this, 'handle_single'],
+            'permission_callback' => function() { return current_user_can('edit_posts'); }
+        ]);
     }
 
-    /**
-     * Override create_item untuk menangani relasi otomatis ke tabel Master
-     * (Kategori, Maskapai, Hotel)
-     */
-    public function create_item($request) {
-        $params = $request->get_json_params();
-        $params = $this->handle_master_data($params);
-        $request->set_body_params($params);
-        return parent::create_item($request);
-    }
-
-    /**
-     * Override update_item untuk logika yang sama
-     */
-    public function update_item($request) {
-        $params = $request->get_json_params();
-        $params = $this->handle_master_data($params);
-        $request->set_body_params($params);
-        return parent::update_item($request);
-    }
-
-    /**
-     * Fungsi Cerdas: Cek apakah data master (String) sudah ada ID-nya.
-     * Jika belum, buat baru di tabel master dan ambil ID-nya.
-     */
-    private function handle_master_data($params) {
+    public function handle_packages($request) {
         global $wpdb;
+        $table = $wpdb->prefix . 'umh_packages';
 
-        // 1. Handle Kategori
-        if (!empty($params['category']) && empty($params['category_id'])) {
-            $cat_table = $wpdb->prefix . 'umh_package_categories';
-            $cat_name = sanitize_text_field($params['category']);
-            $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $cat_table WHERE name = %s", $cat_name));
-            
-            if ($existing) {
-                $params['category_id'] = $existing;
-            } else {
-                $wpdb->insert($cat_table, ['name' => $cat_name, 'slug' => sanitize_title($cat_name), 'type' => 'umrah']);
-                $params['category_id'] = $wpdb->insert_id;
-            }
-            unset($params['category']); // Hapus field string agar tidak error di insert tabel paket
+        if ($request->get_method() === 'POST') {
+            $data = $request->get_json_params();
+            $wpdb->insert($table, $data);
+            return ['id' => $wpdb->insert_id];
         }
 
-        // 2. Handle Hotel Makkah
-        if (!empty($params['hotel_makkah']) && empty($params['hotel_makkah_id'])) {
-            $hotel_table = $wpdb->prefix . 'umh_master_hotels';
-            $hotel_name = sanitize_text_field($params['hotel_makkah']);
-            $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $hotel_table WHERE name = %s", $hotel_name));
-            
-            if ($existing) {
-                $params['hotel_makkah_id'] = $existing;
-            } else {
-                $wpdb->insert($hotel_table, ['name' => $hotel_name, 'city' => 'Makkah']);
-                $params['hotel_makkah_id'] = $wpdb->insert_id;
-            }
-            unset($params['hotel_makkah']);
-        }
-
-        // 3. Handle Hotel Madinah
-        if (!empty($params['hotel_madinah']) && empty($params['hotel_madinah_id'])) {
-            $hotel_table = $wpdb->prefix . 'umh_master_hotels';
-            $hotel_name = sanitize_text_field($params['hotel_madinah']);
-            $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $hotel_table WHERE name = %s", $hotel_name));
-            
-            if ($existing) {
-                $params['hotel_madinah_id'] = $existing;
-            } else {
-                $wpdb->insert($hotel_table, ['name' => $hotel_name, 'city' => 'Madinah']);
-                $params['hotel_madinah_id'] = $wpdb->insert_id;
-            }
-            unset($params['hotel_madinah']);
-        }
-
-        // 4. Handle Maskapai
-        if (!empty($params['airline']) && empty($params['airline_id'])) {
-            $airline_table = $wpdb->prefix . 'umh_master_airlines';
-            $airline_name = sanitize_text_field($params['airline']);
-            $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $airline_table WHERE name = %s", $airline_name));
-            
-            if ($existing) {
-                $params['airline_id'] = $existing;
-            } else {
-                $wpdb->insert($airline_table, ['name' => $airline_name, 'type' => 'International']);
-                $params['airline_id'] = $wpdb->insert_id;
-            }
-            unset($params['airline']);
-        }
+        // GET with JOIN Hotels
+        // Note: Asumsi kita menyimpan nama hotel di tabel packages ATAU kita join ke master_hotels
+        // Sesuai db-schema yang kita buat sebelumnya, ada kolom hotel_makkah_id.
+        // Mari kita JOIN.
         
-        // Hapus field yang tidak ada di skema baru untuk mencegah error SQL
-        unset($params['hotel_transit']);
-        unset($params['hotel_plus']);
-        unset($params['price_details']);
+        $query = "SELECT p.*, 
+                  h_makkah.name as hotel_makkah_name, 
+                  h_madinah.name as hotel_madinah_name
+                  FROM $table p
+                  LEFT JOIN {$wpdb->prefix}umh_master_hotels h_makkah ON p.hotel_makkah_id = h_makkah.id
+                  LEFT JOIN {$wpdb->prefix}umh_master_hotels h_madinah ON p.hotel_madinah_id = h_madinah.id
+                  ORDER BY p.created_at DESC";
 
-        return $params;
+        $items = $wpdb->get_results($query);
+        
+        // Format response agar frontend mudah baca (support pagination format jika diperlukan)
+        return ['items' => $items, 'totalItems' => count($items), 'page' => 1, 'totalPages' => 1];
     }
 
-    // Override get_items untuk join nama master agar muncul di tabel
-    public function get_items($request) {
+    public function handle_single($request) {
         global $wpdb;
-        $limit = 10;
-        $offset = 0;
-        
-        // Custom Query Join
-        $cat_table = $wpdb->prefix . 'umh_package_categories';
-        $pkg_table = $this->table_name;
-        
-        $sql = "SELECT p.*, c.name as category_name 
-                FROM $pkg_table p 
-                LEFT JOIN $cat_table c ON p.category_id = c.id 
-                WHERE p.status != 'archived' 
-                ORDER BY p.created_at DESC 
-                LIMIT $limit OFFSET $offset";
-                
-        $results = $wpdb->get_results($sql, ARRAY_A);
-        
-        // Format response agar cocok dengan frontend
-        foreach ($results as &$row) {
-            $row['category'] = $row['category_name']; // Map category_name ke category field
+        $table = $wpdb->prefix . 'umh_packages';
+        $id = $request['id'];
+
+        if ($request->get_method() === 'DELETE') {
+            $wpdb->delete($table, ['id' => $id]);
+            return ['success' => true];
         }
         
-        return rest_ensure_response($results);
-    }
-
-    // Get Jemaah Manifest for this package
-    public function get_manifest($request) {
-        global $wpdb;
-        $package_id = $request['id'];
-        
-        // Perlu update query ini karena struktur tabel booking berubah (gunakan departure_id, bukan package_id langsung di header)
-        // Namun untuk kompatibilitas skema baru, kita harus join via departures
-        
-        $table_bookings = $wpdb->prefix . 'umh_bookings';
-        $table_booking_pax = $wpdb->prefix . 'umh_booking_passengers';
-        $table_jamaah = $wpdb->prefix . 'umh_jamaah';
-        $table_departures = $wpdb->prefix . 'umh_departures';
-
-        // Query: Cari booking pax yang terhubung ke departure yang terhubung ke package ini
-        $query = $wpdb->prepare("
-            SELECT 
-                b.booking_code,
-                b.payment_status,
-                bp.package_type as room_type,
-                j.full_name as jamaah_name,
-                j.nik,
-                j.gender,
-                j.phone
-            FROM $table_booking_pax bp
-            JOIN $table_bookings b ON bp.booking_id = b.id
-            JOIN $table_jamaah j ON bp.jamaah_id = j.id
-            JOIN $table_departures d ON b.departure_id = d.id
-            WHERE d.package_id = %d
-        ", $package_id);
-
-        $results = $wpdb->get_results($query, ARRAY_A);
-        return rest_ensure_response($results);
+        $data = $request->get_json_params();
+        unset($data['id'], $data['hotel_makkah_name'], $data['hotel_madinah_name']);
+        $wpdb->update($table, $data, ['id' => $id]);
+        return ['success' => true];
     }
 }

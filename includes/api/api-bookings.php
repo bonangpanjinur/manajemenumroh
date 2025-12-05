@@ -1,143 +1,128 @@
 <?php
-/**
- * API Handler untuk Transaksi Booking (Header + Passengers)
- * Mengelola: Pemesanan, Hitung Harga, dan Input Jemaah ke Manifest
- */
-
-if (!defined('ABSPATH')) {
-    exit;
-}
+defined('ABSPATH') || exit;
 
 class UMH_API_Bookings {
-    private $tbl_bookings;
-    private $tbl_pax;
-    private $tbl_departures;
-    private $tbl_packages;
-
-    public function __construct() {
-        global $wpdb;
-        $this->tbl_bookings   = $wpdb->prefix . 'umh_bookings';
-        $this->tbl_pax        = $wpdb->prefix . 'umh_booking_passengers';
-        $this->tbl_departures = $wpdb->prefix . 'umh_departures';
-        $this->tbl_packages   = $wpdb->prefix . 'umh_packages';
-    }
-
     public function register_routes() {
-        register_rest_route('umh/v1', '/bookings', [
-            'methods' => 'GET', 'callback' => [$this, 'get_items'], 'permission_callback' => [$this, 'check_permission']
+        $base = 'umh/v1';
+        $endpoint = '/bookings';
+
+        register_rest_route($base, $endpoint, [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_items'],
+            'permission_callback' => function() { return current_user_can('edit_posts'); }
         ]);
-        register_rest_route('umh/v1', '/bookings/(?P<id>\d+)', [
-            'methods' => 'GET', 'callback' => [$this, 'get_item'], 'permission_callback' => [$this, 'check_permission']
+
+        register_rest_route($base, $endpoint, [
+            'methods' => 'POST',
+            'callback' => [$this, 'create_item'],
+            'permission_callback' => function() { return current_user_can('edit_posts'); }
         ]);
-        register_rest_route('umh/v1', '/bookings', [
-            'methods' => 'POST', 'callback' => [$this, 'create_booking'], 'permission_callback' => [$this, 'check_permission']
+
+        register_rest_route($base, $endpoint . '/(?P<id>\d+)', [
+            'methods' => 'PUT',
+            'callback' => [$this, 'update_item'],
+            'permission_callback' => function() { return current_user_can('edit_posts'); }
         ]);
-    }
-
-    public function check_permission() {
-        return current_user_can('manage_options');
-    }
-
-    // --- CREATE BOOKING (TRANSACTION) ---
-    public function create_booking($request) {
-        global $wpdb;
-        $p = $request->get_json_params();
-
-        /* Payload Expected:
-           {
-             "departure_id": 5,
-             "agent_id": 1, (Optional)
-             "passengers": [
-                { "jamaah_id": 101, "package_type": "Quad", "price": 25000000 },
-                { "jamaah_id": 102, "package_type": "Quad", "price": 25000000 }
-             ],
-             "contact_name": "Budi",
-             "contact_phone": "0812345678"
-           }
-        */
-
-        // 1. Generate Booking Code (UMH-YYYYMM-XXXX)
-        $date_code = date('Ym');
-        $last_id = $wpdb->get_var("SELECT id FROM {$this->tbl_bookings} ORDER BY id DESC LIMIT 1");
-        $next_num = str_pad(($last_id + 1), 4, '0', STR_PAD_LEFT);
-        $booking_code = "UMH-{$date_code}-{$next_num}";
-
-        // 2. Hitung Total
-        $total_price = 0;
-        $total_pax = count($p['passengers']);
-        foreach($p['passengers'] as $pax) {
-            $total_price += floatval($pax['price']);
-        }
-
-        // 3. Insert Header Booking
-        $data_booking = [
-            'booking_code' => $booking_code,
-            'departure_id' => intval($p['departure_id']),
-            'agent_id' => !empty($p['agent_id']) ? intval($p['agent_id']) : null,
-            'branch_id' => !empty($p['branch_id']) ? intval($p['branch_id']) : 0,
-            'total_pax' => $total_pax,
-            'total_price' => $total_price,
-            'total_paid' => 0,
-            'status' => 'pending', // Menunggu pembayaran DP
-            'payment_status' => 'unpaid',
-            'contact_name' => sanitize_text_field($p['contact_name']),
-            'contact_phone' => sanitize_text_field($p['contact_phone']),
-            'created_at' => current_time('mysql')
-        ];
-
-        $wpdb->insert($this->tbl_bookings, $data_booking);
-        $booking_id = $wpdb->insert_id;
-
-        if (!$booking_id) return new WP_REST_Response(['success' => false, 'message' => 'DB Error'], 500);
-
-        // 4. Insert Passengers (Manifest)
-        foreach($p['passengers'] as $pax) {
-            $wpdb->insert($this->tbl_pax, [
-                'booking_id' => $booking_id,
-                'jamaah_id' => intval($pax['jamaah_id']),
-                'package_type' => $pax['package_type'],
-                'price_pax' => floatval($pax['price']),
-                'visa_status' => 'pending'
-            ]);
-            
-            // TODO: Kurangi kuota seat di umh_departures (bisa ditambahkan nanti)
-        }
-
-        return new WP_REST_Response([
-            'success' => true, 
-            'message' => 'Booking berhasil dibuat', 
-            'booking_code' => $booking_code,
-            'id' => $booking_id
-        ], 201);
+        
+        register_rest_route($base, $endpoint . '/(?P<id>\d+)', [
+            'methods' => 'DELETE',
+            'callback' => [$this, 'delete_item'],
+            'permission_callback' => function() { return current_user_can('edit_posts'); }
+        ]);
     }
 
     public function get_items($request) {
         global $wpdb;
-        // Ambil list booking + nama paket
-        $sql = "SELECT b.*, d.departure_date, pkg.name as package_name 
-                FROM {$this->tbl_bookings} b
-                JOIN {$this->tbl_departures} d ON b.departure_id = d.id
-                JOIN {$this->tbl_packages} pkg ON d.package_id = pkg.id
-                ORDER BY b.created_at DESC";
-        $items = $wpdb->get_results($sql);
-        return new WP_REST_Response(['success' => true, 'data' => $items], 200);
+        $table = $wpdb->prefix . 'umh_bookings';
+        
+        // Parameter Pagination & Search
+        $page = isset($request['page']) ? intval($request['page']) : 1;
+        $per_page = isset($request['per_page']) ? intval($request['per_page']) : 10;
+        $offset = ($page - 1) * $per_page;
+        $search = isset($request['search']) ? sanitize_text_field($request['search']) : '';
+
+        // Query Builder dengan JOIN
+        $query = "SELECT b.*, 
+                  p.name as package_name, 
+                  d.departure_date, 
+                  d.return_date,
+                  pk.name as package_category
+                  FROM $table b
+                  LEFT JOIN {$wpdb->prefix}umh_packages p ON b.package_id = p.id
+                  LEFT JOIN {$wpdb->prefix}umh_departures d ON b.departure_id = d.id
+                  LEFT JOIN {$wpdb->prefix}umh_package_categories pk ON p.category_id = pk.id
+                  WHERE 1=1";
+
+        if (!empty($search)) {
+            $query .= $wpdb->prepare(" AND (b.booking_code LIKE %s OR b.contact_name LIKE %s)", "%$search%", "%$search%");
+        }
+
+        $query .= " ORDER BY b.created_at DESC LIMIT $offset, $per_page";
+
+        // Execute
+        $items = $wpdb->get_results($query);
+        
+        // Hitung Total untuk Pagination
+        $total_query = "SELECT COUNT(*) FROM $table b WHERE 1=1";
+        if (!empty($search)) {
+            $total_query .= $wpdb->prepare(" AND (b.booking_code LIKE %s OR b.contact_name LIKE %s)", "%$search%", "%$search%");
+        }
+        $total_items = $wpdb->get_var($total_query);
+
+        return rest_ensure_response([
+            'items' => $items,
+            'page' => $page,
+            'totalPages' => ceil($total_items / $per_page),
+            'totalItems' => $total_items
+        ]);
     }
 
-    public function get_item($request) {
+    public function create_item($request) {
         global $wpdb;
-        $id = $request->get_param('id');
-        
-        // Header
-        $booking = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$this->tbl_bookings} WHERE id = %d", $id));
-        if (!$booking) return new WP_REST_Response(['success' => false, 'message' => 'Not found'], 404);
+        $table = $wpdb->prefix . 'umh_bookings';
+        $data = $request->get_json_params();
 
-        // Detail Passengers + Nama Jamaah
-        $pax_sql = "SELECT p.*, j.full_name, j.passport_number, j.nik 
-                    FROM {$this->tbl_pax} p 
-                    JOIN {$wpdb->prefix}umh_jamaah j ON p.jamaah_id = j.id 
-                    WHERE p.booking_id = %d";
-        $booking->passengers = $wpdb->get_results($wpdb->prepare($pax_sql, $id));
+        // Generate Booking Code: BOOK/YYYYMM/RANDOM
+        if (empty($data['booking_code'])) {
+            $data['booking_code'] = 'BK/' . date('ym') . '/' . rand(1000, 9999);
+        }
 
-        return new WP_REST_Response(['success' => true, 'data' => $booking], 200);
+        // Sanitasi dasar
+        $safe_data = [
+            'booking_code' => $data['booking_code'],
+            'contact_name' => sanitize_text_field($data['contact_name']),
+            'contact_phone' => sanitize_text_field($data['contact_phone']),
+            'package_id' => intval($data['package_id']),
+            'departure_id' => intval($data['departure_id']),
+            'total_pax' => intval($data['total_pax']),
+            'total_price' => floatval($data['total_price']),
+            'payment_status' => sanitize_text_field($data['payment_status']),
+            'booking_date' => $data['booking_date'],
+            'notes' => sanitize_textarea_field($data['notes'] ?? ''),
+            'created_at' => current_time('mysql')
+        ];
+
+        $wpdb->insert($table, $safe_data);
+        return rest_ensure_response(['id' => $wpdb->insert_id, 'message' => 'Booking Created']);
+    }
+
+    public function update_item($request) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'umh_bookings';
+        $id = $request['id'];
+        $data = $request->get_json_params();
+
+        // Hapus field yang tidak boleh diupdate langsung atau tidak ada di tabel
+        unset($data['id'], $data['package_name'], $data['departure_date']); 
+
+        $wpdb->update($table, $data, ['id' => $id]);
+        return rest_ensure_response(['success' => true]);
+    }
+
+    public function delete_item($request) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'umh_bookings';
+        $wpdb->delete($table, ['id' => $request['id']]);
+        return rest_ensure_response(['success' => true]);
     }
 }

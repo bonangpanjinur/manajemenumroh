@@ -1,144 +1,89 @@
 import { useState, useEffect, useCallback } from 'react';
-import api from '../utils/api.js';
+import api from '../utils/api';
+import toast from 'react-hot-toast';
 
-const useCRUD = (endpoint, initialData = []) => {
-  const [data, setData] = useState(Array.isArray(initialData) ? initialData : []);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    totalPages: 1,
-    totalItems: 0,
-    perPage: 10
-  });
+const useCRUD = (endpoint) => {
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [pagination, setPagination] = useState({
+        page: 1,
+        totalPages: 1,
+        totalItems: 0
+    });
+    
+    // State untuk filter & search
+    const [filters, setFilters] = useState({
+        search: '',
+        page: 1,
+        per_page: 10
+    });
 
-  const fetchData = useCallback(async (page = 1, search = '', filters = {}) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = { page, search, ...filters };
-      const response = await api.get(endpoint, { params });
-      
-      // FIX: Defensive Coding untuk mencegah 'undefined map'
-      let responseData = [];
-      
-      if (response && response.data) {
-        if (Array.isArray(response.data.data)) {
-          responseData = response.data.data;
-        } else if (Array.isArray(response.data)) {
-          responseData = response.data;
-        } else if (typeof response.data === 'object' && response.data !== null) {
-          // Jika data adalah object (misal untuk dashboard), biarkan object, jangan array
-          responseData = response.data;
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            // Mengirim parameter search & pagination ke server
+            const params = new URLSearchParams();
+            if (filters.search) params.append('search', filters.search);
+            params.append('page', filters.page);
+            params.append('per_page', filters.per_page);
+
+            const response = await api.get(`${endpoint}?${params.toString()}`);
+            
+            // Handle response format: Support format standar WP REST atau custom format kita
+            if (response.data && response.data.items) {
+                setData(response.data.items);
+                setPagination({
+                    page: parseInt(response.data.page),
+                    totalPages: parseInt(response.data.totalPages),
+                    totalItems: parseInt(response.data.totalItems)
+                });
+            } else if (Array.isArray(response.data)) {
+                // Fallback jika API belum support pagination (return array langsung)
+                setData(response.data);
+            }
+        } catch (error) {
+            console.error("CRUD Fetch Error:", error);
+            toast.error("Gagal memuat data: " + (error.response?.data?.message || error.message));
+        } finally {
+            setLoading(false);
         }
-      } 
-      
-      // Jika endpoint adalah dashboard (stats), kita butuh object, bukan array
-      if(endpoint.includes('stats') || endpoint.includes('dashboard')){
-          if(!responseData || Array.isArray(responseData)){
-              responseData = {}; // Fallback ke object kosong
-          }
-      } else {
-          // Untuk endpoint tabel biasa, pastikan array
-          if(!Array.isArray(responseData)){
-              responseData = []; 
-          }
-      }
+    }, [endpoint, filters]);
 
-      setData(responseData);
-      
-      const meta = response?.data?.meta || response?.meta || {};
-      if (meta.total_pages) {
-        setPagination({
-          currentPage: meta.current_page || page,
-          totalPages: meta.total_pages || 1,
-          totalItems: meta.total_items || 0,
-          perPage: meta.per_page || 10
-        });
-      }
-    } catch (err) {
-      console.error(`Error fetching ${endpoint}:`, err);
-      setError(err.message || 'Gagal mengambil data.');
-      // Reset ke nilai aman saat error
-      if(endpoint.includes('stats') || endpoint.includes('dashboard')) {
-          setData({});
-      } else {
-          setData([]);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [endpoint]);
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    const deleteItem = async (id) => {
+        try {
+            await api.delete(`${endpoint}/${id}`);
+            toast.success("Data berhasil dihapus");
+            fetchData(); // Refresh data
+            return true;
+        } catch (error) {
+            toast.error("Gagal menghapus: " + error.message);
+            return false;
+        }
+    };
 
-  const createItem = async (newItem) => {
-    setLoading(true);
-    try {
-      await api.post(endpoint, newItem);
-      await fetchData(pagination.currentPage); 
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.response?.data?.message || err.message };
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Fungsi untuk mengubah halaman
+    const changePage = (newPage) => {
+        setFilters(prev => ({ ...prev, page: newPage }));
+    };
 
-  const updateItem = async (id, updatedItem) => {
-    setLoading(true);
-    try {
-      await api.put(`${endpoint}/${id}`, updatedItem);
-      await fetchData(pagination.currentPage);
-      return { success: true };
-    } catch (err) {
-      try {
-         await api.post(`${endpoint}/${id}`, updatedItem);
-         await fetchData(pagination.currentPage);
-         return { success: true };
-      } catch (retryErr) {
-         return { success: false, error: retryErr.response?.data?.message || retryErr.message };
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Fungsi untuk search
+    const handleSearch = (keyword) => {
+        setFilters(prev => ({ ...prev, search: keyword, page: 1 })); // Reset ke hal 1 saat search
+    };
 
-  const deleteItem = async (id) => {
-    if (!window.confirm('Hapus data ini?')) return;
-    setLoading(true);
-    try {
-      await api.delete(`${endpoint}/${id}`);
-      await fetchData(pagination.currentPage);
-      return { success: true };
-    } catch (err) {
-       try {
-          await api.get(`${endpoint}?action=delete&id=${id}`);
-          await fetchData(pagination.currentPage);
-          return { success: true };
-       } catch (retryErr) {
-          return { success: false, error: retryErr.response?.data?.message || retryErr.message };
-       }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const refreshData = () => fetchData(pagination.currentPage);
-
-  return {
-    data,
-    loading,
-    error,
-    pagination,
-    fetchData,
-    refreshData,
-    createItem,
-    updateItem,
-    deleteItem
-  };
+    return { 
+        data, 
+        loading, 
+        pagination, 
+        fetchData, 
+        deleteItem, 
+        changePage, 
+        handleSearch 
+    };
 };
 
 export default useCRUD;
