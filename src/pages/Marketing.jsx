@@ -1,180 +1,114 @@
-import React, { useState } from 'react';
-import CrudTable from '../components/CrudTable';
-import Modal from '../components/Modal';
+import React, { useState, useEffect } from 'react';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Megaphone, Users, PhoneCall, Plus, Filter } from 'lucide-react';
+import { Kanban, Phone, User, CheckCircle, XCircle, Plus } from 'lucide-react';
+import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
 
 const Marketing = () => {
-    const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/marketing/leads');
+    // Kita gunakan tabel 'leads' sebagai inti CRM
+    const { data: leads, loading, fetchData } = useCRUD('umh/v1/leads');
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [mode, setMode] = useState('create');
-    const [form, setForm] = useState({});
+    const [form, setForm] = useState({ name: '', phone: '', source: 'Instagram', status: 'new', notes: '' });
 
-    // Handler Form
-    const handleSubmit = async (e) => {
+    // Helper untuk mengubah status Lead (Drag & Drop simulasi dengan tombol)
+    const updateStatus = async (id, newStatus) => {
+        try {
+            await api.put(`umh/v1/leads/${id}`, { status: newStatus });
+            toast.success("Status Updated");
+            fetchData();
+        } catch (e) { toast.error("Gagal update status"); }
+    };
+
+    const handleSave = async (e) => {
         e.preventDefault();
         try {
-            if (mode === 'create') {
-                await api.post('umh/v1/marketing/leads', form);
-                toast.success("Lead baru berhasil ditambahkan");
-            } else {
-                await api.put(`umh/v1/marketing/leads/${form.id}`, form);
-                toast.success("Data lead diperbarui");
-            }
+            await api.post('umh/v1/leads', form);
             setIsModalOpen(false);
             fetchData();
-        } catch (error) {
-            toast.error("Gagal menyimpan: " + error.message);
-        }
+            toast.success("Lead ditambahkan");
+        } catch (e) { toast.error("Gagal simpan"); }
     };
 
-    const handleEdit = (item) => {
-        setForm(item);
-        setMode('edit');
-        setIsModalOpen(true);
-    };
-
-    const handleDelete = async (id) => {
-        if(window.confirm("Hapus data prospek ini?")) await deleteItem(id);
-    };
-
-    const columns = [
-        { header: 'Nama Prospek', accessor: 'name', render: r => (
-            <div>
-                <div className="font-bold text-gray-900">{r.name}</div>
-                <div className="text-xs text-gray-500">{r.email || '-'}</div>
-            </div>
-        )},
-        { header: 'Kontak', accessor: 'phone', render: r => <span className="font-mono text-gray-600">{r.phone}</span> },
-        { header: 'Sumber', accessor: 'source', render: r => <span className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-xs font-medium border border-purple-100">{r.source}</span> },
-        { header: 'Paket Minat', accessor: 'interest_package_name', render: r => <span className="text-sm text-gray-600">{r.interest_package_name || 'Umum'}</span> },
-        { header: 'Status', accessor: 'status', render: r => {
-            const colors = {
-                new: 'bg-blue-100 text-blue-700',
-                contacted: 'bg-yellow-100 text-yellow-700',
-                hot: 'bg-red-100 text-red-700',
-                deal: 'bg-green-100 text-green-700',
-                lost: 'bg-gray-100 text-gray-500'
-            };
-            return <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${colors[r.status] || 'bg-gray-100'}`}>{r.status}</span>
-        }},
+    // Pipeline Columns
+    const stages = [
+        { id: 'new', label: 'Leads Baru', color: 'bg-gray-100', text: 'text-gray-700' },
+        { id: 'contacted', label: 'Dihubungi', color: 'bg-blue-50', text: 'text-blue-700' },
+        { id: 'hot', label: 'Hot Prospek', color: 'bg-orange-50', text: 'text-orange-700' },
+        { id: 'deal', label: 'Closing / Deal', color: 'bg-green-50', text: 'text-green-700' }
     ];
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-pink-100 rounded-lg text-pink-600">
-                        <Megaphone size={24} />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-800">Marketing & Leads</h1>
-                        <p className="text-gray-500 text-sm">Kelola kampanye iklan dan calon jamaah potensial.</p>
-                    </div>
+        <div className="h-[calc(100vh-100px)] flex flex-col">
+            <div className="flex justify-between items-center mb-6">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-800">Marketing CRM</h1>
+                    <p className="text-sm text-gray-500">Pipeline penjualan dan manajemen calon jemaah.</p>
                 </div>
-                <button 
-                    onClick={() => { setForm({ status: 'new', source: 'Instagram' }); setMode('create'); setIsModalOpen(true); }}
-                    className="btn-primary flex items-center gap-2"
-                >
-                    <Plus size={18} /> Tambah Lead Manual
+                <button onClick={()=>{setForm({name:'', phone:'', source:'Instagram', status:'new'}); setIsModalOpen(true)}} className="btn-primary flex gap-2">
+                    <Plus size={18}/> Tambah Leads
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-gradient-to-r from-pink-500 to-purple-600 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
-                    <div className="relative z-10">
-                        <p className="text-pink-100 text-sm mb-1 font-medium">Total Leads (Bulan Ini)</p>
-                        <h3 className="text-3xl font-bold">128</h3>
-                        <p className="text-xs text-pink-200 mt-2">↑ 12% dari bulan lalu</p>
-                    </div>
-                    <Users className="absolute right-4 bottom-4 opacity-20 text-white" size={64} />
-                </div>
-                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm flex flex-col justify-center">
-                    <div className="flex justify-between items-start mb-2">
-                        <p className="text-gray-500 text-sm font-medium">Konversi ke Booking</p>
-                        <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-bold">+2.4%</span>
-                    </div>
-                    <h3 className="text-3xl font-bold text-gray-800">12.5%</h3>
-                    <div className="w-full bg-gray-100 h-1.5 rounded-full mt-3">
-                        <div className="bg-green-500 h-1.5 rounded-full" style={{ width: '12.5%' }}></div>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm flex flex-col justify-center">
-                    <div className="flex justify-between items-start mb-2">
-                        <p className="text-gray-500 text-sm font-medium">Prospek "HOT"</p>
-                        <PhoneCall className="text-red-500" size={18} />
-                    </div>
-                    <h3 className="text-3xl font-bold text-gray-800">15</h3>
-                    <p className="text-xs text-gray-400 mt-1">Perlu follow up segera</p>
+            {/* KANBAN BOARD VIEW */}
+            <div className="flex-1 overflow-x-auto">
+                <div className="flex gap-4 min-w-[1000px] h-full">
+                    {stages.map(stage => {
+                        const stageLeads = leads.filter(l => l.status === stage.id);
+                        return (
+                            <div key={stage.id} className={`flex-1 min-w-[250px] rounded-xl ${stage.color} p-4 flex flex-col`}>
+                                <div className={`font-bold ${stage.text} mb-3 flex justify-between`}>
+                                    <span>{stage.label}</span>
+                                    <span className="bg-white px-2 rounded text-sm shadow-sm">{stageLeads.length}</span>
+                                </div>
+                                <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+                                    {stageLeads.map(lead => (
+                                        <div key={lead.id} className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                                            <div className="font-bold text-gray-800 flex items-center gap-2">
+                                                <User size={14}/> {lead.name}
+                                            </div>
+                                            <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                                <Phone size={10}/> {lead.phone || '-'}
+                                            </div>
+                                            <div className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded w-fit mt-2">
+                                                Sumber: {lead.source}
+                                            </div>
+                                            
+                                            {/* Action Buttons to move pipeline */}
+                                            <div className="mt-3 pt-2 border-t flex justify-end gap-1">
+                                                {stage.id !== 'new' && (
+                                                    <button onClick={()=>updateStatus(lead.id, stages[stages.findIndex(s=>s.id===stage.id)-1].id)} className="p-1 hover:bg-gray-100 rounded text-gray-500" title="Mundur">←</button>
+                                                )}
+                                                {stage.id !== 'deal' && (
+                                                    <button onClick={()=>updateStatus(lead.id, stages[stages.findIndex(s=>s.id===stage.id)+1].id)} className="p-1 hover:bg-blue-100 rounded text-blue-600" title="Maju">→ Next</button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {stageLeads.length === 0 && <div className="text-center text-gray-400 text-xs italic py-4">Belum ada data</div>}
+                                </div>
+                            </div>
+                        )
+                    })}
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
-                    <h3 className="font-bold text-gray-700 flex items-center gap-2">Daftar Leads Terbaru</h3>
-                    <button className="text-sm text-gray-500 hover:text-blue-600 flex items-center gap-1">
-                        <Filter size={14}/> Filter
-                    </button>
-                </div>
-                <CrudTable 
-                    columns={columns} 
-                    data={data} 
-                    loading={loading} 
-                    onEdit={handleEdit} 
-                    onDelete={(item)=>handleDelete(item.id)} 
-                />
-            </div>
-
-            {/* Modal Form */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode === 'create' ? "Tambah Prospek Baru" : "Edit Data Prospek"}>
-                <form onSubmit={handleSubmit} className="space-y-4">
+            <Modal isOpen={isModalOpen} onClose={()=>setIsModalOpen(false)} title="Input Leads Baru">
+                <form onSubmit={handleSave} className="space-y-4">
+                    <div><label className="label">Nama Prospek</label><input className="input-field" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} required/></div>
+                    <div><label className="label">No. WhatsApp</label><input className="input-field" value={form.phone} onChange={e=>setForm({...form, phone:e.target.value})} required/></div>
                     <div>
-                        <label className="label">Nama Lengkap</label>
-                        <input className="input-field" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} required />
+                        <label className="label">Sumber</label>
+                        <select className="input-field" value={form.source} onChange={e=>setForm({...form, source:e.target.value})}>
+                            <option value="Instagram">Instagram</option>
+                            <option value="Facebook">Facebook</option>
+                            <option value="Website">Website</option>
+                            <option value="Referral">Referral</option>
+                            <option value="Offline">Event / Offline</option>
+                        </select>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Nomor WhatsApp</label>
-                            <input className="input-field" value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})} required />
-                        </div>
-                        <div>
-                            <label className="label">Email (Opsional)</label>
-                            <input type="email" className="input-field" value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})} />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label">Sumber Leads</label>
-                            <select className="input-field" value={form.source || 'Instagram'} onChange={e => setForm({...form, source: e.target.value})}>
-                                <option value="Instagram">Instagram Ads</option>
-                                <option value="Facebook">Facebook Ads</option>
-                                <option value="Website">Website</option>
-                                <option value="Referral">Referral / Agen</option>
-                                <option value="Walk-in">Datang Langsung</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="label">Status Prospek</label>
-                            <select className="input-field" value={form.status || 'new'} onChange={e => setForm({...form, status: e.target.value})}>
-                                <option value="new">New (Baru Masuk)</option>
-                                <option value="contacted">Sedang Dihubungi</option>
-                                <option value="hot">Hot (Minat Tinggi)</option>
-                                <option value="deal">Deal (Booking)</option>
-                                <option value="lost">Lost (Batal/Gagal)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="label">Catatan Follow Up</label>
-                        <textarea className="input-field h-24" value={form.notes || ''} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Contoh: Berminat paket Turki bulan Desember, minta dihubungi lagi sore ini."></textarea>
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-4 border-t mt-4">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary">Simpan Data</button>
-                    </div>
+                    <div><label className="label">Catatan</label><textarea className="input-field" value={form.notes} onChange={e=>setForm({...form, notes:e.target.value})}></textarea></div>
+                    <div className="flex justify-end pt-4"><button className="btn-primary">Simpan Leads</button></div>
                 </form>
             </Modal>
         </div>

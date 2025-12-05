@@ -10,7 +10,7 @@ class UMH_API_Packages extends UMH_CRUD_Controller {
     public function register_routes() {
         parent::register_routes();
         
-        // Endpoint khusus untuk mengambil detail lengkap paket (termasuk Itinerary & Keberangkatan)
+        // Endpoint khusus detail lengkap (untuk Edit Form)
         register_rest_route('umh/v1', '/packages/(?P<id>[a-zA-Z0-9-]+)/full', [
             'methods' => 'GET',
             'callback' => [$this, 'get_package_full_details'],
@@ -18,17 +18,16 @@ class UMH_API_Packages extends UMH_CRUD_Controller {
         ]);
     }
 
-    /**
-     * Override Create: Simpan Paket + Itinerary sekaligus
-     */
+    // Override Create: Simpan Itinerary & Hotel
     public function create_item($request) {
         $data = $request->get_json_params();
         $itineraries = isset($data['itineraries']) ? $data['itineraries'] : [];
-        
-        // Bersihkan data agar tidak error saat insert ke tabel paket
-        unset($data['itineraries']); 
+        $hotels = isset($data['hotels']) ? $data['hotels'] : []; // Array Hotel
 
-        // 1. Simpan Header Paket
+        // Bersihkan data agar tidak masuk ke tabel utama packages
+        unset($data['itineraries']); 
+        unset($data['hotels']); 
+
         $response = parent::create_item($request);
         
         if ($response->status !== 201) {
@@ -38,44 +37,85 @@ class UMH_API_Packages extends UMH_CRUD_Controller {
         $package_data = $response->get_data()['data'];
         $package_id = $package_data->id;
 
-        // 2. Simpan Itineraries (Looping)
-        if (!empty($itineraries)) {
-            $this->save_itineraries($package_id, $itineraries);
-        }
+        if (!empty($itineraries)) $this->save_itineraries($package_id, $itineraries);
+        if (!empty($hotels)) $this->save_hotels($package_id, $hotels); 
 
         return $response;
     }
 
-    /**
-     * Override Update: Update Paket + Sync Itinerary
-     */
+    // Override Update: Update Itinerary & Hotel
     public function update_item($request) {
         $data = $request->get_json_params();
         $id = $request->get_param('id');
-        
-        // Ambil ID numerik jika inputnya UUID
         $package = $this->get_record_by_id_or_uuid($id);
+
         if (!$package) return new WP_REST_Response(['message' => 'Paket tidak ditemukan'], 404);
 
         $itineraries = isset($data['itineraries']) ? $data['itineraries'] : null;
-        unset($data['itineraries']);
+        $hotels = isset($data['hotels']) ? $data['hotels'] : null; 
 
-        // 1. Update Header Paket
+        unset($data['itineraries']);
+        unset($data['hotels']);
+
         $response = parent::update_item($request);
 
-        // 2. Update Itineraries (Hapus Lama -> Insert Baru)
-        // Ini metode paling aman untuk sinkronisasi data relasi one-to-many
         if ($itineraries !== null) {
             $this->db->delete($this->db->prefix . 'umh_package_itineraries', ['package_id' => $package->id]);
             $this->save_itineraries($package->id, $itineraries);
         }
 
+        if ($hotels !== null) {
+            $this->db->delete($this->db->prefix . 'umh_package_hotels', ['package_id' => $package->id]);
+            $this->save_hotels($package->id, $hotels);
+        }
+
         return $response;
     }
 
-    /**
-     * Helper: Simpan array itinerary ke database
-     */
+    // Override Get Items: Tampilkan List Hotel di Tabel Depan (Concatenated String)
+    public function get_items($request) {
+        $params = $request->get_params();
+        $page = isset($params['page']) ? intval($params['page']) : 1;
+        $per_page = isset($params['per_page']) ? intval($params['per_page']) : 10;
+        $search = isset($params['search']) ? sanitize_text_field($params['search']) : '';
+        $offset = ($page - 1) * $per_page;
+
+        $t_pkg = $this->table_name;
+        $t_pkg_h = $this->db->prefix . 'umh_package_hotels';
+        $t_mst_h = $this->db->prefix . 'umh_master_hotels';
+
+        // Subquery canggih untuk menggabungkan nama hotel dalam satu sel
+        // Hasil: "Hilton (Makkah), Movenpick (Madinah)"
+        $hotel_select = "(
+            SELECT GROUP_CONCAT(CONCAT(mh.name, ' (', ph.city_name, ')') SEPARATOR ', ')
+            FROM $t_pkg_h ph
+            JOIN $t_mst_h mh ON ph.hotel_id = mh.id
+            WHERE ph.package_id = p.id
+        ) as hotel_summary";
+
+        $where = "WHERE p.deleted_at IS NULL";
+        if (!empty($search)) {
+            $where .= " AND p.name LIKE '%" . esc_sql($this->db->esc_like($search)) . "%'";
+        }
+
+        $query = "SELECT p.*, $hotel_select FROM $t_pkg p $where ORDER BY p.created_at DESC LIMIT %d OFFSET %d";
+        
+        $items = $this->db->get_results($this->db->prepare($query, $per_page, $offset));
+        $total = $this->db->get_var("SELECT COUNT(*) FROM $t_pkg p $where");
+
+        return new WP_REST_Response([
+            'success' => true,
+            'data' => $items,
+            'pagination' => [
+                'page' => $page,
+                'per_page' => $per_page,
+                'total_items' => intval($total),
+                'total_pages' => ceil($total / $per_page)
+            ]
+        ], 200);
+    }
+
+    // Helper Save Functions
     private function save_itineraries($package_id, $items) {
         $table = $this->db->prefix . 'umh_package_itineraries';
         foreach ($items as $day) {
@@ -90,41 +130,51 @@ class UMH_API_Packages extends UMH_CRUD_Controller {
         }
     }
 
-    /**
-     * Custom Endpoint: Ambil Data Paket LENGKAP untuk halaman Detail E-commerce
-     */
+    private function save_hotels($package_id, $items) {
+        $table = $this->db->prefix . 'umh_package_hotels';
+        foreach ($items as $h) {
+            if (!empty($h['hotel_id'])) {
+                $this->db->insert($table, [
+                    'package_id' => $package_id,
+                    'hotel_id'   => $h['hotel_id'],
+                    'city_name'  => $h['city_name'],
+                    'nights'     => isset($h['nights']) ? intval($h['nights']) : 0,
+                    'created_at' => current_time('mysql')
+                ]);
+            }
+        }
+    }
+
+    // Get Full Details for Editing
     public function get_package_full_details($request) {
         $id = $request->get_param('id');
         $package = $this->get_record_by_id_or_uuid($id);
+        if (!$package) return new WP_REST_Response(['message' => 'Not Found'], 404);
 
-        if (!$package) {
-            return new WP_REST_Response(['success' => false, 'message' => 'Not Found'], 404);
-        }
+        // Fetch Hotels
+        $hotels = $this->db->get_results($this->db->prepare(
+            "SELECT ph.*, mh.name as hotel_name, mh.rating, mh.city as hotel_city 
+             FROM {$this->db->prefix}umh_package_hotels ph
+             JOIN {$this->db->prefix}umh_master_hotels mh ON ph.hotel_id = mh.id
+             WHERE ph.package_id = %d",
+            $package->id
+        ));
 
-        // Ambil Itinerary
+        // Fetch Itinerary
         $itineraries = $this->db->get_results($this->db->prepare(
             "SELECT * FROM {$this->db->prefix}umh_package_itineraries WHERE package_id = %d ORDER BY day_number ASC",
             $package->id
         ));
 
-        // Ambil Jadwal Keberangkatan Aktif
-        $departures = $this->db->get_results($this->db->prepare(
-            "SELECT * FROM {$this->db->prefix}umh_departures WHERE package_id = %d AND status = 'open' AND deleted_at IS NULL",
-            $package->id
-        ));
-
         $data = (array) $package;
+        $data['hotels'] = $hotels;
         $data['itineraries'] = $itineraries;
-        $data['departures'] = $departures;
 
         return new WP_REST_Response(['success' => true, 'data' => $data], 200);
     }
-
+    
     private function get_record_by_id_or_uuid($id) {
-        if (is_numeric($id)) {
-            return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $id));
-        } else {
-            return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE uuid = %s", $id));
-        }
+        if (is_numeric($id)) return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $id));
+        return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE uuid = %s", $id));
     }
 }
