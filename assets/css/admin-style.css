@@ -3,7 +3,7 @@
  */
 
 /* 1. Reset Dasar & Font */
-body.umroh-manager-page {
+body.toplevel_page_umroh-manager {
     margin: 0 !important;
     padding: 0 !important;
     height: 100vh !important;
@@ -13,17 +13,17 @@ body.umroh-manager-page {
 }
 
 /* 2. Sembunyikan Elemen WordPress (Admin Bar, Menu, Footer, Notices) */
-body.umroh-manager-page #wpadminbar,
-body.umroh-manager-page #adminmenumain,
-body.umroh-manager-page #adminmenuback,
-body.umroh-manager-page #adminmenuwrap,
-body.umroh-manager-page #wpfooter,
-body.umroh-manager-page .update-nag,
-body.umroh-manager-page .notice,
-body.umroh-manager-page #wpbody-content > .wrap > h1,
-body.umroh-manager-page .auto-fold #wpcontent,
-body.umroh-manager-page #screen-meta,
-body.umroh-manager-page #screen-meta-links {
+body.toplevel_page_umroh-manager #wpadminbar,
+body.toplevel_page_umroh-manager #adminmenumain,
+body.toplevel_page_umroh-manager #adminmenuback,
+body.toplevel_page_umroh-manager #adminmenuwrap,
+body.toplevel_page_umroh-manager #wpfooter,
+body.toplevel_page_umroh-manager .update-nag,
+body.toplevel_page_umroh-manager .notice,
+body.toplevel_page_umroh-manager #wpbody-content > .wrap > h1,
+body.toplevel_page_umroh-manager .auto-fold #wpcontent,
+body.toplevel_page_umroh-manager #screen-meta,
+body.toplevel_page_umroh-manager #screen-meta-links {
     display: none !important;
     visibility: hidden !important;
     height: 0 !important;
@@ -34,7 +34,7 @@ body.umroh-manager-page #screen-meta-links {
 }
 
 /* 3. Reset Container WordPress agar Full Width */
-body.umroh-manager-page #wpcontent {
+body.toplevel_page_umroh-manager #wpcontent {
     margin-left: 0 !important;
     padding: 0 !important;
     height: 100vh !important;
@@ -42,17 +42,17 @@ body.umroh-manager-page #wpcontent {
     background: #f3f4f6 !important;
 }
 
-body.umroh-manager-page #wpbody-content {
+body.toplevel_page_umroh-manager #wpbody-content {
     padding-bottom: 0 !important;
     float: none !important;
 }
 
-body.umroh-manager-page #wpbody {
+body.toplevel_page_umroh-manager #wpbody {
     padding-top: 0 !important;
 }
 
-/* 4. Container Utama Aplikasi React */
-#umh-app-root {
+/* 4. Container Utama Aplikasi React (PERBAIKAN ID DISINI) */
+#umroh-manager-app {
     position: fixed;
     top: 0;
     left: 0;
