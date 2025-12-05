@@ -2,14 +2,14 @@ name: Deploy Plugin to WordPress via SFTP
 
 on:
   push:
-    branches: [ "main" ] # Pastikan branch utama Anda bernama 'main' atau 'master'
+    branches: [ "main" ] # Pastikan branch utama di GitHub Anda bernama 'main'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. Ambil kode dari repository GitHub
+      # 1. Ambil kode dari repository
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -20,21 +20,20 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      # 3. Install Dependencies & Build React
-      - name: Install & Build
+      # 3. Install & Build React
+      #    CI=false agar warning tidak dianggap error
+      - name: Install & Build Assets
         run: |
           npm ci --legacy-peer-deps
           npm run build
         env:
-          CI: false # Mencegah build gagal karena warning sepele
+          CI: false
 
-      # 4. Hapus folder node_modules (Sangat Penting untuk Shared Hosting!)
-      #    Folder ini sangat besar dan berisi ribuan file kecil yang bisa membuat FTP lambat/gagal.
-      #    File ini tidak dibutuhkan di server produksi karena kode sudah di-bundle ke dalam folder 'build'.
-      - name: Remove node_modules
-        run: rm -rf node_modules
+      # 4. Hapus folder development yang tidak perlu di-upload
+      - name: Cleanup before deploy
+        run: rm -rf node_modules src
 
-      # 5. Upload ke Server via SFTP
+      # 5. Upload ke Shared Hosting
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@4.3.3
         with:
@@ -42,24 +41,27 @@ jobs:
           username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
           
-          # Gunakan 'ftp' jika shared hosting Anda belum support FTPS (SSL).
-          # Tapi coba 'ftps' dulu demi keamanan. Jika gagal, ganti jadi 'ftp'.
+          # Ganti ke 'ftp' jika hosting Anda menolak 'ftps'. 
+          # Shared hosting biasanya menggunakan port 21.
           protocol: ftps 
           port: 21
           
-          # Upload seluruh isi folder proyek saat ini
+          # Upload semua file dari folder saat ini
           local-dir: ./
           
-          # GANTI PATH INI SESUAI LOKASI DI SHARED HOSTING ANDA
-          # Biasanya formatnya: /public_html/wp-content/plugins/nama-folder-plugin/
-          server-dir: /public_html/umrohweb.site/wp-content/plugins/manajemenumroh/
+          # ⚠️ PENTING: Ganti path di bawah ini sesuai struktur folder di Hosting Anda.
+          # Pastikan diakhiri dengan garis miring (/)
+          server-dir: /public_html/umrohweb.site/wp-content/plugins/manajemenumroh
           
-          # File/Folder yang JANGAN di-upload (menghemat waktu & kuota)
+          # File yang tidak akan di-upload/ditimpa
           exclude: |
             **/.git*
             **/.git*/**
             **/node_modules/**
             .github/**
-            src/** # Opsional: Source code mentah React tidak wajib ada di server
-            README.md
             .gitignore
+            README.md
+            package.json
+            package-lock.json
+            webpack.config.js
+            tailwind.config.js
