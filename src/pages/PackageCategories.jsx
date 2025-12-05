@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-// HAPUS: import Layout from '../components/Layout';  <-- Tidak perlu Layout di sini karena sudah ada di index.jsx
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
@@ -56,10 +55,8 @@ const PackageCategories = () => {
         { header: 'Jumlah Paket', accessor: 'package_count', render: r => <span className="bg-gray-100 px-2 py-1 rounded text-xs">{r.package_count || 0} Paket</span> },
     ];
 
-    // PERBAIKAN: Ganti Layout dengan div biasa
     return (
-        <div className="space-y-6"> {/* Ganti Layout dengan div wrapper biasa */}
-            {/* Header Halaman Manual (karena tidak lewat props Layout) */}
+        <div className="space-y-6">
             <div className="flex justify-between items-center">
                  <h1 className="text-2xl font-bold text-gray-800">Kategori Paket</h1>
             </div>

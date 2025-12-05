@@ -1,345 +1,157 @@
-import React, { useState, useEffect } from 'react';
-import useCRUD from '../hooks/useCRUD';
-import api from '../utils/api'; // Direct API call for fetching packages/jamaah list
+import React, { useState } from 'react';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
-import SearchInput from '../components/SearchInput';
-import Pagination from '../components/Pagination';
-import Spinner from '../components/Spinner';
-import Alert from '../components/Alert';
+import useCRUD from '../hooks/useCRUD';
+import api from '../utils/api';
+import { ShoppingCart, Plus, Calendar, DollarSign } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const Bookings = () => {
-  const { data, loading, error, pagination, fetchData, createItem, updateItem, deleteItem } = useCRUD('/bookings');
-  
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [currentItem, setCurrentItem] = useState(null);
-  const [search, setSearch] = useState('');
-  
-  // Data Pembantu
-  const [packages, setPackages] = useState([]);
-  const [linkedJamaah, setLinkedJamaah] = useState([]); // List jamaah dalam booking ini
-  const [loadingExtras, setLoadingExtras] = useState(false);
+    const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/bookings');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [mode, setMode] = useState('create');
+    const [form, setForm] = useState({});
 
-  // Form State
-  const initialFormState = {
-    booking_code: '', // Auto-generated usually
-    contact_name: '', // Penanggung jawab
-    contact_phone: '',
-    package_id: '',
-    total_pax: 1,
-    travel_date: '',
-    status: 'Booked', // Booked, DP, Lunas, Cancel
-    notes: ''
-  };
-  const [formData, setFormData] = useState(initialFormState);
-
-  // Ambil data Paket untuk Dropdown
-  useEffect(() => {
-    const fetchPackages = async () => {
-      try {
-        const res = await api.get('/packages?status=Open'); // Asumsi endpoint ada
-        setPackages(res.data.data || []);
-      } catch (err) {
-        console.error("Failed loading packages", err);
-      }
+    // Formatter Rupiah
+    const formatIDR = (num) => {
+        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0);
     };
-    fetchPackages();
-  }, []);
 
-  const columns = [
-    { 
-      header: 'Kode Booking', 
-      accessor: (item) => <span className="font-mono font-bold text-blue-600">{item.booking_code}</span> 
-    },
-    { header: 'Penanggung Jawab', accessor: 'contact_name' },
-    { header: 'Paket', accessor: 'package_name' }, // Asumsi backend join table
-    { header: 'Jml Pax', accessor: 'total_pax' },
-    { header: 'Tgl Keberangkatan', accessor: 'travel_date' },
-    { 
-      header: 'Status Pembayaran', 
-      accessor: (item) => {
-        let color = 'bg-gray-100 text-gray-800';
-        if (item.status === 'Lunas') color = 'bg-green-100 text-green-800';
-        if (item.status === 'DP') color = 'bg-blue-100 text-blue-800';
-        if (item.status === 'Cancel') color = 'bg-red-100 text-red-800';
-        
-        return (
-          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${color}`}>
-            {item.status}
-          </span>
-        );
-      } 
-    },
-  ];
+    const handleEdit = (item) => {
+        setForm(item);
+        setMode('edit');
+        setIsModalOpen(true);
+    };
 
-  const handleSearch = (value) => {
-    setSearch(value);
-    fetchData(1, value);
-  };
+    const handleDelete = async (id) => {
+        if(window.confirm("Hapus data booking ini?")) await deleteItem(id);
+    };
 
-  const handlePageChange = (page) => {
-    fetchData(page, search);
-  };
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            if (mode === 'create') {
+                await api.post('umh/v1/bookings', form);
+                toast.success("Booking berhasil dibuat");
+            } else {
+                await api.put(`umh/v1/bookings/${form.id}`, form);
+                toast.success("Booking diupdate");
+            }
+            setIsModalOpen(false);
+            fetchData();
+        } catch (e) { toast.error("Gagal: " + e.message); }
+    };
 
-  // --- Modal Logic ---
-
-  const openModal = (item = null) => {
-    setCurrentItem(item);
-    setFormData(item || initialFormState);
-    setIsModalOpen(true);
-  };
-
-  // Logic Khusus Detail: Ambil list jamaah yang terkait booking ini
-  const openDetailModal = async (item) => {
-    setCurrentItem(item);
-    setIsDetailModalOpen(true);
-    setLinkedJamaah([]);
-    setLoadingExtras(true);
-    try {
-        // Asumsi endpoint: /bookings/{id}/jamaah
-        // Jika backend belum siap, ini akan kosong
-        const res = await api.get(`/bookings/${item.id}/jamaah`);
-        setLinkedJamaah(res.data.data || []);
-    } catch (err) {
-        console.warn("Belum ada endpoint detail jamaah", err);
-        // Mock data sementara untuk demo
-        setLinkedJamaah([
-            { id: 1, name: item.contact_name, status: 'Berangkat', passport: 'X12345' },
-            { id: 2, name: 'Anggota Keluarga 1', status: 'Berangkat', passport: 'X67890' }
-        ]);
-    } finally {
-        setLoadingExtras(false);
-    }
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setIsDetailModalOpen(false);
-    setCurrentItem(null);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    let result;
-    if (currentItem) {
-      result = await updateItem(currentItem.id, formData);
-    } else {
-      // Generate dummy code if empty (Backend harusnya handle ini)
-      const payload = { 
-        ...formData, 
-        booking_code: formData.booking_code || `B-${Date.now().toString().substr(-6)}` 
-      };
-      result = await createItem(payload);
-    }
-    
-    if (result.success) {
-      closeModal();
-    } else {
-      alert('Gagal menyimpan: ' + result.error);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-            <h1 className="text-2xl font-bold text-gray-800">Data Booking</h1>
-            <p className="text-sm text-gray-500">Kelola reservasi paket dan grup jamaah.</p>
-        </div>
-        <button
-          onClick={() => openModal()}
-          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center shadow-sm"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          Booking Baru
-        </button>
-      </div>
-
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-        <SearchInput onSearch={handleSearch} placeholder="Cari Kode Booking atau Nama..." />
-      </div>
-
-      {error && <Alert type="error" message={error} />}
-
-      <CrudTable
-        columns={columns}
-        data={data}
-        isLoading={loading}
-        onEdit={openModal}
-        onDelete={(item) => deleteItem(item.id)}
-        onDetail={openDetailModal}
-      />
-
-      <Pagination
-        currentPage={pagination.currentPage}
-        totalPages={pagination.totalPages}
-        onPageChange={handlePageChange}
-      />
-
-      {/* --- Modal Form Input/Edit --- */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        title={currentItem ? 'Edit Booking' : 'Booking Baru'}
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+    const columns = [
+        { header: 'Kode Booking', accessor: 'booking_code', render: r => (
             <div>
-                <label className="block text-sm font-medium text-gray-700">Penanggung Jawab (PJ)</label>
-                <input
-                type="text"
-                value={formData.contact_name}
-                onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                required
-                placeholder="Nama Kepala Keluarga/Ketua"
-                />
+                <span className="font-mono font-bold text-blue-600 block">{r.booking_code}</span>
+                <span className="text-xs text-gray-400">{r.created_at?.substring(0,10)}</span>
             </div>
-             <div>
-                <label className="block text-sm font-medium text-gray-700">No. Telepon PJ</label>
-                <input
-                type="text"
-                value={formData.contact_phone}
-                onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                required
-                />
-            </div>
-          </div>
-
-          <div>
-             <label className="block text-sm font-medium text-gray-700">Pilih Paket Umroh</label>
-             <select
-                value={formData.package_id}
-                onChange={(e) => setFormData({ ...formData, package_id: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                required
-             >
-                <option value="">-- Pilih Paket --</option>
-                {packages.map(pkg => (
-                    <option key={pkg.id} value={pkg.id}>{pkg.name} ({pkg.departure_date})</option>
-                ))}
-             </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-             <div>
-                <label className="block text-sm font-medium text-gray-700">Jumlah Pax (Orang)</label>
-                <input
-                type="number"
-                min="1"
-                value={formData.total_pax}
-                onChange={(e) => setFormData({ ...formData, total_pax: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                />
-            </div>
+        )},
+        { header: 'Kontak', accessor: 'contact_name', render: r => (
             <div>
-                <label className="block text-sm font-medium text-gray-700">Status Pembayaran</label>
-                <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                >
-                    <option value="Booked">Booked (Belum Bayar)</option>
-                    <option value="DP">Sudah DP</option>
-                    <option value="Lunas">Lunas</option>
-                    <option value="Cancel">Dibatalkan</option>
-                </select>
+                <div className="font-bold text-gray-800">{r.contact_name}</div>
+                <div className="text-xs text-gray-500">{r.contact_phone}</div>
             </div>
-          </div>
+        )},
+        { header: 'Paket Info', accessor: 'package_info', render: r => (
+            <div className="text-sm">
+                <div className="font-medium">{r.package_name || 'Custom'}</div>
+                <div className="text-xs bg-gray-100 inline-block px-1 rounded mt-1">{r.total_pax} Pax</div>
+            </div>
+        )},
+        { header: 'Total Biaya', accessor: 'total_price', render: r => <span className="font-medium text-gray-900">{formatIDR(r.total_price)}</span> },
+        { header: 'Status Pembayaran', accessor: 'payment_status', render: r => {
+            const colors = {
+                paid: 'bg-green-100 text-green-700',
+                dp: 'bg-blue-100 text-blue-700',
+                unpaid: 'bg-red-100 text-red-700',
+                partial: 'bg-yellow-100 text-yellow-700'
+            };
+            return <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${colors[r.payment_status] || 'bg-gray-100'}`}>{r.payment_status}</span>
+        }},
+    ];
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Catatan Khusus</label>
-            <textarea
-              rows="2"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-              placeholder="Contoh: Request kamar connecting door, kursi roda, dll."
-            ></textarea>
-          </div>
-
-          <div className="flex justify-end pt-4">
-             <button type="button" onClick={closeModal} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md mr-2">Batal</button>
-             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Simpan</button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* --- Modal Detail Booking (Master-Detail View) --- */}
-      <Modal
-        isOpen={isDetailModalOpen}
-        onClose={closeModal}
-        title={`Detail Booking: ${currentItem?.booking_code || ''}`}
-      >
-        {currentItem && (
-            <div className="space-y-6">
-                {/* Informasi Utama */}
-                <div className="bg-gray-50 p-4 rounded-md border border-gray-200 grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                        <p className="text-gray-500">Penanggung Jawab</p>
-                        <p className="font-semibold">{currentItem.contact_name}</p>
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600">
+                        <ShoppingCart size={24} />
                     </div>
                     <div>
-                        <p className="text-gray-500">Paket</p>
-                        <p className="font-semibold">{currentItem.package_name}</p>
-                    </div>
-                    <div>
-                        <p className="text-gray-500">Total Pax</p>
-                        <p className="font-semibold">{currentItem.total_pax} Orang</p>
-                    </div>
-                    <div>
-                        <p className="text-gray-500">Status</p>
-                        <span className="font-bold text-blue-600">{currentItem.status}</span>
+                        <h1 className="text-2xl font-bold text-gray-800">Transaksi Booking</h1>
+                        <p className="text-gray-500 text-sm">Kelola pemesanan dan pembayaran jamaah.</p>
                     </div>
                 </div>
+                <button 
+                    onClick={() => { setForm({ booking_date: new Date().toISOString().split('T')[0], total_pax: 1, payment_status: 'unpaid' }); setMode('create'); setIsModalOpen(true); }}
+                    className="btn-primary flex items-center gap-2"
+                >
+                    <Plus size={18} /> Booking Baru
+                </button>
+            </div>
 
-                {/* List Jamaah dalam Booking ini */}
-                <div>
-                    <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-medium text-gray-900 border-b pb-1">Daftar Jamaah (Manifest)</h4>
-                        <button className="text-xs text-blue-600 hover:text-blue-800">+ Tambah Anggota</button>
+            <div className="bg-white rounded-xl shadow border border-gray-200">
+                <CrudTable columns={columns} data={data} loading={loading} onEdit={handleEdit} onDelete={(item) => handleDelete(item.id)} />
+            </div>
+
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode === 'create' ? "Buat Booking Baru" : "Edit Booking"}>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="label">Nama Kontak Pemesan</label>
+                            <input className="input-field" value={form.contact_name || ''} onChange={e => setForm({...form, contact_name: e.target.value})} required />
+                        </div>
+                        <div>
+                            <label className="label">Nomor Telepon</label>
+                            <input className="input-field" value={form.contact_phone || ''} onChange={e => setForm({...form, contact_phone: e.target.value})} />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="label">Tanggal Booking</label>
+                            <input type="date" className="input-field" value={form.booking_date || ''} onChange={e => setForm({...form, booking_date: e.target.value})} required />
+                        </div>
+                        <div>
+                            <label className="label">Jumlah Pax (Orang)</label>
+                            <input type="number" min="1" className="input-field" value={form.total_pax || 1} onChange={e => setForm({...form, total_pax: e.target.value})} />
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                         <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="label">Total Tagihan (Rp)</label>
+                                <input type="number" className="input-field font-bold text-gray-800" value={form.total_price || 0} onChange={e => setForm({...form, total_price: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="label">Status Pembayaran</label>
+                                <select className="input-field" value={form.payment_status || 'unpaid'} onChange={e => setForm({...form, payment_status: e.target.value})}>
+                                    <option value="unpaid">Belum Bayar</option>
+                                    <option value="dp">Down Payment (DP)</option>
+                                    <option value="partial">Cicilan</option>
+                                    <option value="paid">Lunas</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     
-                    {loadingExtras ? (
-                        <Spinner size="sm" />
-                    ) : linkedJamaah.length > 0 ? (
-                        <table className="min-w-full divide-y divide-gray-200 text-sm">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-2 py-2 text-left">Nama</th>
-                                    <th className="px-2 py-2 text-left">Paspor</th>
-                                    <th className="px-2 py-2 text-left">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {linkedJamaah.map((j, idx) => (
-                                    <tr key={j.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                        <td className="px-2 py-2">{j.name}</td>
-                                        <td className="px-2 py-2 font-mono text-gray-500">{j.passport || '-'}</td>
-                                        <td className="px-2 py-2">{j.status}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <div className="text-center py-4 text-gray-500 bg-gray-50 rounded border border-dashed border-gray-300">
-                            Belum ada data jamaah yang dihubungkan ke booking ini.
-                        </div>
-                    )}
-                </div>
+                    <div>
+                        <label className="label">Catatan Tambahan</label>
+                        <textarea className="input-field h-20" value={form.notes || ''} onChange={e => setForm({...form, notes: e.target.value})}></textarea>
+                    </div>
 
-                <div className="flex justify-end pt-2">
-                    <button onClick={closeModal} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md">Tutup</button>
-                </div>
-            </div>
-        )}
-      </Modal>
-    </div>
-  );
+                    <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
+                        <button type="submit" className="btn-primary">Simpan Transaksi</button>
+                    </div>
+                </form>
+            </Modal>
+        </div>
+    );
 };
 
 export default Bookings;

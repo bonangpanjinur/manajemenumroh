@@ -1,272 +1,190 @@
-import React, { useState, useEffect } from 'react';
-import useCRUD from '../hooks/useCRUD';
+import React, { useState } from 'react';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
-import { api } from '../utils/api';
-import { formatCurrency, formatDate } from '../utils/formatters';
+import useCRUD from '../hooks/useCRUD';
+import api from '../utils/api';
+import { Package, Plus, Calendar, MapPin, DollarSign, Image as ImageIcon } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const Packages = () => {
-    const { 
-        data: packages, 
-        loading, 
-        createItem, 
-        updateItem, 
-        deleteItem, 
-        refreshData 
-    } = useCRUD('packages');
-
+    const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/packages');
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isManifestOpen, setIsManifestOpen] = useState(false);
-    const [editingItem, setEditingItem] = useState(null);
-    const [manifestData, setManifestData] = useState([]);
-    const [selectedPackageForManifest, setSelectedPackageForManifest] = useState(null);
+    const [mode, setMode] = useState('create');
+    const [form, setForm] = useState({});
 
-    // Form State sesuai Schema Database Enterprise
-    const [formData, setFormData] = useState({
-        name: '',
-        category: 'Umrah Reguler', // Akan diproses API jadi category_id
-        departure_date: '',
-        duration_days: 9,
-        hotel_makkah: '', // Akan diproses API jadi hotel_makkah_id
-        hotel_madinah: '', // Akan diproses API jadi hotel_madinah_id
-        airline: '', // Akan diproses API jadi airline_id
-        base_price_quad: 0,
-        base_price_triple: 0,
-        base_price_double: 0,
-        status: 'active'
-    });
-
-    const resetForm = () => {
-        setFormData({
-            name: '',
-            category: 'Umrah Reguler',
-            departure_date: '',
-            duration_days: 9,
-            hotel_makkah: '',
-            hotel_madinah: '',
-            airline: '',
-            base_price_quad: 0,
-            base_price_triple: 0,
-            base_price_double: 0,
-            status: 'active'
-        });
-        setEditingItem(null);
-    };
-
-    const handleOpenModal = (item = null) => {
-        if (item) {
-            setEditingItem(item);
-            setFormData({
-                ...item,
-                // Pastikan nilai default agar tidak null
-                base_price_quad: item.base_price_quad || 0,
-                base_price_triple: item.base_price_triple || 0,
-                base_price_double: item.base_price_double || 0,
-            });
-        } else {
-            resetForm();
-        }
-        setIsModalOpen(true);
-    };
+    // Helper formatter
+    const formatIDR = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        
-        let success;
-        if (editingItem) {
-            success = await updateItem(editingItem.id, formData);
-        } else {
-            success = await createItem(formData);
-        }
-        
-        if (success) {
+        try {
+            // Simulasi upload gambar jika ada (logika upload sesungguhnya butuh FormData)
+            const payload = { ...form };
+            
+            if (mode === 'create') {
+                await api.post('umh/v1/packages', payload);
+                toast.success("Paket berhasil dibuat");
+            } else {
+                await api.put(`umh/v1/packages/${form.id}`, payload);
+                toast.success("Paket diperbarui");
+            }
             setIsModalOpen(false);
-            refreshData(); // Auto reload
+            fetchData();
+        } catch (error) {
+            toast.error("Gagal simpan: " + error.message);
         }
     };
 
-    const viewManifest = async (pkg) => {
-        setSelectedPackageForManifest(pkg);
-        setIsManifestOpen(true);
-        setManifestData([]); 
-        try {
-            const response = await api.get(`/packages/${pkg.id}/manifest`);
-            setManifestData(response);
-        } catch (error) {
-            console.error("Gagal memuat manifest", error);
-        }
+    const handleEdit = (item) => {
+        setForm(item);
+        setMode('edit');
+        setIsModalOpen(true);
     };
 
     const columns = [
-        { header: 'Nama Paket', accessor: 'name' },
-        { header: 'Kategori', accessor: 'category', render: (row) => (
-            <span className={`px-2 py-1 rounded text-xs ${row.type === 'haji' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
-                {row.category || '-'}
+        { header: 'Nama Paket', accessor: 'name', render: r => (
+            <div>
+                <div className="font-bold text-gray-900">{r.name}</div>
+                <div className="text-xs text-gray-500">{r.duration_days} Hari | {r.category_name}</div>
+            </div>
+        )},
+        { header: 'Hotel', accessor: 'hotels', render: r => (
+            <div className="text-sm">
+                <div className="flex items-center gap-1"><MapPin size={10} className="text-gray-400"/> Makkah: {r.hotel_makkah || 'TBA'}</div>
+                <div className="flex items-center gap-1"><MapPin size={10} className="text-gray-400"/> Madinah: {r.hotel_madinah || 'TBA'}</div>
+            </div>
+        )},
+        { header: 'Harga Mulai', accessor: 'base_price', render: r => <span className="font-bold text-green-700">{formatIDR(r.base_price)}</span> },
+        { header: 'Status', accessor: 'status', render: r => (
+            <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${r.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                {r.status}
             </span>
         )},
-        { header: 'Durasi', accessor: 'duration_days', render: (row) => `${row.duration_days} Hari` },
-        { header: 'Harga (Quad)', accessor: 'base_price_quad', render: (row) => formatCurrency(row.base_price_quad) },
-        { header: 'Status', accessor: 'status' },
     ];
-
-    const actions = (row) => (
-        <div className="flex space-x-2">
-            <button 
-                onClick={() => viewManifest(row)}
-                className="text-green-600 hover:text-green-900 text-sm font-medium"
-                title="Lihat Jemaah (Manifest)"
-            >
-                Manifest
-            </button>
-            <button onClick={() => handleOpenModal(row)} className="text-indigo-600 hover:text-indigo-900">Edit</button>
-            <button onClick={async () => {
-                if(window.confirm('Hapus paket ini?')) {
-                    await deleteItem(row.id);
-                    refreshData();
-                }
-            }} className="text-red-600 hover:text-red-900">Hapus</button>
-        </div>
-    );
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold text-gray-800">Manajemen Paket (Enterprise)</h1>
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-teal-100 rounded-lg text-teal-600">
+                        <Package size={24} />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800">Paket Umroh & Haji</h1>
+                        <p className="text-gray-500 text-sm">Kelola katalog produk perjalanan.</p>
+                    </div>
+                </div>
                 <button 
-                    onClick={() => handleOpenModal()} 
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+                    onClick={() => { setForm({ duration_days: 9, currency: 'IDR', status: 'active' }); setMode('create'); setIsModalOpen(true); }} 
+                    className="btn-primary flex items-center gap-2"
                 >
-                    Buat Paket Baru
+                    <Plus size={18} /> Buat Paket Baru
                 </button>
             </div>
 
-            <CrudTable 
-                columns={columns} 
-                data={packages} 
-                loading={loading}
-                actions={actions}
-            />
+            <div className="bg-white rounded-xl shadow border border-gray-200">
+                <CrudTable 
+                    columns={columns} 
+                    data={data} 
+                    loading={loading}
+                    onEdit={handleEdit}
+                    onDelete={(item) => { if(window.confirm('Hapus paket?')) deleteItem(item.id) }}
+                />
+            </div>
 
-            {/* Modal Form Paket */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? "Edit Paket" : "Buat Paket Baru"}>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+            {/* Modal Form Besar */}
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode === 'create' ? "Tambah Paket Baru" : "Edit Paket"}>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    {/* 1. Info Dasar */}
+                    <div className="space-y-4">
+                        <h3 className="font-bold text-gray-700 border-b pb-2">Informasi Dasar</h3>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Nama Paket</label>
-                            <input type="text" required className="mt-1 block w-full border rounded-md p-2" 
-                                value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                            <label className="label">Nama Paket</label>
+                            <input className="input-field" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} placeholder="Contoh: Umroh Awal Ramadhan 2025" required />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Kategori</label>
-                            <input type="text" list="categories" placeholder="Ketik atau pilih..." className="mt-1 block w-full border rounded-md p-2"
-                                value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} />
-                            <datalist id="categories">
-                                <option value="Umrah Reguler"/>
-                                <option value="Umrah Plus"/>
-                                <option value="Haji Khusus"/>
-                                <option value="Wisata Halal"/>
-                            </datalist>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                         {/* Di Skema Enterprise, Tanggal ada di tabel departures, tapi kita simpan sebagai default di paket dulu */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Durasi (Hari)</label>
-                            <input type="number" required className="mt-1 block w-full border rounded-md p-2" 
-                                value={formData.duration_days} onChange={(e) => setFormData({...formData, duration_days: e.target.value})} />
-                        </div>
-                        <div>
-                             <label className="block text-sm font-medium text-gray-700">Maskapai</label>
-                             <input type="text" className="mt-1 block w-full border rounded-md p-2" 
-                                value={formData.airline} onChange={(e) => setFormData({...formData, airline: e.target.value})} />
-                        </div>
-                    </div>
-
-                    {/* Hotel */}
-                    <div className="border-t pt-4">
-                        <h3 className="font-medium text-gray-900 mb-2">Akomodasi (Master Data)</h3>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Hotel Makkah</label>
-                                <input type="text" className="mt-1 block w-full border rounded-md p-2" 
-                                    value={formData.hotel_makkah} onChange={(e) => setFormData({...formData, hotel_makkah: e.target.value})} />
+                                <label className="label">Kategori</label>
+                                <select className="input-field" value={form.category_id || ''} onChange={e => setForm({...form, category_id: e.target.value})}>
+                                    <option value="">-- Pilih Kategori --</option>
+                                    <option value="1">Umroh Reguler</option>
+                                    <option value="2">Umroh Plus</option>
+                                    <option value="3">Haji Furoda</option>
+                                </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Hotel Madinah</label>
-                                <input type="text" className="mt-1 block w-full border rounded-md p-2" 
-                                    value={formData.hotel_madinah} onChange={(e) => setFormData({...formData, hotel_madinah: e.target.value})} />
+                                <label className="label">Durasi (Hari)</label>
+                                <input type="number" className="input-field" value={form.duration_days || 9} onChange={e => setForm({...form, duration_days: e.target.value})} />
                             </div>
                         </div>
                     </div>
 
-                    {/* Pricing Fixed Columns (Quad/Triple/Double) */}
-                    <div className="border-t pt-4 bg-gray-50 p-4 rounded">
-                        <h3 className="font-medium text-gray-900 mb-2">Harga Paket (Base Price)</h3>
+                    {/* 2. Akomodasi */}
+                    <div className="space-y-4">
+                        <h3 className="font-bold text-gray-700 border-b pb-2">Akomodasi Hotel</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="label">Hotel Makkah</label>
+                                <input className="input-field" value={form.hotel_makkah || ''} onChange={e => setForm({...form, hotel_makkah: e.target.value})} placeholder="Cari Hotel..." />
+                            </div>
+                            <div>
+                                <label className="label">Hotel Madinah</label>
+                                <input className="input-field" value={form.hotel_madinah || ''} onChange={e => setForm({...form, hotel_madinah: e.target.value})} placeholder="Cari Hotel..." />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 3. Harga */}
+                    <div className="space-y-4 bg-gray-50 p-4 rounded-lg border">
+                        <h3 className="font-bold text-gray-700 border-b pb-2 flex items-center gap-2"><DollarSign size={16}/> Varian Harga (IDR)</h3>
                         <div className="grid grid-cols-3 gap-4">
                             <div>
-                                <label className="block text-xs font-medium text-gray-500">Harga Quad (Sekamar 4)</label>
-                                <input type="number" className="mt-1 block w-full border rounded-md p-2" 
-                                    value={formData.base_price_quad} onChange={(e) => setFormData({...formData, base_price_quad: e.target.value})} />
+                                <label className="label">Quad (Sekamar 4)</label>
+                                <input type="number" className="input-field" value={form.base_price_quad || ''} onChange={e => setForm({...form, base_price_quad: e.target.value})} placeholder="30.000.000" />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-gray-500">Harga Triple (Sekamar 3)</label>
-                                <input type="number" className="mt-1 block w-full border rounded-md p-2" 
-                                    value={formData.base_price_triple} onChange={(e) => setFormData({...formData, base_price_triple: e.target.value})} />
+                                <label className="label">Triple (Sekamar 3)</label>
+                                <input type="number" className="input-field" value={form.base_price_triple || ''} onChange={e => setForm({...form, base_price_triple: e.target.value})} placeholder="32.000.000" />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-gray-500">Harga Double (Sekamar 2)</label>
-                                <input type="number" className="mt-1 block w-full border rounded-md p-2" 
-                                    value={formData.base_price_double} onChange={(e) => setFormData({...formData, base_price_double: e.target.value})} />
+                                <label className="label">Double (Sekamar 2)</label>
+                                <input type="number" className="input-field" value={form.base_price_double || ''} onChange={e => setForm({...form, base_price_double: e.target.value})} placeholder="35.000.000" />
                             </div>
+                        </div>
+                        <div>
+                            <label className="label">Uang Muka (DP)</label>
+                            <input type="number" className="input-field" value={form.down_payment_amount || 5000000} onChange={e => setForm({...form, down_payment_amount: e.target.value})} />
                         </div>
                     </div>
 
-                    <div className="flex justify-end pt-4">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="mr-2 px-4 py-2 text-gray-600 hover:text-gray-800">Batal</button>
-                        <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Simpan Paket</button>
+                    {/* 4. Deskripsi & Media */}
+                    <div className="space-y-4">
+                        <div>
+                            <label className="label">Deskripsi Paket</label>
+                            <textarea className="input-field h-24" value={form.description || ''} onChange={e => setForm({...form, description: e.target.value})}></textarea>
+                        </div>
+                        <div>
+                            <label className="label">URL Gambar Banner</label>
+                            <div className="flex gap-2">
+                                <input className="input-field" value={form.image_url || ''} onChange={e => setForm({...form, image_url: e.target.value})} placeholder="https://..." />
+                                <button type="button" className="btn-secondary whitespace-nowrap"><ImageIcon size={16}/></button>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="label">Status Publikasi</label>
+                            <select className="input-field" value={form.status || 'active'} onChange={e => setForm({...form, status: e.target.value})}>
+                                <option value="active">Active (Tampil di Web)</option>
+                                <option value="draft">Draft (Disembunyikan)</option>
+                                <option value="archived">Arsip (Tidak Aktif)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
+                        <button type="submit" className="btn-primary">Simpan Paket</button>
                     </div>
                 </form>
-            </Modal>
-
-            {/* Modal Manifest */}
-            <Modal isOpen={isManifestOpen} onClose={() => setIsManifestOpen(false)} title={`Manifest: ${selectedPackageForManifest?.name || ''}`}>
-                <div className="overflow-y-auto max-h-96">
-                    {manifestData.length === 0 ? (
-                        <p className="text-center text-gray-500 py-4">Belum ada jemaah terdaftar di paket ini.</p>
-                    ) : (
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Kode Booking</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nama Jemaah</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tipe Kamar</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                                {manifestData.map((m, idx) => (
-                                    <tr key={idx}>
-                                        <td className="px-3 py-2 text-sm">{m.booking_code}</td>
-                                        <td className="px-3 py-2 text-sm">
-                                            <div className="font-medium text-gray-900">{m.jamaah_name}</div>
-                                            <div className="text-gray-500 text-xs">{m.nik}</div>
-                                        </td>
-                                        <td className="px-3 py-2 text-sm">{m.room_type}</td>
-                                        <td className="px-3 py-2 text-sm">
-                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${m.payment_status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                {m.payment_status}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-                </div>
-                <div className="mt-4 flex justify-end">
-                    <button onClick={() => setIsManifestOpen(false)} className="bg-gray-200 text-gray-800 px-4 py-2 rounded">Tutup</button>
-                </div>
             </Modal>
         </div>
     );

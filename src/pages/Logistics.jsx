@@ -1,300 +1,210 @@
 import React, { useState, useEffect } from 'react';
-import useCRUD from '../hooks/useCRUD';
-import api from '../utils/api'; // Import API untuk fetch data bookings
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
-import SearchInput from '../components/SearchInput';
-import Pagination from '../components/Pagination';
-import Spinner from '../components/Spinner';
-import Alert from '../components/Alert';
+import useCRUD from '../hooks/useCRUD';
+import api from '../utils/api';
+import { Package, Truck, ClipboardList, Plus, AlertTriangle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const Logistics = () => {
-  // Main CRUD untuk Logistik
-  const { data, loading, error, pagination, fetchData, createItem, updateItem, deleteItem } = useCRUD('/logistics');
-  
-  // State lokal
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentItem, setCurrentItem] = useState(null);
-  const [bookingsList, setBookingsList] = useState([]); // Untuk dropdown pilihan booking
-  const [loadingBookings, setLoadingBookings] = useState(false);
-  const [search, setSearch] = useState('');
-
-  // Initial Form State
-  const initialFormState = { 
-    booking_id: '', 
-    item_name: 'Koper & Perlengkapan', 
-    quantity: 1, 
-    status: 'Pending', 
-    notes: '',
-    recipient_name: '' // Nama penerima barang
-  };
-  const [formData, setFormData] = useState(initialFormState);
-
-  // Fetch data bookings untuk dropdown saat komponen di-load
-  useEffect(() => {
-    const fetchBookings = async () => {
-      setLoadingBookings(true);
-      try {
-        // Asumsi endpoint ini mengembalikan daftar booking aktif
-        const response = await api.get('/bookings?status=Confirmed'); 
-        setBookingsList(response.data.data || []);
-      } catch (err) {
-        console.error("Gagal mengambil data booking", err);
-      } finally {
-        setLoadingBookings(false);
-      }
-    };
-    fetchBookings();
-  }, []);
-
-  // Definisi Kolom Tabel
-  const columns = [
-    { 
-      header: 'Kode Booking', 
-      accessor: (item) => (
-        <span className="font-mono text-blue-600 font-medium">
-          {item.booking_code || '-'}
-        </span>
-      )
-    },
-    { header: 'Nama Jamaah / Penerima', accessor: 'recipient_name' },
-    { header: 'Item', accessor: 'item_name' },
-    { header: 'Qty', accessor: 'quantity' },
-    { 
-      header: 'Status', 
-      accessor: (item) => {
-        let colorClass = 'bg-gray-100 text-gray-800';
-        if (item.status === 'Diterima') colorClass = 'bg-green-100 text-green-800';
-        if (item.status === 'Disiapkan') colorClass = 'bg-blue-100 text-blue-800';
-        if (item.status === 'Pending') colorClass = 'bg-yellow-100 text-yellow-800';
-        
-        return (
-          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${colorClass}`}>
-            {item.status}
-          </span>
-        );
-      } 
-    },
-    { header: 'Catatan', accessor: 'notes' }
-  ];
-
-  const handleSearch = (value) => {
-    setSearch(value);
-    fetchData(1, value);
-  };
-
-  const handlePageChange = (page) => {
-    fetchData(page, search);
-  };
-
-  const openModal = (item = null) => {
-    setCurrentItem(item);
-    if (item) {
-      setFormData(item);
-    } else {
-      setFormData(initialFormState);
-    }
-    setIsModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setCurrentItem(null);
-    setFormData(initialFormState);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+    const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' or 'distribution'
     
-    // Cari booking code berdasarkan ID untuk disimpan sebagai redundansi/display jika perlu
-    const selectedBooking = bookingsList.find(b => b.id == formData.booking_id);
-    const payload = {
-        ...formData,
-        booking_code: selectedBooking ? selectedBooking.booking_code : '' 
+    // Switch endpoint based on tab
+    const getEndpoint = () => activeTab === 'inventory' ? 'umh/v1/logistics/items' : 'umh/v1/logistics/distribution';
+    const { data, loading, fetchData, deleteItem } = useCRUD(getEndpoint());
+
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [mode, setMode] = useState('create');
+    const [form, setForm] = useState({});
+
+    // Refetch when tab changes
+    useEffect(() => { 
+        setForm({}); // Reset form
+        fetchData(); 
+    }, [activeTab]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            const endpoint = getEndpoint();
+            if (mode === 'create') await api.post(endpoint, form);
+            else await api.put(`${endpoint}/${form.id}`, form);
+            
+            toast.success("Data berhasil disimpan");
+            setIsModalOpen(false);
+            fetchData();
+        } catch (e) { toast.error("Gagal simpan: " + e.message); }
     };
 
-    let result;
-    if (currentItem) {
-      result = await updateItem(currentItem.id, payload);
-    } else {
-      result = await createItem(payload);
-    }
-    
-    if (result.success) {
-      closeModal();
-    } else {
-      alert('Gagal menyimpan: ' + result.error);
-    }
-  };
+    // Columns Definition
+    const getColumns = () => {
+        if (activeTab === 'inventory') {
+            return [
+                { header: 'Kode Barang', accessor: 'item_code', render: r => <code className="bg-gray-100 px-2 py-1 rounded text-xs">{r.item_code}</code> },
+                { header: 'Nama Barang', accessor: 'item_name', render: r => <span className="font-bold text-gray-800">{r.item_name}</span> },
+                { header: 'Kategori', accessor: 'category' },
+                { header: 'Stok', accessor: 'stock_qty', render: r => (
+                    <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${r.stock_qty < r.min_stock_alert ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                            {r.stock_qty} Pcs
+                        </span>
+                        {r.stock_qty < r.min_stock_alert && <AlertTriangle size={14} className="text-red-500" title="Stok Menipis!"/>}
+                    </div>
+                )},
+                { header: 'Harga Satuan', accessor: 'unit_cost', render: r => <span className="text-xs text-gray-500">Rp {Number(r.unit_cost).toLocaleString()}</span> },
+            ];
+        } else {
+            return [
+                { header: 'Nama Jamaah', accessor: 'jamaah_name', render: r => <div className="font-bold">{r.jamaah_name}</div> },
+                { header: 'Barang', accessor: 'item_name' },
+                { header: 'Qty', accessor: 'qty', render: r => <span className="font-mono">{r.qty}</span> },
+                { header: 'Tanggal Ambil', accessor: 'taken_date', render: r => <span className="text-xs text-gray-500">{r.taken_date || '-'}</span> },
+                { header: 'Status', accessor: 'status', render: r => (
+                    <span className={`px-2 py-1 rounded text-xs uppercase font-bold ${r.status==='taken'?'bg-green-100 text-green-700':r.status==='shipped'?'bg-blue-100 text-blue-700':'bg-yellow-100 text-yellow-800'}`}>
+                        {r.status}
+                    </span>
+                )},
+            ];
+        }
+    };
 
-  // Handler saat Booking dipilih di dropdown
-  const handleBookingChange = (e) => {
-    const selectedId = e.target.value;
-    const booking = bookingsList.find(b => b.id == selectedId);
-    
-    setFormData({
-      ...formData,
-      booking_id: selectedId,
-      // Otomatis isi nama penerima dari data booking (misal nama kontak utama)
-      recipient_name: booking ? booking.contact_name || booking.jamaah_name : ''
-    });
-  };
+    // Form Renderer
+    const renderForm = () => {
+        if (activeTab === 'inventory') {
+            return (
+                <>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="label">Kode Barang</label>
+                            <input className="input-field" value={form.item_code || ''} onChange={e => setForm({...form, item_code: e.target.value})} placeholder="INV-001" required />
+                        </div>
+                        <div>
+                            <label className="label">Kategori</label>
+                            <select className="input-field" value={form.category || 'perlengkapan'} onChange={e => setForm({...form, category: e.target.value})}>
+                                <option value="perlengkapan">Perlengkapan Umroh</option>
+                                <option value="dokumen">Dokumen</option>
+                                <option value="souvenir">Souvenir/Hadiah</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="label">Nama Barang</label>
+                        <input className="input-field" value={form.item_name || ''} onChange={e => setForm({...form, item_name: e.target.value})} required placeholder="Contoh: Koper Fiber 24 Inch" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <label className="label">Stok Awal</label>
+                            <input type="number" className="input-field" value={form.stock_qty || 0} onChange={e => setForm({...form, stock_qty: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="label">Min. Alert</label>
+                            <input type="number" className="input-field" value={form.min_stock_alert || 10} onChange={e => setForm({...form, min_stock_alert: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="label">Harga Beli</label>
+                            <input type="number" className="input-field" value={form.unit_cost || 0} onChange={e => setForm({...form, unit_cost: e.target.value})} />
+                        </div>
+                    </div>
+                </>
+            );
+        } else {
+            return (
+                <>
+                    <div>
+                        <label className="label">Pilih Jamaah / Booking ID</label>
+                        <input className="input-field" type="number" placeholder="Masukkan ID Jamaah" value={form.jamaah_id || ''} onChange={e => setForm({...form, jamaah_id: e.target.value})} required />
+                    </div>
+                    <div>
+                        <label className="label">Barang yang Diambil</label>
+                        <select className="input-field" value={form.item_id || ''} onChange={e => setForm({...form, item_id: e.target.value})} required>
+                            <option value="">-- Pilih Barang --</option>
+                            <option value="1">Koper Set</option>
+                            <option value="2">Kain Ihram</option>
+                            <option value="3">Batik Seragam</option>
+                        </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="label">Jumlah (Qty)</label>
+                            <input type="number" className="input-field" value={form.qty || 1} onChange={e => setForm({...form, qty: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="label">Status Pengambilan</label>
+                            <select className="input-field" value={form.status || 'pending'} onChange={e => setForm({...form, status: e.target.value})}>
+                                <option value="pending">Disiapkan</option>
+                                <option value="ready">Siap Ambil</option>
+                                <option value="taken">Sudah Diambil</option>
+                                <option value="shipped">Dikirim Ekspedisi</option>
+                            </select>
+                        </div>
+                    </div>
+                    {form.status === 'shipped' && (
+                         <div>
+                            <label className="label">Nomor Resi Pengiriman</label>
+                            <input className="input-field" value={form.shipping_resi || ''} onChange={e => setForm({...form, shipping_resi: e.target.value})} />
+                        </div>
+                    )}
+                </>
+            );
+        }
+    };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div>
-            <h1 className="text-2xl font-bold text-gray-800">Manajemen Logistik</h1>
-            <p className="text-sm text-gray-500">Pantau distribusi perlengkapan (Koper, Batik, Ihram) per Booking.</p>
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-orange-100 rounded-lg text-orange-600">
+                        <Package size={24} />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800">Logistik & Perlengkapan</h1>
+                        <p className="text-gray-500 text-sm">Manajemen stok koper, kain ihram, dan distribusi.</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="flex gap-6 border-b border-gray-200">
+                <button onClick={() => setActiveTab('inventory')} className={`pb-3 px-2 flex items-center gap-2 font-medium border-b-2 transition-colors ${activeTab==='inventory' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                    <ClipboardList size={18}/> Stok Barang
+                </button>
+                <button onClick={() => setActiveTab('distribution')} className={`pb-3 px-2 flex items-center gap-2 font-medium border-b-2 transition-colors ${activeTab==='distribution' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                    <Truck size={18}/> Distribusi Jamaah
+                </button>
+            </div>
+
+            <div className="bg-white rounded-xl shadow border border-gray-200">
+                <div className="p-4 flex justify-between items-center bg-gray-50 rounded-t-xl border-b">
+                    <h3 className="font-bold text-gray-700">
+                        {activeTab === 'inventory' ? 'Daftar Inventaris Gudang' : 'Riwayat Pengambilan Barang'}
+                    </h3>
+                    <button 
+                        onClick={() => { setForm({}); setMode('create'); setIsModalOpen(true); }}
+                        className="btn-primary flex items-center gap-2 text-sm"
+                    >
+                        <Plus size={16}/> {activeTab === 'inventory' ? 'Barang Baru' : 'Catat Pengambilan'}
+                    </button>
+                </div>
+                <CrudTable 
+                    columns={getColumns()} 
+                    data={data} 
+                    loading={loading}
+                    onEdit={(item) => { setForm(item); setMode('edit'); setIsModalOpen(true); }}
+                    onDelete={(item) => deleteItem(item.id)}
+                />
+            </div>
+
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode==='create' ? (activeTab==='inventory'?"Tambah Barang":"Catat Distribusi") : "Edit Data"}>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    {renderForm()}
+                    <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
+                        <button type="submit" className="btn-primary">Simpan</button>
+                    </div>
+                </form>
+            </Modal>
         </div>
-        <button
-          onClick={() => openModal()}
-          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center shadow-sm"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          Distribusi Baru
-        </button>
-      </div>
-
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-        <SearchInput onSearch={handleSearch} placeholder="Cari Kode Booking atau Nama..." />
-      </div>
-
-      {error && <Alert type="error" message={error} />}
-
-      <CrudTable
-        columns={columns}
-        data={data}
-        isLoading={loading}
-        onEdit={(item) => openModal(item)}
-        onDelete={(item) => deleteItem(item.id)}
-        onDetail={(item) => alert(`Detail logistik untuk ${item.booking_code}`)} // Bisa diganti modal detail
-      />
-
-      <Pagination
-        currentPage={pagination.currentPage}
-        totalPages={pagination.totalPages}
-        onPageChange={handlePageChange}
-      />
-
-      {/* Modal Form */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        title={currentItem ? 'Update Status Logistik' : 'Input Pengambilan Logistik'}
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          
-          {/* Field: Pilih Booking */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Kode Booking</label>
-            {loadingBookings ? (
-                <p className="text-xs text-gray-500 animate-pulse">Memuat data booking...</p>
-            ) : (
-                <select
-                value={formData.booking_id}
-                onChange={handleBookingChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                required
-                disabled={currentItem} // Jika edit, biasanya booking ID tidak boleh diganti agar konsisten
-                >
-                <option value="">-- Pilih Booking --</option>
-                {bookingsList.map((b) => (
-                    <option key={b.id} value={b.id}>
-                    {b.booking_code} - {b.contact_name || b.jamaah_name} ({b.package_name})
-                    </option>
-                ))}
-                </select>
-            )}
-            <p className="text-xs text-gray-500 mt-1">Pilih Booking ID untuk mengaitkan logistik.</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-                <label className="block text-sm font-medium text-gray-700">Nama Penerima</label>
-                <input
-                type="text"
-                value={formData.recipient_name}
-                onChange={(e) => setFormData({ ...formData, recipient_name: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                placeholder="Nama Jamaah/Perwakilan"
-                />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-700">Jenis Barang</label>
-                <select
-                    value={formData.item_name}
-                    onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                >
-                    <option value="Koper & Perlengkapan">Set Koper Lengkap</option>
-                    <option value="Kain Ihram">Kain Ihram</option>
-                    <option value="Batik Seragam">Batik Seragam</option>
-                    <option value="Oleh-oleh Air Zamzam">Air Zamzam (5L)</option>
-                    <option value="Dokumen Paspor">Dokumen Paspor</option>
-                </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-                <label className="block text-sm font-medium text-gray-700">Jumlah (Qty)</label>
-                <input
-                type="number"
-                min="1"
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-700">Status</label>
-                <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                >
-                <option value="Pending">Pending (Belum Diambil)</option>
-                <option value="Disiapkan">Sedang Disiapkan</option>
-                <option value="Diterima">Sudah Diterima</option>
-                </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Catatan Tambahan</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              rows="2"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-              placeholder="Contoh: Diambil oleh anak Pak Budi"
-            ></textarea>
-          </div>
-
-          <div className="flex justify-end pt-4">
-            <button
-              type="button"
-              onClick={closeModal}
-              className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md mr-2 hover:bg-gray-300"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center"
-            >
-              {loading && <Spinner size="sm" className="mr-2" />}
-              {currentItem ? 'Simpan Perubahan' : 'Catat Distribusi'}
-            </button>
-          </div>
-        </form>
-      </Modal>
-    </div>
-  );
+    );
 };
 
 export default Logistics;
