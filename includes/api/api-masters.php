@@ -1,19 +1,14 @@
 <?php
-/**
- * File: includes/api/api-masters.php
- * Deskripsi: API untuk Master Data (Hotel, Airlines, Cities)
- */
-
 require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
 class UMH_API_Masters extends UMH_CRUD_Controller {
 
     public function __construct() {
-        parent::__construct('options'); // Default dummy, will be overridden
+        parent::__construct('options'); 
     }
 
     public function register_routes() {
-        // 1. Settings Routes
+        // Settings
         register_rest_route('umh/v1', '/settings', [
             'methods' => 'GET', 'callback' => [$this, 'get_settings'], 'permission_callback' => '__return_true',
         ]);
@@ -21,13 +16,13 @@ class UMH_API_Masters extends UMH_CRUD_Controller {
             'methods' => 'POST', 'callback' => [$this, 'update_settings'], 'permission_callback' => '__return_true',
         ]);
 
-        // 2. Register Sub-Controllers Dynamic
+        // Master Data Controllers
         $this->register_sub_controller('hotels', 'umh_master_hotels');
         $this->register_sub_controller('airlines', 'umh_master_airlines');
-        $this->register_sub_controller('cities', 'umh_master_cities'); // NEW: Kota
+        $this->register_sub_controller('cities', 'umh_master_cities');
+        $this->register_sub_controller('mutawifs', 'umh_master_mutawifs'); // NEW
     }
 
-    // Helper untuk membuat controller on-the-fly
     private function register_sub_controller($base, $table) {
         $controller = new class($table, $base) extends UMH_CRUD_Controller {
             private $custom_base;
@@ -43,6 +38,7 @@ class UMH_API_Masters extends UMH_CRUD_Controller {
         $controller->register_routes();
     }
 
+    // ... (get_settings & update_settings tetap sama)
     public function get_settings() {
         $settings = [
             'company_name' => get_option('umh_opt_company_name', 'Umroh Travel'),

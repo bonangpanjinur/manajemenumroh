@@ -5,10 +5,11 @@ import Layout from './components/Layout';
 import { DataProvider } from './contexts/DataContext';
 import './index.css';
 
-// Pages Import (Pastikan semua file ini ada di folder src/pages/)
+// Pages Import
 import Dashboard from './pages/Dashboard';
 import Jamaah from './pages/Jamaah';
 import Packages from './pages/Packages';
+import PackageCategories from './pages/PackageCategories'; // FIX: Import ini
 import Departures from './pages/Departures';
 import Bookings from './pages/Bookings';
 import Finance from './pages/Finance';
@@ -19,6 +20,8 @@ import Marketing from './pages/Marketing';
 import Agents from './pages/Agents';
 import Masters from './pages/Masters';
 import Accounting from './pages/Accounting';
+import StorefrontSimulation from './pages/StorefrontSimulation'; // FIX: Import ini
+import Tasks from './pages/Tasks'; // Optional
 
 const App = () => {
     return (
@@ -27,18 +30,31 @@ const App = () => {
                 <Layout>
                     <Routes>
                         <Route path="/" element={<Dashboard />} />
-                        <Route path="/jamaah" element={<Jamaah />} />
+                        
+                        {/* Produk & Layanan */}
                         <Route path="/packages" element={<Packages />} />
+                        <Route path="/package-categories" element={<PackageCategories />} /> {/* Route Wajib */}
+                        <Route path="/storefront" element={<StorefrontSimulation />} /> {/* Route Wajib */}
+
+                        {/* Operasional */}
+                        <Route path="/jamaah" element={<Jamaah />} />
                         <Route path="/departures" element={<Departures />} />
                         <Route path="/logistics" element={<Logistics />} />
+                        
+                        {/* Transaksi */}
                         <Route path="/bookings" element={<Bookings />} />
                         <Route path="/finance" element={<Finance />} />
+                        <Route path="/accounting" element={<Accounting />} />
+                        
+                        {/* Tim & Mitra */}
                         <Route path="/hr" element={<HR />} />
                         <Route path="/marketing" element={<Marketing />} />
                         <Route path="/agents" element={<Agents />} />
+                        
+                        {/* Sistem */}
                         <Route path="/masters" element={<Masters />} />
-                        <Route path="/accounting" element={<Accounting />} />
                         <Route path="/settings" element={<Settings />} />
+                        <Route path="/tasks" element={<Tasks />} />
                     </Routes>
                 </Layout>
             </DataProvider>
@@ -46,18 +62,8 @@ const App = () => {
     );
 };
 
-// FIX: Mencari ID yang benar di dashboard-react.php
 const container = document.getElementById('umh-admin-root');
 if (container) { 
     const root = createRoot(container); 
     root.render(<App />); 
-} else {
-    // Fallback jika ID lama masih tercache
-    const oldContainer = document.getElementById('umh-admin-app');
-    if (oldContainer) {
-        const root = createRoot(oldContainer);
-        root.render(<App />);
-    } else {
-        console.error("Root element 'umh-admin-root' not found.");
-    }
 }
