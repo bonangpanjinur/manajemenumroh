@@ -5,7 +5,7 @@ import Layout from './components/Layout';
 import { DataProvider } from './contexts/DataContext';
 import './index.css';
 
-// Pages
+// Pages Import
 import Dashboard from './pages/Dashboard';
 import Jamaah from './pages/Jamaah';
 import Packages from './pages/Packages';
@@ -18,7 +18,7 @@ import HR from './pages/HR';
 import Marketing from './pages/Marketing';
 import Agents from './pages/Agents';
 import Masters from './pages/Masters';
-import Accounting from './pages/Accounting'; // New Page
+import Accounting from './pages/Accounting'; // Pastikan file ini ada
 
 const App = () => {
     return (
@@ -46,5 +46,11 @@ const App = () => {
     );
 };
 
+// FIX: Pastikan mencari ID 'umh-admin-root'
 const container = document.getElementById('umh-admin-root');
-if (container) { const root = createRoot(container); root.render(<App />); }
+if (container) { 
+    const root = createRoot(container); 
+    root.render(<App />); 
+} else {
+    console.error("Root element 'umh-admin-root' not found. Check dashboard-react.php");
+}
