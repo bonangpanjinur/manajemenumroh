@@ -1,51 +1,71 @@
-/* * ADMIN STYLE - UMROH MANAGER HYBRID
- * Memaksa aplikasi tampil FULL SCREEN di atas interface WordPress
+/**
+ * admin-style.css
+ * Menangani integrasi Layout React di dalam WP Admin
  */
 
-/* 1. Sembunyikan elemen bawaan WordPress */
-body.toplevel_page_umroh-manager #wpadminbar,
-body.toplevel_page_umroh-manager #adminmenumain,
-body.toplevel_page_umroh-manager #adminmenuback,
-body.toplevel_page_umroh-manager #adminmenuwrap,
-body.toplevel_page_umroh-manager #wpfooter,
-body.toplevel_page_umroh-manager .update-nag,
-body.toplevel_page_umroh-manager .notice,
-body.toplevel_page_umroh-manager #wpbody-content > .wrap > h1,
-body.toplevel_page_umroh-manager .auto-fold #wpcontent {
-    display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    width: 0 !important;
-    opacity: 0 !important;
-    z-index: -9999 !important;
-}
-
-/* 2. Reset Margin & Padding Body WordPress */
-body.toplevel_page_umroh-manager {
-    margin: 0 !important;
-    padding: 0 !important;
-    height: 100vh !important;
-    width: 100vw !important;
-    overflow: hidden !important; /* Mencegah scroll ganda */
-    background: #f3f4f6 !important;
-}
-
-/* 3. Container Root React - HARUS DI ATAS SEGALANYA */
-#umh-admin-root {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 999999; /* Layer paling atas */
-    background: #f9fafb;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto; /* Scroll ditangani di dalam app */
-}
-
-/* 4. Reset WP Content Area */
-body.toplevel_page_umroh-manager #wpcontent {
-    margin-left: 0 !important;
+/* 1. Reset Container WordPress agar Full Width/Height */
+#wpcontent {
     padding-left: 0 !important;
+    position: relative;
+}
+
+#wpbody-content {
+    padding-bottom: 0 !important;
+    overflow: hidden; /* Mencegah scrollbar ganda dari WP */
+}
+
+#wpfooter {
+    display: none; /* Sembunyikan footer WP "Thank you for creating with WordPress" agar tidak mengganggu layout */
+}
+
+/* 2. Styling Container Utama React (#umroh-manager-app) */
+#umroh-manager-app {
+    position: relative;
+    width: 100%;
+    /* Kalkulasi Tinggi Layar: 
+       100vh (Layar Penuh) - 32px (Tinggi Admin Bar WP di Desktop) 
+    */
+    height: calc(100vh - 32px);
+    overflow: hidden; /* Konten di dalam yang akan scroll, bukan container ini */
+    background-color: #f9fafb; /* bg-gray-50 */
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 3. Penyesuaian Responsif untuk Mobile */
+@media screen and (max-width: 782px) {
+    #umroh-manager-app {
+        /* Admin Bar WP lebih tinggi di mobile (46px) */
+        height: calc(100vh - 46px);
+        margin-top: 0; /* WP terkadang auto-add margin */
+    }
+    
+    /* Fix padding WP di mobile */
+    .auto-fold #wpcontent {
+        padding-left: 0 !important;
+    }
+}
+
+/* 4. Reset Style Konflik (WP vs Tailwind) */
+/* Memastikan input form React tidak menggunakan style default WP yang jelek */
+#umroh-manager-app input[type=text],
+#umroh-manager-app input[type=search],
+#umroh-manager-app input[type=email],
+#umroh-manager-app input[type=password],
+#umroh-manager-app input[type=number],
+#umroh-manager-app select,
+#umroh-manager-app textarea {
+    box-sizing: border-box; /* Tailwind default */
+    margin: 0;
+    box-shadow: none;
+    /* Kembalikan border style ke Tailwind (biasanya dihandle class, tapi ini reset global) */
+}
+
+/* Pastikan link tidak ada garis bawah default WP kecuali diinginkan */
+#umroh-manager-app a {
+    text-decoration: none;
+    box-shadow: none;
+}
+#umroh-manager-app a:hover, 
+#umroh-manager-app a:focus {
+    box-shadow: none;
 }
