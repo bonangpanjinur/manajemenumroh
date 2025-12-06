@@ -1,7 +1,8 @@
 <?php
 /**
  * File: includes/db-schema.php
- * Deskripsi: Skema Database Enterprise Lengkap (V9.0.1 - Fixed)
+ * Deskripsi: Skema Database Lengkap V7.1 (Enterprise + Dynamic Pricing)
+ * Fitur: Akuntansi, Logistik, HR, CRM, Multi-Cabang, Harga Paket Dinamis.
  */
 
 if (!defined('ABSPATH')) {
@@ -70,8 +71,19 @@ function umh_create_db_tables() {
     dbDelta($sql_roles);
 
     /* =========================================
-       2. PRODUCT & MASTER DATA
+       2. MASTER DATA (WILAYAH & PRODUK)
        ========================================= */
+
+    // Master Kota (NEW)
+    $sql_cities = "CREATE TABLE {$wpdb->prefix}umh_master_cities (
+        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name varchar(100) NOT NULL,
+        province varchar(100),
+        country varchar(50) DEFAULT 'Indonesia',
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id)
+    ) $charset_collate;";
+    dbDelta($sql_cities);
 
     // Master Hotel
     $sql_hotels = "CREATE TABLE {$wpdb->prefix}umh_master_hotels (
@@ -101,7 +113,11 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_airlines);
 
-    // Paket Umroh/Haji
+    /* =========================================
+       3. PRODUK & HARGA DINAMIS
+       ========================================= */
+
+    // Paket Umroh/Haji (Header)
     $sql_packages = "CREATE TABLE {$wpdb->prefix}umh_packages (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         uuid char(36) NOT NULL,
@@ -109,9 +125,6 @@ function umh_create_db_tables() {
         slug varchar(200),
         type varchar(20) DEFAULT 'umrah',
         duration_days int DEFAULT 9,
-        base_price_quad decimal(15,2) DEFAULT 0,
-        base_price_triple decimal(15,2) DEFAULT 0,
-        base_price_double decimal(15,2) DEFAULT 0,
         down_payment_amount decimal(15,2) DEFAULT 0,
         description longtext,
         status varchar(20) DEFAULT 'active',
@@ -122,6 +135,20 @@ function umh_create_db_tables() {
         UNIQUE KEY uuid (uuid)
     ) $charset_collate;";
     dbDelta($sql_packages);
+
+    // Harga Paket Dinamis (NEW: One Package -> Many Prices)
+    $sql_pkg_prices = "CREATE TABLE {$wpdb->prefix}umh_package_prices (
+        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        package_id bigint(20) UNSIGNED NOT NULL,
+        room_type varchar(50) NOT NULL, -- Quad, Triple, Double, Quint, Suite
+        capacity int NOT NULL, -- 4, 3, 2, 5
+        price decimal(15,2) NOT NULL,
+        currency varchar(5) DEFAULT 'IDR',
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY package_id (package_id)
+    ) $charset_collate;";
+    dbDelta($sql_pkg_prices);
 
     // Relasi Paket -> Hotel
     $sql_pkg_hotels = "CREATE TABLE {$wpdb->prefix}umh_package_hotels (
@@ -150,7 +177,7 @@ function umh_create_db_tables() {
     ) $charset_collate;";
     dbDelta($sql_itineraries);
     
-    // Kategori Paket (Tambahan agar tidak error di page Categories)
+    // Kategori Paket
     $sql_pkg_cats = "CREATE TABLE {$wpdb->prefix}umh_package_categories (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         uuid char(36) NOT NULL,
@@ -166,7 +193,7 @@ function umh_create_db_tables() {
     dbDelta($sql_pkg_cats);
 
     /* =========================================
-       3. OPERATIONAL & DEPARTURES
+       4. OPERATIONAL & DEPARTURES
        ========================================= */
 
     // Jadwal Keberangkatan
@@ -182,9 +209,6 @@ function umh_create_db_tables() {
         flight_number_return varchar(20),
         quota int DEFAULT 45,
         available_seats int DEFAULT 45,
-        price_quad decimal(15,2) DEFAULT 0,
-        price_triple decimal(15,2) DEFAULT 0,
-        price_double decimal(15,2) DEFAULT 0,
         status varchar(20) DEFAULT 'open',
         tour_leader_name varchar(100),
         muthawif_name varchar(100),
@@ -214,7 +238,7 @@ function umh_create_db_tables() {
     dbDelta($sql_rooming);
 
     /* =========================================
-       4. SALES, BOOKING & JAMAAH
+       5. SALES, BOOKING & JAMAAH
        ========================================= */
 
     // Data Master Jemaah
@@ -233,7 +257,7 @@ function umh_create_db_tables() {
         phone varchar(20),
         email varchar(100),
         address text,
-        city varchar(50),
+        city_id bigint(20) UNSIGNED NULL, -- New: Relasi ke Master Kota
         status varchar(20) DEFAULT 'registered',
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         updated_at datetime NULL,
@@ -303,7 +327,7 @@ function umh_create_db_tables() {
     dbDelta($sql_booking_pax);
 
     /* =========================================
-       5. FINANCE & ACCOUNTING
+       6. FINANCE & ACCOUNTING
        ========================================= */
 
     // Chart of Accounts (COA)
@@ -387,7 +411,7 @@ function umh_create_db_tables() {
     dbDelta($sql_invoices);
 
     /* =========================================
-       6. INVENTORY & LOGISTICS
+       7. INVENTORY & LOGISTICS
        ========================================= */
 
     // Gudang
@@ -450,7 +474,7 @@ function umh_create_db_tables() {
     dbDelta($sql_dist);
 
     /* =========================================
-       7. PROCUREMENT
+       8. PROCUREMENT
        ========================================= */
 
     $sql_vendors = "CREATE TABLE {$wpdb->prefix}umh_master_vendors (
@@ -486,12 +510,13 @@ function umh_create_db_tables() {
     dbDelta($sql_purchases);
 
     /* =========================================
-       8. AGEN & KOMISI
+       9. AGEN & KOMISI (WITH PARENT AGEN)
        ========================================= */
 
     $sql_agents = "CREATE TABLE {$wpdb->prefix}umh_agents (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         uuid char(36) NOT NULL,
+        parent_agent_id bigint(20) UNSIGNED NULL, -- Relasi Cabang/Master
         name varchar(100) NOT NULL,
         code varchar(50),
         email varchar(100),
@@ -521,7 +546,7 @@ function umh_create_db_tables() {
     dbDelta($sql_commissions);
 
     /* =========================================
-       9. HR & MARKETING
+       10. HR & MARKETING
        ========================================= */
 
     $sql_employees = "CREATE TABLE {$wpdb->prefix}umh_hr_employees (
@@ -585,7 +610,7 @@ function umh_create_db_tables() {
     dbDelta($sql_marketing);
 
     /* =========================================
-       10. UTILITIES
+       11. UTILITIES
        ========================================= */
 
     $sql_tasks = "CREATE TABLE {$wpdb->prefix}umh_tasks (
@@ -630,7 +655,7 @@ function umh_create_db_tables() {
     dbDelta($sql_activity_logs);
 
     /* =========================================
-       SEEDING
+       SEEDING INITIAL DATA
        ========================================= */
 
     // Seed Branch Pusat
@@ -648,6 +673,11 @@ function umh_create_db_tables() {
             ('5-1001', 'Beban Operasional', 'expense', 'debit')
         ");
     }
+    
+    // Seed Warehouse
+    if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}umh_warehouses") == 0) {
+        $wpdb->query("INSERT INTO {$wpdb->prefix}umh_warehouses (name, location) VALUES ('Gudang Utama', 'Jakarta')");
+    }
 
-    update_option('umh_db_version', '9.0.1'); 
+    update_option('umh_db_version', '7.1.0'); 
 }

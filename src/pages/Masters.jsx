@@ -1,181 +1,107 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
+import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Building, Plane, Users, Plus, Star, MapPin } from 'lucide-react';
+import { Building, MapPin, Plane, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Masters = () => {
-    const [activeTab, setActiveTab] = useState('hotels'); // hotels | airlines | vendors
-    const [data, setData] = useState([]);
-    const [loading, setLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState('cities');
+    
+    // Konfigurasi Dinamis per Tab
+    const config = {
+        cities: { 
+            endpoint: 'umh/v1/cities', 
+            title: 'Master Kota', 
+            cols: [{header:'Nama Kota',accessor:'name'},{header:'Provinsi',accessor:'province'}] 
+        },
+        hotels: { 
+            endpoint: 'umh/v1/hotels', 
+            title: 'Data Hotel', 
+            cols: [
+                {header:'Nama Hotel',accessor:'name', render:r=><span className="font-bold">{r.name}</span>},
+                {header:'Kota',accessor:'city'},
+                {header:'Rating',accessor:'rating', render:r=>'⭐'.repeat(r.rating)}
+            ] 
+        },
+        airlines: { 
+            endpoint: 'umh/v1/airlines', 
+            title: 'Data Maskapai', 
+            cols: [{header:'Nama Maskapai',accessor:'name'},{header:'Kode IATA',accessor:'code', render:r=><span className="font-mono bg-gray-100 px-2 rounded">{r.code}</span>}] 
+        },
+    };
+
+    // Hook CRUD menyesuaikan endpoint aktif
+    const { data, loading, fetchData, deleteItem } = useCRUD(config[activeTab].endpoint);
+    
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [mode, setMode] = useState('create');
     const [form, setForm] = useState({});
 
-    // Konfigurasi per Tab
-    const tabConfig = {
-        hotels: {
-            endpoint: 'umh/v1/hotels',
-            title: 'Master Hotel',
-            initialForm: { name: '', city: 'Makkah', rating: '5', distance_to_haram: 0 },
-            columns: [
-                { header: 'Nama Hotel', accessor: 'name', render: r => <span className="font-bold">{r.name}</span> },
-                { header: 'Kota', accessor: 'city', render: r => <span className="bg-gray-100 px-2 py-1 rounded text-xs uppercase">{r.city}</span> },
-                { header: 'Rating', accessor: 'rating', render: r => <div className="flex text-yellow-500">{[...Array(parseInt(r.rating)||0)].map((_,i)=><Star key={i} size={12} fill="currentColor"/>)}</div> },
-                { header: 'Jarak (m)', accessor: 'distance_to_haram' }
-            ]
-        },
-        airlines: {
-            endpoint: 'umh/v1/airlines',
-            title: 'Master Maskapai',
-            initialForm: { name: '', code: '', type: 'International' },
-            columns: [
-                { header: 'Maskapai', accessor: 'name', render: r => <div className="font-bold">{r.name}</div> },
-                { header: 'Kode', accessor: 'code', render: r => <span className="font-mono bg-blue-50 text-blue-600 px-2 py-1 rounded">{r.code}</span> },
-                { header: 'Tipe', accessor: 'type' }
-            ]
-        },
-        vendors: {
-            endpoint: 'umh/v1/vendors',
-            title: 'Master Vendor/Rekanan',
-            initialForm: { name: '', type: 'general', contact_person: '', phone: '' },
-            columns: [
-                { header: 'Nama Vendor', accessor: 'name', render: r => <div className="font-bold">{r.name}</div> },
-                { header: 'Tipe', accessor: 'type', render: r => <span className="capitalize">{r.type}</span> },
-                { header: 'Kontak', accessor: 'contact_person', render: r => <div className="text-xs">{r.contact_person}<br/>{r.phone}</div> }
-            ]
-        }
-    };
-
-    const currentConfig = tabConfig[activeTab];
-
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const res = await api.get(currentConfig.endpoint);
-            setData(res.data.data || res.data); // Handle structure variations
-        } catch (e) { toast.error("Gagal memuat data"); }
-        setLoading(false);
-    };
-
-    useEffect(() => { fetchData(); }, [activeTab]);
-
-    const handleSubmit = async (e) => {
+    const handleSave = async (e) => {
         e.preventDefault();
         try {
-            if (mode === 'create') await api.post(currentConfig.endpoint, form);
-            else await api.put(`${currentConfig.endpoint}/${form.id}`, form);
+            const endpoint = form.id ? `${config[activeTab].endpoint}/${form.id}` : config[activeTab].endpoint;
+            const method = form.id ? 'put' : 'post';
+            await api[method](endpoint, form);
             
-            toast.success("Berhasil disimpan!");
+            toast.success("Data tersimpan");
             setIsModalOpen(false);
-            fetchData();
-        } catch (e) { toast.error("Gagal menyimpan data"); }
+            fetchData(); // Reload table
+        } catch(e) { toast.error("Gagal simpan data"); }
     };
 
-    const handleDelete = async (id) => {
-        if(!confirm("Hapus data ini?")) return;
-        try {
-            await api.delete(`${currentConfig.endpoint}/${id}`);
-            toast.success("Terhapus");
-            fetchData();
-        } catch (e) { toast.error("Gagal menghapus"); }
+    // Render Form sesuai Tab aktif
+    const renderForm = () => {
+        if (activeTab === 'cities') return (
+            <>
+                <div><label className="label">Nama Kota / Kabupaten</label><input className="input-field" value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} required placeholder="Contoh: Surabaya"/></div>
+                <div className="mt-4"><label className="label">Provinsi</label><input className="input-field" value={form.province||''} onChange={e=>setForm({...form,province:e.target.value})} placeholder="Contoh: Jawa Timur"/></div>
+            </>
+        );
+        if (activeTab === 'hotels') return (
+            <>
+                <div><label className="label">Nama Hotel</label><input className="input-field" value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} required/></div>
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div><label className="label">Kota</label><select className="input-field" value={form.city||'Makkah'} onChange={e=>setForm({...form,city:e.target.value})}><option>Makkah</option><option>Madinah</option><option>Jeddah</option><option>Lainnya</option></select></div>
+                    <div><label className="label">Bintang</label><select className="input-field" value={form.rating||'5'} onChange={e=>setForm({...form,rating:e.target.value})}><option value="5">5 Bintang</option><option value="4">4 Bintang</option><option value="3">3 Bintang</option></select></div>
+                </div>
+            </>
+        );
+        if (activeTab === 'airlines') return (
+            <>
+                <div><label className="label">Nama Maskapai</label><input className="input-field" value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} required placeholder="Garuda Indonesia"/></div>
+                <div className="mt-4"><label className="label">Kode IATA</label><input className="input-field" value={form.code||''} onChange={e=>setForm({...form,code:e.target.value})} placeholder="GA"/></div>
+            </>
+        );
     };
 
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-gray-800">Data Master</h1>
+            <h1 className="text-2xl font-bold text-gray-800">Master Data Center</h1>
             
-            {/* Tabs */}
-            <div className="flex bg-white rounded-lg shadow-sm border p-1 w-fit">
-                {[
-                    { id: 'hotels', label: 'Hotel', icon: Building },
-                    { id: 'airlines', label: 'Maskapai', icon: Plane },
-                    { id: 'vendors', label: 'Vendor Lain', icon: Users }
-                ].map(t => (
-                    <button key={t.id} onClick={() => setActiveTab(t.id)} 
-                        className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab===t.id ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
-                        <t.icon size={16}/> {t.label}
-                    </button>
-                ))}
+            {/* Tab Navigation */}
+            <div className="flex bg-white rounded-lg p-1 shadow-sm w-fit border border-gray-200">
+                <button onClick={()=>setActiveTab('cities')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab==='cities'?'bg-blue-600 text-white shadow':'text-gray-500 hover:text-gray-800'}`}><MapPin size={16}/> Kota</button>
+                <button onClick={()=>setActiveTab('hotels')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab==='hotels'?'bg-blue-600 text-white shadow':'text-gray-500 hover:text-gray-800'}`}><Building size={16}/> Hotel</button>
+                <button onClick={()=>setActiveTab('airlines')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab==='airlines'?'bg-blue-600 text-white shadow':'text-gray-500 hover:text-gray-800'}`}><Plane size={16}/> Maskapai</button>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow border border-gray-200 p-6">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-lg text-gray-700">{config[activeTab].title}</h3>
+                    <button onClick={()=>{setForm({}); setIsModalOpen(true)}} className="btn-primary flex gap-2"><Plus size={16}/> Tambah Data</button>
+                </div>
+                <CrudTable columns={config[activeTab].cols} data={data} loading={loading} onEdit={(r)=>{setForm(r); setIsModalOpen(true)}} onDelete={deleteItem} />
             </div>
 
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <h3 className="font-bold text-gray-700">{currentConfig.title}</h3>
-                <button onClick={() => { setMode('create'); setForm(currentConfig.initialForm); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2 text-sm">
-                    <Plus size={16}/> Tambah {currentConfig.title}
-                </button>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <CrudTable 
-                    columns={currentConfig.columns} 
-                    data={data} 
-                    loading={loading} 
-                    onEdit={(item) => { setMode('edit'); setForm(item); setIsModalOpen(true); }}
-                    onDelete={(id) => handleDelete(id)}
-                />
-            </div>
-
-            {/* Dynamic Modal Form */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`${mode === 'create' ? 'Tambah' : 'Edit'} ${currentConfig.title}`}>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    
-                    {/* Form Fields for Hotels */}
-                    {activeTab === 'hotels' && (
-                        <>
-                            <div><label className="label">Nama Hotel</label><input className="input-field" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} required/></div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="label">Kota</label>
-                                    <select className="input-field" value={form.city} onChange={e=>setForm({...form, city:e.target.value})}>
-                                        <option value="Makkah">Makkah</option><option value="Madinah">Madinah</option><option value="Jeddah">Jeddah</option>
-                                    </select>
-                                </div>
-                                <div><label className="label">Bintang</label><input type="number" max="5" min="1" className="input-field" value={form.rating} onChange={e=>setForm({...form, rating:e.target.value})}/></div>
-                            </div>
-                            <div><label className="label">Jarak ke Masjid (Meter)</label><input type="number" className="input-field" value={form.distance_to_haram} onChange={e=>setForm({...form, distance_to_haram:e.target.value})}/></div>
-                        </>
-                    )}
-
-                    {/* Form Fields for Airlines */}
-                    {activeTab === 'airlines' && (
-                        <>
-                            <div><label className="label">Nama Maskapai</label><input className="input-field" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} required/></div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="label">Kode (IATA)</label><input className="input-field" placeholder="Eg. GA, SV" value={form.code} onChange={e=>setForm({...form, code:e.target.value})}/></div>
-                                <div><label className="label">Tipe</label>
-                                    <select className="input-field" value={form.type} onChange={e=>setForm({...form, type:e.target.value})}>
-                                        <option value="International">International</option><option value="Domestic">Domestic</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </>
-                    )}
-
-                    {/* Form Fields for Vendors */}
-                    {activeTab === 'vendors' && (
-                        <>
-                            <div><label className="label">Nama Vendor</label><input className="input-field" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} required/></div>
-                            <div><label className="label">Kategori</label>
-                                <select className="input-field" value={form.type} onChange={e=>setForm({...form, type:e.target.value})}>
-                                    <option value="catering">Katering</option><option value="visa_provider">Provider Visa</option><option value="transport">Transportasi</option><option value="general">Umum</option>
-                                </select>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="label">Contact Person</label><input className="input-field" value={form.contact_person} onChange={e=>setForm({...form, contact_person:e.target.value})}/></div>
-                                <div><label className="label">Telepon</label><input className="input-field" value={form.phone} onChange={e=>setForm({...form, phone:e.target.value})}/></div>
-                            </div>
-                        </>
-                    )}
-
-                    <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary">Simpan</button>
-                    </div>
+            <Modal isOpen={isModalOpen} onClose={()=>setIsModalOpen(false)} title={`Input ${config[activeTab].title}`}>
+                <form onSubmit={handleSave}>
+                    {renderForm()}
+                    <button className="btn-primary w-full mt-6">Simpan Data</button>
                 </form>
             </Modal>
         </div>
     );
 };
-
 export default Masters;

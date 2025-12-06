@@ -3,111 +3,122 @@ import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Package, Plus, Trash2, Building, List, DollarSign, MapPin } from 'lucide-react';
+import { Package, Plus, Trash2, DollarSign, List, Building, MapPin, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Packages = () => {
+    // 1. Fetch Data Utama
     const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/packages');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [mode, setMode] = useState('create');
-    const [activeTab, setActiveTab] = useState('info'); 
-    const [masterHotels, setMasterHotels] = useState([]);
+    
+    // 2. State Master Data (untuk Dropdown di Modal)
+    const [hotelsMaster, setHotelsMaster] = useState([]);
+    const [citiesMaster, setCitiesMaster] = useState([]);
 
+    // 3. State UI
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState('info');
+    const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+
+    // 4. Form State (Complex Object)
     const initialForm = {
-        name: '', slug: '', type: 'umrah', duration_days: 9,
-        base_price_quad: 0, base_price_triple: 0, base_price_double: 0,
-        down_payment_amount: 5000000, description: '', status: 'active',
-        itineraries: [{ day_number: 1, title: 'Keberangkatan', description: '', location: 'Jakarta' }],
-        hotels: [] 
+        name: '', type: 'umrah', duration_days: 9, down_payment_amount: 5000000,
+        description: '', status: 'active',
+        prices: [{ room_type: 'Quad', capacity: 4, price: 0, currency: 'IDR' }], // Dynamic Prices
+        hotels: [],
+        itineraries: []
     };
     const [form, setForm] = useState(initialForm);
 
-    // Fetch Master Hotels saat Modal Dibuka
+    // Fetch Master Data sekali saat komponen mount
     useEffect(() => {
-        if (isModalOpen) {
-            api.get('umh/v1/hotels?per_page=100').then(res => {
-                const hotelList = Array.isArray(res.data) ? res.data : (res.data.data || []);
-                setMasterHotels(hotelList);
-            }).catch(console.error);
-        }
-    }, [isModalOpen]);
+        api.get('umh/v1/hotels').then(res => res.data.success && setHotelsMaster(res.data.data));
+        api.get('umh/v1/cities').then(res => res.data.success && setCitiesMaster(res.data.data));
+    }, []);
 
-    const handleEditClick = async (item) => {
-        setMode('edit');
-        setIsModalOpen(true);
+    // --- HANDLERS ---
+
+    const handleEdit = async (item) => {
+        setIsLoadingDetails(true);
         try {
-            const id = item.uuid || item.id;
-            const res = await api.get(`umh/v1/packages/${id}/full`);
+            const res = await api.get(`umh/v1/packages/${item.uuid||item.id}/full`);
             if (res.data.success) {
-                const loadedData = res.data.data;
-                // Normalize data arrays
-                if(!loadedData.hotels) loadedData.hotels = [];
-                if(!loadedData.itineraries) loadedData.itineraries = [];
-                setForm(loadedData);
+                const d = res.data.data;
+                setForm({
+                    ...d,
+                    prices: d.prices?.length ? d.prices : [{ room_type: 'Quad', capacity: 4, price: 0, currency: 'IDR' }],
+                    hotels: d.hotels || [],
+                    itineraries: d.itineraries || []
+                });
+                setActiveTab('info');
+                setIsModalOpen(true);
             }
-        } catch (error) { toast.error("Gagal memuat detail paket"); }
+        } catch(e) { 
+            toast.error("Gagal memuat detail paket"); 
+        } finally {
+            setIsLoadingDetails(false);
+        }
     };
 
-    const handleSubmit = async (e) => {
+    const handleSave = async (e) => {
         e.preventDefault();
         try {
-            const payload = { ...form };
-            if (mode === 'create') await api.post('umh/v1/packages', payload);
-            else await api.put(`umh/v1/packages/${form.uuid || form.id}`, payload);
+            // Validasi Sederhana
+            if (!form.name) return toast.error("Nama paket wajib diisi");
+            if (form.prices.some(p => p.price <= 0)) return toast.error("Harga paket tidak boleh 0");
+
+            const endpoint = form.id ? `umh/v1/packages/${form.id}` : 'umh/v1/packages';
+            const method = form.id ? 'put' : 'post';
             
+            await api[method](endpoint, form);
             toast.success("Paket berhasil disimpan!");
             setIsModalOpen(false);
             fetchData();
-        } catch (err) { toast.error("Gagal: " + (err.response?.data?.message || err.message)); }
+        } catch(e) { 
+            console.error(e);
+            toast.error("Gagal menyimpan paket"); 
+        }
     };
 
-    // --- Dynamic Hotel Logic ---
-    const addHotel = () => {
-        setForm(prev => ({
-            ...prev,
-            hotels: [...prev.hotels, { city_name: 'Makkah', hotel_id: '', nights: 1 }]
-        }));
+    // --- DYNAMIC FIELD HELPERS ---
+
+    // Prices
+    const addPrice = () => setForm({...form, prices: [...form.prices, {room_type:'', capacity:2, price:0, currency:'IDR'}]});
+    const removePrice = (idx) => setForm({...form, prices: form.prices.filter((_,i)=>i!==idx)});
+    const updatePrice = (idx, field, val) => {
+        const newPrices = [...form.prices];
+        newPrices[idx][field] = val;
+        setForm({...form, prices: newPrices});
     };
 
-    const updateHotel = (index, field, value) => {
+    // Hotels
+    const addHotel = () => setForm({...form, hotels: [...form.hotels, {hotel_id:'', city_name:'', nights:1}]});
+    const removeHotel = (idx) => setForm({...form, hotels: form.hotels.filter((_,i)=>i!==idx)});
+    const updateHotel = (idx, field, val) => {
         const newHotels = [...form.hotels];
-        newHotels[index][field] = value;
-        setForm({ ...form, hotels: newHotels });
+        newHotels[idx][field] = val;
+        // Auto fill city if hotel selected
+        if (field === 'hotel_id') {
+            const selectedHotel = hotelsMaster.find(h => h.id == val);
+            if (selectedHotel) newHotels[idx]['city_name'] = selectedHotel.city;
+        }
+        setForm({...form, hotels: newHotels});
     };
 
-    const removeHotel = (index) => {
-        const newHotels = [...form.hotels];
-        newHotels.splice(index, 1);
-        setForm({ ...form, hotels: newHotels });
+    // Itineraries
+    const addItinerary = () => setForm({...form, itineraries: [...form.itineraries, {day_number: form.itineraries.length+1, title:'', description:''}]});
+    const removeItinerary = (idx) => setForm({...form, itineraries: form.itineraries.filter((_,i)=>i!==idx)});
+    const updateItinerary = (idx, field, val) => {
+        const newItin = [...form.itineraries];
+        newItin[idx][field] = val;
+        setForm({...form, itineraries: newItin});
     };
-    // ---------------------------
 
-    const columns = [
-        { header: 'Nama Paket', accessor: 'name', render: r => (
-            <div>
-                <div className="font-bold text-gray-900">{r.name}</div>
-                <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">
-                    <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded">{r.type.replace('_',' ')}</span> • {r.duration_days} Hari
-                </div>
-            </div>
-        )},
-        { header: 'Akomodasi', accessor: 'hotel_summary', render: r => (
-            <div className="text-xs space-y-1">
-                {r.hotel_summary ? (
-                    r.hotel_summary.split(', ').map((h, i) => (
-                        <div key={i} className="flex items-center gap-1 text-gray-600">
-                            <Building size={10} className="text-blue-400"/> {h}
-                        </div>
-                    ))
-                ) : <span className="text-gray-400 italic">Belum diset</span>}
-            </div>
-        )},
-        { header: 'Harga Quad', accessor: 'base_price_quad', render: r => (
-            <span className="font-mono font-bold text-gray-800">{new Intl.NumberFormat('id-ID').format(r.base_price_quad)}</span>
-        )},
-        { header: 'Status', accessor: 'status', render: r => (
-            <span className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${r.status==='active'?'bg-green-100 text-green-600':'bg-gray-100 text-gray-500'}`}>{r.status}</span>
-        )}
+    // --- RENDER ---
+
+    const cols = [
+        { header: 'Nama Paket', accessor: 'name', render: r => <div><div className="font-bold text-gray-800">{r.name}</div><div className="text-xs text-gray-500">{r.duration_days} Hari - {r.type.toUpperCase()}</div></div> },
+        { header: 'Harga Mulai', accessor: 'id', render: r => <span className="text-sm font-mono text-green-600">Cek Detail</span> },
+        { header: 'Status', accessor: 'status', render: r => <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${r.status==='active'?'bg-green-100 text-green-700':'bg-gray-100'}`}>{r.status}</span> }
     ];
 
     return (
@@ -115,138 +126,157 @@ const Packages = () => {
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Master Paket</h1>
-                    <p className="text-sm text-gray-500">Kelola produk paket perjalanan dan fasilitasnya.</p>
+                    <p className="text-sm text-gray-500">Kelola produk paket Umroh & Haji beserta varian harganya.</p>
                 </div>
-                <button onClick={() => { setMode('create'); setForm(initialForm); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2">
-                    <Plus size={18}/> Buat Paket Baru
-                </button>
+                <button onClick={()=>{setForm(initialForm); setIsModalOpen(true)}} className="btn-primary flex gap-2"><Plus size={18}/> Buat Paket Baru</button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <CrudTable columns={columns} data={data} loading={loading} onEdit={handleEditClick} onDelete={deleteItem} />
+            <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+                <CrudTable columns={cols} data={data} loading={loading} onEdit={handleEdit} onDelete={deleteItem} />
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode==='create'?"Buat Paket":"Edit Paket"} size="max-w-4xl">
-                <form onSubmit={handleSubmit}>
-                    <div className="flex border-b mb-6 space-x-4">
-                        {[
-                            {id: 'info', icon: Package, label: 'Informasi Dasar'},
-                            {id: 'pricing', icon: DollarSign, label: 'Harga & Biaya'},
-                            {id: 'hotels', icon: Building, label: 'Hotel & Akomodasi'},
-                            {id: 'itinerary', icon: List, label: 'Itinerary'}
-                        ].map(tab => (
-                            <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} 
-                                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab===tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                                <tab.icon size={16}/> {tab.label}
-                            </button>
-                        ))}
-                    </div>
+            {/* MODAL FULLSCREEN UNTUK PAKET */}
+            {isModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                    <div className="bg-white w-full max-w-4xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in">
+                        
+                        {/* Modal Header */}
+                        <div className="flex justify-between items-center px-6 py-4 border-b">
+                            <h2 className="text-xl font-bold text-gray-800">
+                                {form.id ? 'Edit Paket' : 'Buat Paket Baru'}
+                            </h2>
+                            <button onClick={()=>setIsModalOpen(false)} className="text-gray-400 hover:text-red-500 transition">Tutup</button>
+                        </div>
 
-                    <div className="min-h-[300px]">
-                        {activeTab === 'info' && (
-                            <div className="space-y-4 animate-fade-in grid grid-cols-2 gap-4">
-                                <div className="col-span-2"><label className="label">Nama Paket</label><input className="input-field font-medium text-lg" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} required placeholder="Contoh: Umroh Turki Akhir Tahun 2025" /></div>
-                                <div><label className="label">Tipe Produk</label>
-                                    <select className="input-field" value={form.type} onChange={e=>setForm({...form, type:e.target.value})}>
-                                        <option value="umrah">Umroh Reguler</option><option value="umrah_plus">Umroh Plus</option><option value="haji">Haji</option><option value="tour">Wisata Halal</option>
-                                    </select>
-                                </div>
-                                <div><label className="label">Durasi (Hari)</label><input type="number" className="input-field" value={form.duration_days} onChange={e=>setForm({...form, duration_days:e.target.value})}/></div>
-                                <div className="col-span-2"><label className="label">Deskripsi Singkat</label><textarea className="input-field" rows="3" value={form.description} onChange={e=>setForm({...form, description:e.target.value})}></textarea></div>
-                            </div>
-                        )}
-
-                        {activeTab === 'pricing' && (
-                            <div className="space-y-5 animate-fade-in">
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex gap-3 items-start">
-                                    <DollarSign className="text-blue-600 mt-0.5" size={20}/>
-                                    <div className="text-sm text-blue-800">
-                                        <p className="font-bold">Info Harga Dasar</p>
-                                        Harga ini akan menjadi <i>default</i> saat membuat jadwal keberangkatan. Anda masih bisa mengubahnya nanti per jadwal.
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div><label className="label">Harga Quad (4 Org)</label><input type="number" className="input-field font-mono" value={form.base_price_quad} onChange={e=>setForm({...form, base_price_quad:e.target.value})}/></div>
-                                    <div><label className="label">Harga Triple (3 Org)</label><input type="number" className="input-field font-mono" value={form.base_price_triple} onChange={e=>setForm({...form, base_price_triple:e.target.value})}/></div>
-                                    <div><label className="label">Harga Double (2 Org)</label><input type="number" className="input-field font-mono" value={form.base_price_double} onChange={e=>setForm({...form, base_price_double:e.target.value})}/></div>
-                                </div>
-                                <div><label className="label">Minimal Uang Muka (DP)</label><input type="number" className="input-field font-bold" value={form.down_payment_amount} onChange={e=>setForm({...form, down_payment_amount:e.target.value})}/></div>
-                            </div>
-                        )}
-
-                        {activeTab === 'hotels' && (
-                            <div className="space-y-4 animate-fade-in">
-                                {form.hotels.map((h, idx) => (
-                                    <div key={idx} className="flex gap-3 items-end bg-gray-50 p-4 rounded-lg border border-gray-200 relative group">
-                                        <div className="w-1/4">
-                                            <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Kota</label>
-                                            <select className="input-field text-sm" value={h.city_name} onChange={e=>updateHotel(idx, 'city_name', e.target.value)}>
-                                                <option value="Makkah">Makkah</option><option value="Madinah">Madinah</option>
-                                                <option value="Jeddah">Jeddah</option><option value="Istanbul">Istanbul</option><option value="Dubai">Dubai</option><option value="Lainnya">Lainnya</option>
-                                            </select>
-                                        </div>
-                                        <div className="w-1/2">
-                                            <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Pilih Hotel (Master Data)</label>
-                                            <select className="input-field text-sm" value={h.hotel_id} onChange={e=>updateHotel(idx, 'hotel_id', e.target.value)}>
-                                                <option value="">-- Pilih Hotel --</option>
-                                                {masterHotels
-                                                    .filter(mh => mh.city === h.city_name || h.city_name === 'Lainnya')
-                                                    .map(mh => (
-                                                    <option key={mh.id} value={mh.id}>{mh.name} ({mh.rating}*)</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="w-1/4">
-                                            <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Durasi (Malam)</label>
-                                            <input type="number" className="input-field text-sm" value={h.nights} onChange={e=>updateHotel(idx, 'nights', e.target.value)} />
-                                        </div>
-                                        <button type="button" onClick={() => removeHotel(idx)} className="mb-1 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={18}/></button>
-                                    </div>
-                                ))}
-                                <button type="button" onClick={addHotel} className="btn-secondary w-full py-3 border-dashed border-2 flex justify-center gap-2 text-blue-600 hover:border-blue-400 hover:bg-blue-50">
-                                    <Plus size={18}/> Tambah Akomodasi Hotel
+                        {/* Tabs Navigation */}
+                        <div className="flex border-b px-6 bg-gray-50">
+                            {[
+                                {id:'info',icon:Package,label:'Informasi Dasar'},
+                                {id:'prices',icon:DollarSign,label:'Harga & Kamar'},
+                                {id:'hotels',icon:Building,label:'Akomodasi'},
+                                {id:'itinerary',icon:List,label:'Itinerary'}
+                            ].map(t=> (
+                                <button 
+                                    key={t.id} 
+                                    onClick={()=>setActiveTab(t.id)} 
+                                    className={`px-6 py-4 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${activeTab===t.id?'border-blue-600 text-blue-600 bg-white':'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    <t.icon size={16}/> {t.label}
                                 </button>
-                            </div>
-                        )}
+                            ))}
+                        </div>
 
-                        {activeTab === 'itinerary' && (
-                            <div className="space-y-4 animate-fade-in">
-                                <div className="max-h-[400px] overflow-y-auto pr-2 space-y-3">
-                                    {form.itineraries?.map((item, idx) => (
-                                        <div key={idx} className="flex gap-4 items-start">
-                                            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-1">{item.day_number}</div>
-                                            <div className="flex-1 bg-white border border-gray-200 p-3 rounded-lg shadow-sm">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <input className="font-bold text-gray-800 border-b border-transparent focus:border-blue-500 focus:outline-none w-2/3" 
-                                                        placeholder="Judul Kegiatan" value={item.title} 
-                                                        onChange={e=>{const n=[...form.itineraries]; n[idx].title=e.target.value; setForm({...form, itineraries:n})}}
-                                                    />
-                                                    <button type="button" onClick={()=>{
-                                                        const n=[...form.itineraries]; n.splice(idx,1); 
-                                                        setForm({...form, itineraries:n.map((x,i)=>({...x, day_number:i+1}))});
-                                                    }} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button>
-                                                </div>
-                                                <textarea className="w-full text-sm text-gray-600 bg-gray-50 p-2 rounded border-0 focus:ring-1 focus:ring-blue-500 resize-none" 
-                                                    rows="2" placeholder="Deskripsi..." value={item.description}
-                                                    onChange={e=>{const n=[...form.itineraries]; n[idx].description=e.target.value; setForm({...form, itineraries:n})}}
-                                                ></textarea>
+                        {/* Modal Body (Scrollable) */}
+                        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+                            
+                            {/* TAB 1: INFO */}
+                            {activeTab === 'info' && (
+                                <div className="space-y-5 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                                    <div><label className="label">Nama Paket</label><input className="input-field" placeholder="Contoh: Umroh Akbar Awal Ramadhan 2025" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} required/></div>
+                                    <div className="grid grid-cols-2 gap-5">
+                                        <div><label className="label">Jenis Paket</label><select className="input-field" value={form.type} onChange={e=>setForm({...form, type:e.target.value})}><option value="umrah">Umroh Reguler</option><option value="umrah_plus">Umroh Plus</option><option value="haji">Haji Furoda/Plus</option><option value="tour">Halal Tour</option></select></div>
+                                        <div><label className="label">Durasi (Hari)</label><input type="number" className="input-field" value={form.duration_days} onChange={e=>setForm({...form, duration_days:e.target.value})}/></div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-5">
+                                        <div><label className="label">Minimal DP (Rp)</label><input type="number" className="input-field" value={form.down_payment_amount} onChange={e=>setForm({...form, down_payment_amount:e.target.value})}/></div>
+                                        <div><label className="label">Status</label><select className="input-field" value={form.status} onChange={e=>setForm({...form, status:e.target.value})}><option value="active">Aktif (Dijual)</option><option value="archived">Arsip (Tidak Dijual)</option></select></div>
+                                    </div>
+                                    <div><label className="label">Deskripsi Lengkap</label><textarea className="input-field h-32" value={form.description} onChange={e=>setForm({...form, description:e.target.value})}/></div>
+                                </div>
+                            )}
+
+                            {/* TAB 2: PRICES (DYNAMIC) */}
+                            {activeTab === 'prices' && (
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-sm text-gray-600">Atur variasi harga berdasarkan tipe kamar (Quad, Triple, Double).</div>
+                                        <button type="button" onClick={addPrice} className="btn-secondary text-xs flex gap-1"><Plus size={14}/> Tambah Varian</button>
+                                    </div>
+                                    {form.prices.map((p, i) => (
+                                        <div key={i} className="flex gap-3 items-end bg-white p-4 rounded-xl shadow-sm border border-gray-200 animate-fade-in">
+                                            <div className="flex-1">
+                                                <label className="text-[11px] font-bold text-gray-400 uppercase">Tipe Kamar</label>
+                                                <input className="input-field" list="roomTypes" placeholder="Contoh: Quad" value={p.room_type} onChange={e=>updatePrice(i,'room_type',e.target.value)}/>
+                                                <datalist id="roomTypes"><option value="Quad"/><option value="Triple"/><option value="Double"/><option value="Quint"/><option value="Suite"/></datalist>
                                             </div>
+                                            <div className="w-24">
+                                                <label className="text-[11px] font-bold text-gray-400 uppercase">Pax/Kamar</label>
+                                                <input type="number" className="input-field" value={p.capacity} onChange={e=>updatePrice(i,'capacity',e.target.value)}/>
+                                            </div>
+                                            <div className="flex-1">
+                                                <label className="text-[11px] font-bold text-gray-400 uppercase">Harga (Rp)</label>
+                                                <input type="number" className="input-field font-bold text-gray-800" value={p.price} onChange={e=>updatePrice(i,'price',e.target.value)}/>
+                                            </div>
+                                            <button type="button" onClick={()=>removePrice(i)} className="p-2.5 mb-0.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200"><Trash2 size={18}/></button>
+                                        </div>
+                                    ))}
+                                    {form.prices.length === 0 && <div className="text-center p-8 bg-white rounded-xl border border-dashed text-gray-400">Belum ada harga diatur.</div>}
+                                </div>
+                            )}
+
+                            {/* TAB 3: HOTELS */}
+                            {activeTab === 'hotels' && (
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-sm text-gray-600">Daftar hotel yang digunakan dalam paket ini.</div>
+                                        <button type="button" onClick={addHotel} className="btn-secondary text-xs flex gap-1"><Plus size={14}/> Tambah Hotel</button>
+                                    </div>
+                                    {form.hotels.map((h, i) => (
+                                        <div key={i} className="flex gap-3 items-end bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                            <div className="flex-[2]">
+                                                <label className="text-[11px] font-bold text-gray-400 uppercase">Pilih Hotel</label>
+                                                <select className="input-field" value={h.hotel_id} onChange={e=>updateHotel(i,'hotel_id',e.target.value)}>
+                                                    <option value="">-- Pilih Hotel --</option>
+                                                    {hotelsMaster.map(hm => <option key={hm.id} value={hm.id}>{hm.name} ({hm.city} - {hm.rating}*)</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="flex-1">
+                                                <label className="text-[11px] font-bold text-gray-400 uppercase">Kota</label>
+                                                <input className="input-field bg-gray-50" readOnly value={h.city_name||''} placeholder="Auto"/>
+                                            </div>
+                                            <div className="w-24">
+                                                <label className="text-[11px] font-bold text-gray-400 uppercase">Malam</label>
+                                                <input type="number" className="input-field" value={h.nights} onChange={e=>updateHotel(i,'nights',e.target.value)}/>
+                                            </div>
+                                            <button type="button" onClick={()=>removeHotel(i)} className="p-2.5 mb-0.5 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
                                         </div>
                                     ))}
                                 </div>
-                                <button type="button" onClick={()=>setForm(p=>({...p, itineraries:[...p.itineraries, {day_number:p.itineraries.length+1, title:'', description:''}]}))} className="btn-secondary w-full text-sm py-2"><Plus size={16}/> Tambah Hari</button>
-                            </div>
-                        )}
-                    </div>
+                            )}
 
-                    <div className="flex justify-end gap-3 mt-8 pt-4 border-t bg-white sticky bottom-0">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition">Batal</button>
-                        <button type="submit" className="btn-primary px-6 py-2.5 shadow-lg shadow-blue-200">Simpan Data Paket</button>
+                            {/* TAB 4: ITINERARY */}
+                            {activeTab === 'itinerary' && (
+                                <div className="space-y-4">
+                                     <div className="flex justify-between items-center">
+                                        <div className="text-sm text-gray-600">Rencana perjalanan hari demi hari.</div>
+                                        <button type="button" onClick={addItinerary} className="btn-secondary text-xs flex gap-1"><Plus size={14}/> Tambah Hari</button>
+                                    </div>
+                                    {form.itineraries.map((it, i) => (
+                                        <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex gap-4">
+                                            <div className="w-16 pt-2 text-center">
+                                                <div className="bg-blue-100 text-blue-700 font-bold rounded-lg py-1 text-sm">Hari {it.day_number}</div>
+                                            </div>
+                                            <div className="flex-1 space-y-3">
+                                                <input className="input-field font-bold" placeholder="Judul Kegiatan (Misal: Tiba di Jeddah)" value={it.title} onChange={e=>updateItinerary(i,'title',e.target.value)}/>
+                                                <textarea className="input-field text-sm min-h-[60px]" placeholder="Deskripsi detail kegiatan..." value={it.description} onChange={e=>updateItinerary(i,'description',e.target.value)}/>
+                                            </div>
+                                            <button type="button" onClick={()=>removeItinerary(i)} className="text-gray-400 hover:text-red-500 self-start"><Trash2 size={18}/></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-6 border-t bg-white flex justify-end gap-3">
+                            <button type="button" onClick={()=>setIsModalOpen(false)} className="px-6 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium">Batal</button>
+                            <button type="button" onClick={handleSave} className="btn-primary px-8">Simpan Paket</button>
+                        </div>
                     </div>
-                </form>
-            </Modal>
+                </div>
+            )}
         </div>
     );
 };
-
 export default Packages;
