@@ -6,19 +6,31 @@ import { LogOut, LayoutGrid, ChevronDown, ChevronRight } from 'lucide-react';
 const Sidebar = () => {
     const location = useLocation();
     
-    // State untuk toggle submenu (opsional, bisa dibuat expand/collapse)
+    // State untuk toggle submenu (jika nanti dibutuhkan accordion)
     const [openMenus, setOpenMenus] = useState({});
 
     const toggleMenu = (title) => {
         setOpenMenus(prev => ({ ...prev, [title]: !prev[title] }));
     };
 
-    const isActiveLink = (path) => location.pathname === path;
-    
-    // Helper untuk cek apakah submenu sedang aktif (agar parent tetap terbuka)
-    const isSubmenuActive = (submenu) => {
-        return submenu.some(item => location.pathname === item.path);
-    };
+    // Helper: Fungsi untuk merender satu link menu
+    const renderLink = (item, index) => (
+        <NavLink
+            key={index}
+            to={item.path}
+            className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    isActive
+                        ? 'bg-blue-50 text-blue-700 shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`
+            }
+        >
+            {/* Pastikan icon ada sebelum dirender */}
+            {item.icon && <item.icon size={18} />}
+            {item.label}
+        </NavLink>
+    );
 
     return (
         <div className="w-64 bg-white h-screen border-r border-gray-200 flex flex-col fixed left-0 top-0 overflow-y-auto z-50 font-inter">
@@ -36,66 +48,26 @@ const Sidebar = () => {
             {/* Menu Navigasi */}
             <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
                 {menuItems.map((item, idx) => {
-                    // 1. Render Item Tunggal (Dashboard, dll)
-                    if (!item.submenu) {
+                    // KASUS 1: Jika item adalah Section (Grup Menu dengan Judul)
+                    // Struktur: { section: 'Nama', items: [...] }
+                    if (item.section) {
                         return (
-                            <NavLink
-                                key={idx}
-                                to={item.path}
-                                className={({ isActive }) =>
-                                    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                                        isActive
-                                            ? 'bg-blue-50 text-blue-700 shadow-sm'
-                                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                    }`
-                                }
-                            >
-                                <item.icon size={18} />
-                                {item.title}
-                            </NavLink>
+                            <div key={idx} className="pt-4 first:pt-0">
+                                <div className="px-3 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                    {item.section}
+                                </div>
+                                <div className="space-y-1">
+                                    {item.items.map((subItem, subIdx) => 
+                                        renderLink(subItem, `sub-${idx}-${subIdx}`)
+                                    )}
+                                </div>
+                            </div>
                         );
                     }
 
-                    // 2. Render Item dengan Submenu (Dropdown / Group)
-                    const isOpen = openMenus[item.title] || isSubmenuActive(item.submenu);
-                    
-                    return (
-                        <div key={idx} className="space-y-1 pt-2">
-                            <div 
-                                onClick={() => toggleMenu(item.title)}
-                                className="px-3 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider flex justify-between items-center cursor-pointer hover:text-gray-600"
-                            >
-                                <div className="flex items-center gap-2">
-                                    {/* Ikon Group Opsional */}
-                                    {/* <item.icon size={14} /> */} 
-                                    {item.title}
-                                </div>
-                                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </div>
-
-                            {/* Submenu Items */}
-                            {isOpen && (
-                                <div className="pl-2 space-y-1 border-l-2 border-gray-100 ml-3">
-                                    {item.submenu.map((subItem, subIdx) => (
-                                        <NavLink
-                                            key={subIdx}
-                                            to={subItem.path}
-                                            className={({ isActive }) =>
-                                                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                                                    isActive
-                                                        ? 'bg-blue-50 text-blue-700'
-                                                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                                                }`
-                                            }
-                                        >
-                                            <subItem.icon size={16} />
-                                            {subItem.title}
-                                        </NavLink>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    );
+                    // KASUS 2: Jika item adalah Menu Tunggal (Top Level)
+                    // Struktur: { label: 'Nama', path: '/', icon: ... }
+                    return renderLink(item, idx);
                 })}
             </nav>
 

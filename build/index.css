@@ -1963,6 +1963,9 @@ select.input-field {
        -moz-appearance: none;
             appearance: none;
 }
+.first\:pt-0:first-child {
+  padding-top: 0px;
+}
 .hover\:border-blue-300:hover {
   --tw-border-opacity: 1;
   border-color: rgb(147 197 253 / var(--tw-border-opacity, 1));

@@ -1,39 +1,47 @@
 import { 
-    LayoutDashboard, 
-    Users, 
-    Calendar, 
-    Package, 
-    Briefcase, 
-    Settings, 
-    FileText, 
-    DollarSign, 
-    Truck, 
-    Megaphone,
-    Monitor // Icon baru untuk web simulation
+    LayoutDashboard, Users, Calendar, Briefcase, 
+    Settings, Package, FileText, DollarSign, 
+    UserCheck, Megaphone, Database, Truck, PieChart 
 } from 'lucide-react';
 
 export const menuItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    
-    // ... Menu lama biarkan ...
-
-    { section: 'Operasional' },
-    { path: '/departures', label: 'Jadwal Keberangkatan', icon: Calendar },
-    { path: '/rooming', label: 'Rooming List', icon: Users },
-    
-    { section: 'Produk' },
-    { path: '/packages', label: 'Master Paket', icon: Package },
-    { path: '/package-categories', label: 'Kategori Paket', icon: Package },
-    { path: '/storefront-simulation', label: 'Simulasi Website', icon: Monitor }, // MENU BARU
-    
-    { section: 'Keuangan' },
-    { path: '/bookings', label: 'Transaksi & Bayar', icon: FileText },
-    { path: '/finance', label: 'Keuangan & Kas', icon: DollarSign },
-    { path: '/accounting', label: 'Akuntansi (GL)', icon: Briefcase },
-
-    { section: 'Lainnya' },
-    { path: '/masters', label: 'Data Master', icon: Settings },
-    { path: '/users', label: 'Manajemen User', icon: Users },
-    { path: '/roles', label: 'Role & Akses', icon: Settings },
-    { path: '/settings', label: 'Pengaturan', icon: Settings },
+    // Menu Tunggal (Top Level)
+    { 
+        label: 'Dashboard', 
+        path: '/', 
+        icon: LayoutDashboard 
+    },
+    // Section Group
+    {
+        section: 'Bisnis & Transaksi',
+        items: [
+            { label: 'Booking & Order', path: '/bookings', icon: FileText },
+            { label: 'Keuangan (Finance)', path: '/finance', icon: DollarSign },
+            { label: 'Laporan Akuntansi', path: '/accounting', icon: PieChart },
+        ]
+    },
+    {
+        section: 'Operasional',
+        items: [
+            { label: 'Data Jemaah', path: '/jamaah', icon: Users },
+            { label: 'Jadwal Keberangkatan', path: '/departures', icon: Calendar },
+            { label: 'Logistik & Gudang', path: '/logistics', icon: Truck },
+        ]
+    },
+    {
+        section: 'Enterprise',
+        items: [
+            { label: 'HR & Karyawan', path: '/hr', icon: Briefcase },
+            { label: 'Marketing CRM', path: '/marketing', icon: Megaphone },
+            { label: 'Agen & Mitra', path: '/agents', icon: UserCheck },
+        ]
+    },
+    {
+        section: 'Master Data',
+        items: [
+            { label: 'Produk & Paket', path: '/packages', icon: Package },
+            { label: 'Master Data Center', path: '/masters', icon: Database },
+            { label: 'Pengaturan', path: '/settings', icon: Settings },
+        ]
+    }
 ];
