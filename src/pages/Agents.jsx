@@ -1,169 +1,162 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import CrudTable from '../components/CrudTable';
 import Modal from '../components/Modal';
 import useCRUD from '../hooks/useCRUD';
 import api from '../utils/api';
-import { Users, Plus, Wallet, ArrowUpCircle, Copy, CreditCard } from 'lucide-react';
+import { Users, CreditCard, Building, Plus, Copy, Network } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Agents = () => {
-    // endpoint sudah diupdate agar return data balance (saldo) dari JOIN
     const { data, loading, fetchData, deleteItem } = useCRUD('umh/v1/agents');
+    
+    // State untuk List Cabang (Parent)
+    const [branches, setBranches] = useState([]);
+
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isTopupModalOpen, setIsTopupModalOpen] = useState(false);
     const [mode, setMode] = useState('create');
-    const [selectedAgent, setSelectedAgent] = useState(null);
     
-    // Form Data
-    const initialForm = { name: '', code: '', email: '', phone: '', type: 'agent', bank_name: '', bank_account_number: '', status: 'active' };
+    // Initial Form
+    const initialForm = { 
+        name: '', email: '', phone: '', 
+        code: '', 
+        type: 'agent', // Default agent
+        parent_branch_id: '', // Wajib jika type agent
+        bank_name: '', bank_account_number: '',
+        city: ''
+    };
     const [form, setForm] = useState(initialForm);
-    
-    // Topup Form
-    const [topupAmount, setTopupAmount] = useState('');
-    const [topupNotes, setTopupNotes] = useState('');
 
-    const formatIDR = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n || 0);
-
-    // Generate random code for new agent
-    const generateCode = () => 'AG-' + Math.floor(1000 + Math.random() * 9000);
+    // Load Data Cabang saat modal dibuka
+    useEffect(() => {
+        if (isModalOpen) {
+            api.get('umh/v1/agent-branches').then(res => {
+                if (res.data.success) setBranches(res.data.data);
+            });
+        }
+    }, [isModalOpen]);
 
     const handleSave = async (e) => {
         e.preventDefault();
+        
+        // Validasi: Agen harus punya induk
+        if (form.type === 'agent' && !form.parent_branch_id) {
+            return toast.error("Agen Reguler wajib memilih Induk Cabang (Pusat/Cabang)");
+        }
+
         try {
-            if (mode === 'create') await api.post('umh/v1/agents', {...form, code: form.code || generateCode()});
+            if (mode === 'create') await api.post('umh/v1/agents', form);
             else await api.put(`umh/v1/agents/${form.id}`, form);
             
-            toast.success("Data Agen Disimpan");
             setIsModalOpen(false);
             fetchData();
-        } catch (e) { toast.error("Gagal simpan: " + e.message); }
-    };
-
-    const handleTopup = async (e) => {
-        e.preventDefault();
-        if(!selectedAgent) return;
-        try {
-            await api.post(`umh/v1/agents/${selectedAgent.id}/topup`, {
-                amount: parseFloat(topupAmount),
-                notes: topupNotes
-            });
-            toast.success(`Topup ${formatIDR(topupAmount)} berhasil!`);
-            setIsTopupModalOpen(false);
-            setTopupAmount('');
-            setTopupNotes('');
-            fetchData(); // Refresh data untuk lihat saldo baru
-        } catch (error) {
-            toast.error("Gagal topup: " + (error.response?.data?.message || error.message));
+            toast.success("Data Mitra Disimpan");
+        } catch (e) { 
+            toast.error("Gagal simpan: " + (e.response?.data?.message || e.message)); 
         }
     };
 
     const columns = [
-        { header: 'Agen / Mitra', accessor: 'name', render: r => (
+        { header: 'Nama Mitra', accessor: 'name', render: r => (
             <div>
                 <div className="font-bold text-gray-800">{r.name}</div>
-                <div className="text-xs text-gray-500">{r.code} ({r.type.toUpperCase()})</div>
-            </div>
-        )},
-        { header: 'Saldo Wallet', accessor: 'balance', render: r => (
-            <div className="flex items-center gap-2">
-                <span className={`font-mono font-bold text-lg ${r.balance > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                    {formatIDR(r.balance)}
-                </span>
-                <button 
-                    onClick={() => { setSelectedAgent(r); setIsTopupModalOpen(true); }}
-                    className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Topup Saldo"
-                >
-                    <ArrowUpCircle size={16}/>
-                </button>
-            </div>
-        )},
-        { header: 'Kontak & Bank', accessor: 'phone', render: r => (
-            <div className="text-xs">
-                <div>{r.email} / {r.phone}</div>
-                <div className="text-gray-400 flex items-center gap-1">
-                    <CreditCard size={10}/> {r.bank_name || '-'}
+                <div className="text-xs text-gray-500 flex items-center gap-1">
+                    {r.type === 'branch' ? <Building size={10} className="text-purple-500"/> : <Users size={10}/>}
+                    <span className="uppercase">{r.type === 'branch' ? 'Cabang Resmi' : 'Agen Reguler'}</span>
                 </div>
             </div>
         )},
-        { header: 'Status', accessor: 'status', render: r => <span className="uppercase text-[10px] bg-gray-100 px-2 py-1 rounded">{r.status}</span> }
+        { header: 'Kode', accessor: 'code', render: r => <code className="bg-gray-100 px-2 py-1 rounded text-xs font-bold text-blue-600">{r.code}</code> },
+        { header: 'Induk (Upline)', accessor: 'parent_name', render: r => (
+            <div className="text-sm text-gray-600">
+                {r.type === 'branch' ? <span className="text-purple-600 font-bold">- (Head)</span> : (r.parent_name || 'Pusat')}
+            </div>
+        )},
+        { header: 'Kontak', accessor: 'phone', render: r => <div className="text-xs"><div>{r.phone}</div><div className="text-gray-400">{r.city}</div></div> },
+        { header: 'Total Jemaah', accessor: 'id', render: r => <span className="font-bold text-center block">-</span> } // Placeholder
     ];
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Kemitraan & Agen B2B</h1>
-                    <p className="text-gray-500 text-sm">Kelola data agen, kode referral, dan saldo deposit.</p>
+                    <h1 className="text-2xl font-bold text-gray-800">Kemitraan & Cabang</h1>
+                    <p className="text-sm text-gray-500">Manajemen struktur cabang dan agen reguler.</p>
                 </div>
-                <button onClick={() => { setMode('create'); setForm({...initialForm, code: generateCode()}); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2">
-                    <Plus size={18}/> Tambah Agen
+                <button onClick={() => { setForm(initialForm); setMode('create'); setIsModalOpen(true); }} className="btn-primary flex items-center gap-2">
+                    <Plus size={18}/> Tambah Mitra
                 </button>
             </div>
 
-            {/* Info Saldo Total */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-center justify-between">
-                <div>
-                    <p className="text-sm text-gray-500">Total Saldo Deposit Agen (Kewajiban)</p>
-                    <h3 className="text-2xl font-bold text-purple-600 mt-1">
-                        {formatIDR(data.reduce((sum, item) => sum + (parseFloat(item.balance) || 0), 0))}
-                    </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-3">
+                    <div className="p-3 bg-purple-100 text-purple-600 rounded-lg"><Building size={24}/></div>
+                    <div><div className="text-sm text-gray-500">Total Cabang</div><div className="text-xl font-bold">{data.filter(a=>a.type==='branch').length}</div></div>
                 </div>
-                <Wallet size={40} className="text-purple-400 opacity-50"/>
+                <div className="bg-white p-4 rounded-xl border shadow-sm flex items-center gap-3">
+                    <div className="p-3 bg-blue-100 text-blue-600 rounded-lg"><Users size={24}/></div>
+                    <div><div className="text-sm text-gray-500">Total Agen</div><div className="text-xl font-bold">{data.filter(a=>a.type==='agent').length}</div></div>
+                </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <CrudTable 
-                    columns={columns} 
-                    data={data} 
-                    loading={loading} 
-                    onEdit={(item) => { setMode('edit'); setForm(item); setIsModalOpen(true); }}
-                    onDelete={deleteItem}
-                />
+            <div className="bg-white rounded-xl shadow border border-gray-200">
+                <CrudTable columns={columns} data={data} loading={loading} onEdit={(r)=>{setForm(r); setMode('edit'); setIsModalOpen(true)}} onDelete={deleteItem} />
             </div>
 
-            {/* Modal CRUD Agen */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={mode==='create'?"Agen Baru":"Edit Agen"}>
+            <Modal isOpen={isModalOpen} onClose={()=>setIsModalOpen(false)} title={mode==='create'?"Registrasi Mitra":"Edit Mitra"}>
                 <form onSubmit={handleSave} className="space-y-4">
-                    <div><label className="label">Nama Agen/Travel</label><input className="input-field" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} required/></div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div><label className="label">Kode Agen (Otomatis)</label><input className="input-field bg-gray-100" value={form.code} onChange={e=>setForm({...form, code:e.target.value})} readOnly={mode==='edit'}/></div>
-                        <div><label className="label">Tipe</label><select className="input-field" value={form.type} onChange={e=>setForm({...form, type:e.target.value})}><option value="agent">Agen Reguler</option><option value="master">Master Agen</option></select></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div><label className="label">Email</label><input type="email" className="input-field" value={form.email} onChange={e=>setForm({...form, email:e.target.value})}/></div>
-                        <div><label className="label">No HP</label><input className="input-field" value={form.phone} onChange={e=>setForm({...form, phone:e.target.value})}/></div>
-                    </div>
-                    <div className="pt-4 mt-4 border-t">
-                        <h4 className="text-sm font-bold text-gray-700 mb-3">Data Bank (Pencairan Komisi)</h4>
-                        <div className="flex gap-2">
-                            <input placeholder="Nama Bank" className="input-field w-1/3" value={form.bank_name} onChange={e=>setForm({...form, bank_name:e.target.value})}/>
-                            <input placeholder="No Rekening" className="input-field w-2/3" value={form.bank_account_number} onChange={e=>setForm({...form, bank_account_number:e.target.value})}/>
+                    
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
+                        <h4 className="text-xs font-bold text-blue-800 uppercase flex items-center gap-2"><Network size={12}/> Struktur Kemitraan</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="label">Tipe Kemitraan</label>
+                                <select className="input-field" value={form.type} onChange={e=>setForm({...form, type:e.target.value})}>
+                                    <option value="agent">Agen Reguler</option>
+                                    <option value="branch">Cabang (Master)</option>
+                                </select>
+                            </div>
+                            
+                            {/* Dropdown Parent HANYA muncul jika tipe adalah AGEN */}
+                            {form.type === 'agent' && (
+                                <div>
+                                    <label className="label">Induk Cabang (Upline)</label>
+                                    <select 
+                                        className="input-field border-blue-300 bg-white" 
+                                        value={form.parent_branch_id} 
+                                        onChange={e=>setForm({...form, parent_branch_id:e.target.value})}
+                                        required
+                                    >
+                                        <option value="">-- Pilih Induk --</option>
+                                        {branches.map(b => (
+                                            <option key={b.id} value={b.id}>{b.name} ({b.city})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+                        <div className="text-[10px] text-blue-600">
+                            {form.type === 'branch' 
+                                ? 'Cabang dapat memiliki banyak Agen Reguler di bawahnya.' 
+                                : 'Agen Reguler wajib menginduk ke salah satu Cabang/Pusat.'}
                         </div>
                     </div>
-                    <div className="flex justify-end pt-4">
-                        <button type="submit" className="btn-primary">Simpan Data Agen</button>
-                    </div>
-                </form>
-            </Modal>
 
-            {/* Modal Topup */}
-            <Modal isOpen={isTopupModalOpen} onClose={() => setIsTopupModalOpen(false)} title={`Topup Saldo Agen: ${selectedAgent?.name}`} size="max-w-md">
-                <form onSubmit={handleTopup} className="space-y-4">
-                    <div className="bg-green-50 p-3 rounded text-sm text-green-800 border border-green-100">
-                        Saldo saat ini: <span className="font-bold">{formatIDR(selectedAgent?.balance)}</span>
+                    <div><label className="label">Nama Lengkap / Nama Travel</label><input className="input-field" value={form.name} onChange={e=>setForm({...form, name:e.target.value})} required/></div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="label">No. HP / WA</label><input className="input-field" value={form.phone} onChange={e=>setForm({...form, phone:e.target.value})}/></div>
+                        <div><label className="label">Kota Domisili</label><input className="input-field" value={form.city} onChange={e=>setForm({...form, city:e.target.value})}/></div>
                     </div>
-                    <div>
-                        <label className="label">Nominal Topup (Rp)</label>
-                        <input type="number" className="input-field text-xl font-bold" value={topupAmount} onChange={e=>setTopupAmount(e.target.value)} autoFocus required/>
+                    
+                    <div className="border-t pt-4 mt-4">
+                        <h4 className="text-sm font-bold text-gray-700 mb-3">Data Bank (Pencairan Komisi)</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="label">Nama Bank</label><input className="input-field" placeholder="BCA" value={form.bank_name} onChange={e=>setForm({...form, bank_name:e.target.value})}/></div>
+                            <div><label className="label">No. Rekening</label><input className="input-field" value={form.bank_account_number} onChange={e=>setForm({...form, bank_account_number:e.target.value})}/></div>
+                        </div>
                     </div>
-                    <div>
-                        <label className="label">Catatan</label>
-                        <textarea className="input-field" rows="2" value={topupNotes} onChange={e=>setTopupNotes(e.target.value)} placeholder="Contoh: Transfer dari Bank Mandiri"></textarea>
-                    </div>
-                    <div className="flex justify-end pt-4">
-                        <button type="button" onClick={() => setIsTopupModalOpen(false)} className="btn-secondary">Batal</button>
-                        <button type="submit" className="btn-primary px-6">Proses Topup</button>
-                    </div>
+
+                    <div className="flex justify-end pt-4"><button className="btn-primary w-full">Simpan Data</button></div>
                 </form>
             </Modal>
         </div>
