@@ -1,74 +1,106 @@
 <?php
+/**
+ * File: includes/api/api-logistics.php
+ * Deskripsi: API Endpoint untuk Manajemen Inventaris Barang dan Distribusi Perlengkapan Jemaah
+ */
+
 require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
 class UMH_API_Logistics extends UMH_CRUD_Controller {
 
     public function __construct() {
+        // Parent: CRUD untuk Master Inventaris
         parent::__construct('umh_inventory_items');
     }
 
     public function register_routes() {
-        parent::register_routes();
+        // CRUD Standar untuk Item Inventaris
+        parent::register_routes(); 
 
-        // Endpoint Distribusi Barang ke Jemaah
-        register_rest_route('umh/v1', '/logistics/distribute', [
-            'methods' => 'POST',
-            'callback' => [$this, 'distribute_item'],
-            'permission_callback' => '__return_true',
+        // Endpoint: CRUD untuk Master Warehouse/Gudang
+        register_rest_route('umh/v1', '/warehouses', [
+            'methods' => ['GET', 'POST'], 'callback' => [$this, 'handle_warehouses'], 'permission_callback' => '__return_true'
+        ]);
+        register_rest_route('umh/v1', '/warehouses/(?P<id>\d+)', [
+            'methods' => ['PUT', 'DELETE'], 'callback' => [$this, 'handle_warehouses'], 'permission_callback' => '__return_true'
+        ]);
+
+        // Endpoint: Distribusi Perlengkapan
+        register_rest_route('umh/v1', '/logistics/distribution', [
+            'methods' => ['GET', 'POST'], 'callback' => [$this, 'handle_distribution'], 'permission_callback' => '__return_true'
         ]);
         
-        // Get Riwayat Distribusi
-        register_rest_route('umh/v1', '/logistics/distribution-history', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_distribution_history'],
-            'permission_callback' => '__return_true',
+        // Endpoint: Ambil Stok per Item
+        register_rest_route('umh/v1', '/inventory/(?P<id>\d+)/transactions', [
+            'methods' => 'GET', 'callback' => [$this, 'get_item_transactions'], 'permission_callback' => '__return_true'
         ]);
     }
+    
+    // Handler CRUD Warehouse
+    public function handle_warehouses($request) {
+        $this->table_name = $this->db->prefix . 'umh_warehouses';
+        return $this->process_request($request);
+    }
 
-    public function distribute_item($request) {
+    // Handler Distribusi Perlengkapan
+    public function handle_distribution($request) {
+        $this->table_name = $this->db->prefix . 'umh_logistics_distribution';
+        return $this->process_request($request);
+    }
+    
+    // Ambil Riwayat Transaksi Stok (IN/OUT)
+    public function get_item_transactions($request) {
+        $item_id = $request->get_param('id');
+        $data = $this->db->get_results($this->db->prepare(
+            "SELECT * FROM {$this->db->prefix}umh_inventory_transactions WHERE item_id = %d ORDER BY created_at DESC", 
+            $item_id
+        ));
+        return new WP_REST_Response(['success' => true, 'data' => $data], 200);
+    }
+
+    // Override: Penambahan/Pengurangan Stok harus melalui Transaksi Logistik (Audit Trail)
+    public function update_item($request) {
         $data = $request->get_json_params();
-        
-        // 1. Validasi Stok
-        $item = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $data['item_id']));
-        
-        if ($item->stock_qty < $data['qty']) {
-            return new WP_REST_Response(['message' => 'Stok barang tidak mencukupi'], 400);
+        $item_id = $request->get_param('id');
+
+        if (isset($data['stock_adjustment'])) {
+            $adjustment = intval($data['stock_adjustment']);
+            $notes = $data['notes'] ?? 'Penyesuaian stok manual';
+            
+            // 1. Ambil Stok Lama
+            $current_stock = $this->db->get_var($this->db->prepare("SELECT stock_qty FROM {$this->table_name} WHERE id = %d", $item_id));
+            $new_stock = $current_stock + $adjustment;
+            
+            if ($new_stock < 0) {
+                 return new WP_REST_Response(['message' => 'Stok tidak boleh minus.'], 400);
+            }
+
+            $this->db->query('START TRANSACTION');
+            try {
+                // 2. Catat Transaksi Inventaris
+                $this->db->insert($this->db->prefix . 'umh_inventory_transactions', [
+                    'item_id' => $item_id,
+                    'warehouse_id' => $data['warehouse_id'] ?? 1,
+                    'type' => $adjustment > 0 ? 'in' : 'out', // Simplifikasi IN/OUT
+                    'qty' => abs($adjustment),
+                    'reference_no' => 'ADJ-' . time(),
+                    'notes' => $notes,
+                    'created_at' => current_time('mysql')
+                ]);
+
+                // 3. Update Stok Master
+                $this->db->update($this->table_name, ['stock_qty' => $new_stock], ['id' => $item_id]);
+
+                $this->db->query('COMMIT');
+                return new WP_REST_Response(['success' => true, 'message' => 'Stok berhasil disesuaikan.'], 200);
+                
+            } catch (Exception $e) {
+                $this->db->query('ROLLBACK');
+                return new WP_REST_Response(['message' => 'Gagal menyesuaikan stok: ' . $e->getMessage()], 500);
+            }
         }
 
-        // 2. Catat Distribusi
-        $dist_table = $this->db->prefix . 'umh_logistics_distribution';
-        $this->db->insert($dist_table, [
-            'booking_id' => $data['booking_id'],
-            'jamaah_id' => $data['jamaah_id'],
-            'item_id' => $data['item_id'],
-            'qty' => $data['qty'],
-            'status' => 'taken',
-            'taken_date' => current_time('mysql'),
-            'created_at' => current_time('mysql')
-        ]);
-
-        // 3. Kurangi Stok
-        $this->db->query($this->db->prepare(
-            "UPDATE {$this->table_name} SET stock_qty = stock_qty - %d WHERE id = %d",
-            $data['qty'], $data['item_id']
-        ));
-
-        return new WP_REST_Response(['success' => true, 'message' => 'Barang berhasil diserahkan'], 201);
-    }
-
-    public function get_distribution_history($request) {
-        $dist_table = $this->db->prefix . 'umh_logistics_distribution';
-        $item_table = $this->table_name;
-        $jamaah_table = $this->db->prefix . 'umh_jamaah';
-
-        $results = $this->db->get_results("
-            SELECT d.*, i.item_name, j.full_name as jamaah_name
-            FROM {$dist_table} d
-            JOIN {$item_table} i ON d.item_id = i.id
-            JOIN {$jamaah_table} j ON d.jamaah_id = j.id
-            ORDER BY d.taken_date DESC LIMIT 50
-        ");
-
-        return new WP_REST_Response(['success' => true, 'data' => $results], 200);
+        // Untuk update non-stok (Nama, Harga, dll)
+        return parent::update_item($request);
     }
 }

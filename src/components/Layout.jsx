@@ -1,39 +1,62 @@
-import React from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
-import Header from './Header'; 
+import Header from './Header';
+import Dashboard from '../pages/Dashboard';
+import Users from '../pages/Users';
+import Roles from '../pages/Roles';
+import Packages from '../pages/Packages';
+import PackageCategories from '../pages/PackageCategories';
+import Departures from '../pages/Departures';
+import Bookings from '../pages/Bookings';
+import Jamaah from '../pages/Jamaah';
+import Agents from '../pages/Agents';
+import Finance from '../pages/Finance';
+import Accounting from '../pages/Accounting';
+import Masters from '../pages/Masters';
+import Settings from '../pages/Settings';
+import StorefrontSimulation from '../pages/StorefrontSimulation'; // Import halaman baru
 
-const Layout = ({ children, title, actions }) => {
+const Layout = () => {
+    // Ambil path dari hash URL agar SPA jalan di WP Admin tanpa reload
+    const [currentPath, setCurrentPath] = useState(window.location.hash.replace('#', '') || '/');
+
+    useEffect(() => {
+        const handleHashChange = () => {
+            setCurrentPath(window.location.hash.replace('#', '') || '/');
+        };
+        window.addEventListener('hashchange', handleHashChange);
+        return () => window.removeEventListener('hashchange', handleHashChange);
+    }, []);
+
+    const renderContent = () => {
+        switch (currentPath) {
+            case '/': return <Dashboard />;
+            case '/users': return <Users />;
+            case '/roles': return <Roles />;
+            case '/packages': return <Packages />;
+            case '/package-categories': return <PackageCategories />;
+            case '/departures': return <Departures />;
+            case '/bookings': return <Bookings />;
+            case '/jamaah': return <Jamaah />;
+            case '/agents': return <Agents />;
+            case '/finance': return <Finance />;
+            case '/accounting': return <Accounting />;
+            case '/masters': return <Masters />;
+            case '/settings': return <Settings />;
+            case '/storefront-simulation': return <StorefrontSimulation />; // Route Baru
+            default: return <Dashboard />;
+        }
+    };
+
     return (
-        <div className="flex min-h-screen bg-gray-50 font-sans text-gray-900">
-            {/* Sidebar Fixed */}
-            <Sidebar />
-
-            {/* Main Content Area - Offset by Sidebar Width */}
-            <main className="flex-1 ml-64 flex flex-col min-h-screen transition-all duration-300 ease-in-out">
-                
-                {/* Header Area: Hanya muncul jika ada props title (untuk kompatibilitas) */}
-                {title && (
-                    <header className="bg-white border-b border-gray-200 px-8 py-5 flex justify-between items-center sticky top-0 z-40 shadow-sm">
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            {actions}
-                        </div>
-                    </header>
-                )}
-
-                {/* Content Body */}
-                <div className="p-8 flex-1 overflow-x-hidden">
-                    <div className="max-w-7xl mx-auto">
-                        {/* PERBAIKAN: Gunakan <Outlet /> jika children kosong.
-                          Ini memungkinkan Layout dipakai sebagai Wrapper Route di index.jsx
-                        */}
-                        {children ? children : <Outlet />}
-                    </div>
-                </div>
-            </main>
+        <div className="flex h-screen bg-gray-100 font-sans">
+            <Sidebar currentPath={currentPath} />
+            <div className="flex-1 flex flex-col overflow-hidden">
+                <Header title="Umroh Manager Enterprise" />
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
+                    {renderContent()}
+                </main>
+            </div>
         </div>
     );
 };

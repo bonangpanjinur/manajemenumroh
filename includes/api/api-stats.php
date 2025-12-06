@@ -4,55 +4,59 @@ require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 class UMH_API_Stats extends UMH_CRUD_Controller {
 
     public function __construct() {
-        parent::__construct('options'); 
+        parent::__construct('umh_bookings'); // Base dummy, karena ini hanya GET
     }
 
     public function register_routes() {
-        register_rest_route('umh/v1', '/dashboard/stats', [
+        register_rest_route('umh/v1', '/stats/dashboard', [
             'methods' => 'GET',
             'callback' => [$this, 'get_dashboard_stats'],
-            'permission_callback' => '__return_true',
+            'permission_callback' => '__return_true'
         ]);
     }
 
-    public function get_dashboard_stats() {
+    public function get_dashboard_stats($request) {
         global $wpdb;
+        $stats = [];
+        $current_month = date('Y-m');
 
-        // 1. Total Jemaah Aktif (Status != cancelled)
-        $total_jamaah = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}umh_bookings WHERE status != 'cancelled'");
+        // 1. Total Booking & Omzet (Bulan Ini)
+        $stats['sales_month'] = $wpdb->get_row("
+            SELECT 
+                COUNT(*) as total_bookings,
+                COALESCE(SUM(total_price), 0) as total_revenue,
+                COALESCE(SUM(total_paid), 0) as cash_received
+            FROM {$wpdb->prefix}umh_bookings 
+            WHERE created_at LIKE '$current_month%' AND status != 'cancelled'
+        ");
 
-        // 2. Omset Bulan Ini (Dari tabel Finance type=income)
-        $current_month = date('m');
-        $revenue = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(amount) FROM {$wpdb->prefix}umh_finance 
-             WHERE type='income' AND MONTH(transaction_date) = %d", 
-            $current_month
-        ));
+        // 2. Booking Status (Pipeline)
+        $stats['booking_status'] = $wpdb->get_results("
+            SELECT status, COUNT(*) as count 
+            FROM {$wpdb->prefix}umh_bookings 
+            GROUP BY status
+        ");
 
-        // 3. Keberangkatan Terdekat (Next 30 days)
-        $upcoming_departures = $wpdb->get_results(
-            "SELECT d.*, p.name as package_name 
-             FROM {$wpdb->prefix}umh_departures d
-             JOIN {$wpdb->prefix}umh_packages p ON d.package_id = p.id
-             WHERE d.departure_date >= CURDATE() 
-             ORDER BY d.departure_date ASC LIMIT 5"
-        );
+        // 3. Payment Verification Needed (Pending Proofs)
+        $stats['pending_payments'] = $wpdb->get_var("
+            SELECT COUNT(*) FROM {$wpdb->prefix}umh_payment_proofs WHERE status = 'pending'
+        ");
 
-        // 4. Booking Terbaru
-        $recent_bookings = $wpdb->get_results(
-            "SELECT * FROM {$wpdb->prefix}umh_bookings ORDER BY created_at DESC LIMIT 5"
-        );
+        // 4. Next Departures (Jadwal Terdekat)
+        $stats['upcoming_departures'] = $wpdb->get_results("
+            SELECT d.*, p.name as package_name, (d.quota - d.available_seats) as seats_filled
+            FROM {$wpdb->prefix}umh_departures d
+            JOIN {$wpdb->prefix}umh_packages p ON d.package_id = p.id
+            WHERE d.departure_date >= CURDATE() AND d.status = 'open'
+            ORDER BY d.departure_date ASC 
+            LIMIT 5
+        ");
 
-        return new WP_REST_Response([
-            'success' => true,
-            'counts' => [
-                'jamaah' => (int)$total_jamaah,
-                'revenue' => (float)$revenue,
-                'agents' => (int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}umh_agents"),
-                'leads' => (int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}umh_leads WHERE status='new'")
-            ],
-            'upcoming' => $upcoming_departures,
-            'recent_bookings' => $recent_bookings
-        ], 200);
+        // 5. Agent Wallets Total (Liability)
+        $stats['total_wallet_balance'] = $wpdb->get_var("
+            SELECT COALESCE(SUM(balance), 0) FROM {$wpdb->prefix}umh_wallets
+        ");
+
+        return new WP_REST_Response(['success' => true, 'data' => $stats], 200);
     }
 }

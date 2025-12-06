@@ -2,75 +2,54 @@
 require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
 class UMH_API_Departures extends UMH_CRUD_Controller {
-
     public function __construct() {
         parent::__construct('umh_departures');
     }
 
-    /**
-     * Override get_items untuk melakukan JOIN ke tabel Packages dan Airlines.
-     * UPDATE: Tambahkan pencarian berdasarkan Tour Leader & Muthawif
-     */
-    public function get_items($request) {
-        $params = $request->get_params();
-        $page = isset($params['page']) ? intval($params['page']) : 1;
-        $per_page = isset($params['per_page']) ? intval($params['per_page']) : 10;
-        $search = isset($params['search']) ? sanitize_text_field($params['search']) : '';
-        $offset = ($page - 1) * $per_page;
-
-        $t_dep = $this->table_name;
-        $t_pkg = $this->db->prefix . 'umh_packages';
-        $t_air = $this->db->prefix . 'umh_master_airlines';
-
-        $where = "WHERE d.deleted_at IS NULL";
-        if (!empty($search)) {
-            // Cari berdasarkan Flight, Paket, Tour Leader, atau Muthawif
-            $where .= " AND (
-                d.flight_number_depart LIKE '%$search%' 
-                OR p.name LIKE '%$search%'
-                OR d.tour_leader_name LIKE '%$search%'
-                OR d.muthawif_name LIKE '%$search%'
-            )";
-        }
-
-        // Query JOIN Powerfull
-        $query = "SELECT d.*, 
-                         p.name as package_name, 
-                         p.duration_days,
-                         a.name as airline_name, 
-                         a.code as airline_code,
-                         a.logo_url as airline_logo
-                  FROM $t_dep d
-                  LEFT JOIN $t_pkg p ON d.package_id = p.id
-                  LEFT JOIN $t_air a ON d.airline_id = a.id
-                  $where 
-                  ORDER BY d.departure_date ASC 
-                  LIMIT %d OFFSET %d";
-
-        $items = $this->db->get_results($this->db->prepare($query, $per_page, $offset));
-        
-        // Hitung total untuk pagination
-        $total_query = "SELECT COUNT(*) FROM $t_dep d LEFT JOIN $t_pkg p ON d.package_id = p.id $where";
-        $total = $this->db->get_var($total_query);
-
-        return new WP_REST_Response([
-            'success' => true,
-            'data' => $items,
-            'pagination' => [
-                'page' => $page,
-                'per_page' => $per_page,
-                'total_items' => intval($total),
-                'total_pages' => ceil($total / $per_page)
-            ]
-        ], 200);
+    public function register_routes() {
+        parent::register_routes();
+        // Custom route untuk ambil list lengkap dengan nama paket
+        register_rest_route('umh/v1', '/departures/full', [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_full_departures'],
+            'permission_callback' => '__return_true'
+        ]);
     }
 
-    // Validasi saat simpan: Pastikan ID Paket & Maskapai valid
+    // Override Create untuk generate UUID & Validasi
     public function create_item($request) {
         $data = $request->get_json_params();
-        if (empty($data['package_id'])) return new WP_REST_Response(['message' => 'Paket wajib dipilih'], 400);
-        if (empty($data['airline_id'])) return new WP_REST_Response(['message' => 'Maskapai wajib dipilih'], 400);
+        $data['uuid'] = wp_generate_uuid4();
         
+        // Ambil harga dari paket jika kosong
+        if(empty($data['price_quad'])) {
+            $pkg = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->db->prefix}umh_packages WHERE id = %d", $data['package_id']));
+            if($pkg) {
+                $data['price_quad'] = $pkg->base_price_quad;
+                $data['price_triple'] = $pkg->base_price_triple;
+                $data['price_double'] = $pkg->base_price_double;
+            }
+        }
+        
+        // Set available seats sama dengan quota di awal
+        if(!isset($data['available_seats'])) {
+            $data['available_seats'] = $data['quota'];
+        }
+
+        $request->set_body_params($data);
         return parent::create_item($request);
+    }
+
+    public function get_full_departures($request) {
+        $table = $this->table_name;
+        $pkg_table = $this->db->prefix . 'umh_packages';
+        
+        $sql = "SELECT d.*, p.name as package_name, p.duration_days 
+                FROM $table d 
+                LEFT JOIN $pkg_table p ON d.package_id = p.id 
+                ORDER BY d.departure_date ASC";
+                
+        $results = $this->db->get_results($sql);
+        return new WP_REST_Response(['success' => true, 'data' => $results], 200);
     }
 }

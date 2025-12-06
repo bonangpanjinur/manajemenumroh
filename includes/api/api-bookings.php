@@ -1,74 +1,150 @@
 <?php
 require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
-require_once dirname(__FILE__) . '/api-accounting.php'; 
 
 class UMH_API_Bookings extends UMH_CRUD_Controller {
-    private $accounting;
+    private $ledger;
+    private $wallet;
+
     public function __construct() { 
         parent::__construct('umh_bookings'); 
-        $this->accounting = new UMH_API_Accounting();
+        // Inisialisasi Service (Pastikan class sudah diload oleh API Loader)
+        if(class_exists('UMH_Ledger_Service')) $this->ledger = new UMH_Ledger_Service();
+        if(class_exists('UMH_Wallet_Service')) $this->wallet = new UMH_Wallet_Service();
     }
 
     public function register_routes() {
         parent::register_routes();
-        register_rest_route('umh/v1', '/bookings/(?P<id>\d+)/verify-payment', ['methods' => 'POST', 'callback' => [$this, 'verify_booking_payment'], 'permission_callback' => '__return_true']);
+        
+        // Upload Bukti Bayar (Jemaah)
+        register_rest_route('umh/v1', '/bookings/(?P<id>\d+)/upload-proof', [
+            'methods' => 'POST', 'callback' => [$this, 'upload_proof'], 'permission_callback' => '__return_true'
+        ]);
+
+        // Verifikasi Pembayaran (Admin)
+        register_rest_route('umh/v1', '/payments/(?P<proof_id>\d+)/verify', [
+            'methods' => 'POST', 'callback' => [$this, 'verify_proof'], 'permission_callback' => function(){ return current_user_can('manage_options'); }
+        ]);
+        
+        // Get Bukti Bayar (List)
+        register_rest_route('umh/v1', '/bookings/(?P<id>\d+)/payment-proofs', [
+            'methods' => 'GET', 'callback' => [$this, 'get_proofs'], 'permission_callback' => '__return_true'
+        ]);
     }
 
+    // Override Create: Transactional Booking
     public function create_item($request) {
         $data = $request->get_json_params();
-        // 1. Cek Seat
-        $dep = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->db->prefix}umh_departures WHERE id = %d", $data['departure_id']));
-        if (!$dep || $dep->available_seats < $data['total_pax']) return new WP_REST_Response(['message' => 'Seat Penuh/Tidak Cukup'], 400);
+        $this->db->query('START TRANSACTION');
+        
+        try {
+            // 1. Generate Code
+            $data['booking_code'] = 'BK-' . date('ymd') . rand(1000,9999);
+            $data['status'] = 'pending';
+            $data['payment_status'] = 'unpaid';
+            
+            // 2. Simpan Booking
+            $request->set_body_params($data);
+            $res = parent::create_item($request);
+            
+            if ($res->status !== 201) throw new Exception('Gagal menyimpan booking.');
+            $booking_id = $res->get_data()['data']->id;
 
-        // 2. Buat Booking
-        $data['booking_code'] = 'BK-' . date('ymd') . rand(100,999);
-        $request->set_body_params($data);
-        $res = parent::create_item($request);
+            // 3. Kurangi Seat (Strict Check)
+            $update = $this->db->query($this->db->prepare(
+                "UPDATE {$this->db->prefix}umh_departures SET available_seats = available_seats - %d WHERE id = %d AND available_seats >= %d",
+                $data['total_pax'], $data['departure_id'], $data['total_pax']
+            ));
 
-        // 3. Kurangi Inventory Seat
-        if ($res->status === 201) {
-            $this->db->query($this->db->prepare("UPDATE {$this->db->prefix}umh_departures SET available_seats = available_seats - %d WHERE id = %d", $data['total_pax'], $data['departure_id']));
+            if (!$update) throw new Exception('Seat penuh atau tidak mencukupi.');
+
+            $this->db->query('COMMIT');
+            return $res;
+
+        } catch (Exception $e) {
+            $this->db->query('ROLLBACK');
+            return new WP_REST_Response(['message' => $e->getMessage()], 400);
         }
-        return $res;
     }
 
-    public function verify_booking_payment($request) {
+    public function upload_proof($request) {
         $id = $request->get_param('id');
-        $data = $request->get_json_params(); 
-        $booking = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $id));
+        $params = $request->get_body_params();
+        $files = $request->get_file_params();
+
+        if (empty($files['file'])) return new WP_REST_Response(['message' => 'File wajib diupload'], 400);
         
-        $amt = $data['amount'];
-        $new_paid = $booking->total_paid + $amt;
-        $status = ($new_paid >= $booking->total_price) ? 'paid' : 'dp';
+        if (!function_exists('wp_handle_upload')) require_once(ABSPATH . 'wp-admin/includes/file.php');
+        $uploaded = wp_handle_upload($files['file'], ['test_form' => false]);
+        
+        if (isset($uploaded['error'])) return new WP_REST_Response(['message' => $uploaded['error']], 500);
 
-        // 1. Update Booking
-        $this->db->update($this->table_name, ['total_paid' => $new_paid, 'payment_status' => $status, 'status' => 'confirmed'], ['id' => $id]);
+        $this->db->insert($this->db->prefix . 'umh_payment_proofs', [
+            'booking_id' => $id,
+            'user_id' => get_current_user_id(),
+            'amount' => $params['amount'],
+            'bank_destination' => $params['bank_destination'] ?? 'BCA',
+            'file_url' => $uploaded['url'],
+            'status' => 'pending',
+            'created_at' => current_time('mysql')
+        ]);
 
-        // 2. Auto Journal (Kas Bertambah, Pendapatan Bertambah)
-        $this->accounting->create_auto_journal(
-            current_time('Y-m-d'), $booking->booking_code, "Bayar Booking #{$booking->booking_code}", $amt, 'booking', $id,
-            [
-                ['coa_code' => '1-1002', 'debit' => $amt, 'credit' => 0], // Bank BCA
-                ['coa_code' => '4-1001', 'debit' => 0, 'credit' => $amt]  // Pendapatan Umrah
-            ]
-        );
+        // Update status booking jadi 'processing' agar admin tahu ada pembayaran masuk
+        $this->db->update($this->table_name, ['status' => 'pending'], ['id' => $id]);
 
-        // 3. Hitung Komisi Agen (Jika ada agen)
-        if ($booking->agent_id && $status === 'paid') {
-            $komisi = 500000 * $booking->total_pax; // Logic: 500rb per pax
-            $this->db->insert($this->db->prefix . 'umh_agent_commissions', [
-                'agent_id' => $booking->agent_id, 'booking_id' => $booking->id, 'amount' => $komisi, 'status' => 'pending'
-            ]);
-            // Jurnal Beban Komisi (Optional: Accrual Basis)
-             $this->accounting->create_auto_journal(
-                current_time('Y-m-d'), "COM-{$booking->booking_code}", "Komisi Agen Booking #{$booking->booking_code}", $komisi, 'commission', $id,
-                [
-                    ['coa_code' => '5-1002', 'debit' => $komisi, 'credit' => 0], // Beban Komisi
-                    ['coa_code' => '2-1001', 'debit' => 0, 'credit' => $komisi]  // Hutang (ke Agen)
-                ]
+        return new WP_REST_Response(['success' => true, 'message' => 'Bukti terupload'], 201);
+    }
+
+    public function verify_proof($request) {
+        $proof_id = $request->get_param('proof_id');
+        $data = $request->get_json_params(); // action: 'approve' | 'reject'
+
+        $proof = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->db->prefix}umh_payment_proofs WHERE id = %d", $proof_id));
+        if (!$proof || $proof->status !== 'pending') return new WP_REST_Response(['message' => 'Invalid proof'], 400);
+
+        $this->db->query('START TRANSACTION');
+        try {
+            if ($data['action'] === 'reject') {
+                $this->db->update($this->db->prefix . 'umh_payment_proofs', 
+                    ['status' => 'rejected', 'verified_by' => get_current_user_id(), 'verified_at' => current_time('mysql')], 
+                    ['id' => $proof_id]
+                );
+                $this->db->query('COMMIT');
+                return new WP_REST_Response(['success' => true, 'message' => 'Ditolak'], 200);
+            }
+
+            // Approve
+            $this->db->update($this->db->prefix . 'umh_payment_proofs', 
+                ['status' => 'verified', 'verified_by' => get_current_user_id(), 'verified_at' => current_time('mysql')], 
+                ['id' => $proof_id]
             );
-        }
 
-        return new WP_REST_Response(['success' => true], 200);
+            // Update Booking Total Paid
+            $booking = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $proof->booking_id));
+            $new_paid = $booking->total_paid + $proof->amount;
+            $new_status = ($new_paid >= $booking->total_price) ? 'paid' : 'dp';
+            
+            $this->db->update($this->table_name, 
+                ['total_paid' => $new_paid, 'payment_status' => $new_status, 'status' => 'confirmed'], 
+                ['id' => $booking->id]
+            );
+
+            // Auto Journal (Hanya jika class ledger ada)
+            if ($this->ledger) {
+                $this->ledger->post_payment_verification($proof->id, $booking->booking_code, $proof->amount);
+            }
+
+            $this->db->query('COMMIT');
+            return new WP_REST_Response(['success' => true], 200);
+
+        } catch (Exception $e) {
+            $this->db->query('ROLLBACK');
+            return new WP_REST_Response(['message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function get_proofs($request) {
+        $id = $request->get_param('id');
+        $data = $this->db->get_results($this->db->prepare("SELECT * FROM {$this->db->prefix}umh_payment_proofs WHERE booking_id = %d ORDER BY created_at DESC", $id));
+        return new WP_REST_Response(['success' => true, 'data' => $data], 200);
     }
 }
