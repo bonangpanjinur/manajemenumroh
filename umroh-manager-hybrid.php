@@ -1,121 +1,141 @@
 <?php
 /**
- * Plugin Name: Umroh Manager Hybrid Enterprise
- * Description: Sistem Manajemen Travel Umroh & Haji Berbasis React + WP REST API.
- * Version: 7.0.2
- * Author: Bonang Panji
- * Text Domain: umh
+ * Plugin Name: Umroh Manager Hybrid
+ * Description: Sistem Manajemen Travel Umroh (SaaS Ready) - Backend & Frontend React
+ * Version: 7.7.0
+ * Author: Bonang Panji Nur
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-define('UMH_VERSION', '7.0.2');
+// Define Constants
 define('UMH_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('UMH_PLUGIN_URL', plugin_dir_url(__FILE__));
 
-global $umh_admin_hook;
-
-// 1. Install & DB Migration
-register_activation_hook(__FILE__, 'umh_install_plugin');
-function umh_install_plugin() {
-    require_once UMH_PLUGIN_DIR . 'includes/db-schema.php';
-    if (function_exists('umh_create_db_tables')) {
-        umh_create_db_tables();
-    }
-}
-
-// 2. Load Classes
-require_once UMH_PLUGIN_DIR . 'includes/utils.php';
+// Load Core Classes
+require_once UMH_PLUGIN_DIR . 'includes/db-schema.php';
 require_once UMH_PLUGIN_DIR . 'includes/class-umh-api-loader.php';
-require_once UMH_PLUGIN_DIR . 'includes/admin-login-customizer.php'; // Optional Login Customizer
-require_once UMH_PLUGIN_DIR . 'includes/cors.php'; // Handle CORS
+require_once UMH_PLUGIN_DIR . 'includes/cors.php'; // Header CORS untuk API
+require_once UMH_PLUGIN_DIR . 'includes/admin-login-customizer.php'; // Opsional: Custom Login WP
 
-// 3. Init API
-$api_loader = new UMH_API_Loader();
-$api_loader->init();
+// Activation Hook (Database)
+register_activation_hook(__FILE__, 'umh_create_db_tables');
 
-// 4. Menu Admin
-add_action('admin_menu', 'umh_register_admin_page');
-function umh_register_admin_page() {
-    global $umh_admin_hook;
-    $umh_admin_hook = add_menu_page(
-        'Umroh Manager', 
-        'Umroh Manager', 
-        'read', // Capability minimal read agar staff bisa akses
-        'umroh-manager', 
-        'umh_render_react_app', 
-        'dashicons-palmtree', 
+// Initialize API & System
+function umh_init_system() {
+    $api_loader = new UMH_API_Loader();
+    $api_loader->init();
+}
+add_action('plugins_loaded', 'umh_init_system');
+
+/**
+ * =========================================================================
+ * 1. ADMIN MENU & ASSETS (Untuk Super Admin di WP Dashboard)
+ * =========================================================================
+ */
+function umh_admin_menu() {
+    add_menu_page(
+        'Umroh Manager',
+        'Umroh Manager',
+        'manage_options', // Hanya Administrator
+        'umroh-manager',
+        'umh_render_admin_page',
+        'dashicons-palmtree',
         2
     );
-    
-    // Tambahkan Submenu Settings (Optional, jika ingin config via WP biasa)
-    require_once UMH_PLUGIN_DIR . 'admin/settings-page.php';
-    $settings_page = new UMH_Settings_Page();
-    $settings_page->register_settings(); // Register settings
 }
+add_action('admin_menu', 'umh_admin_menu');
 
-function umh_render_react_app() {
-    // Memanggil file view terpisah agar rapi
-    require_once UMH_PLUGIN_DIR . 'admin/dashboard-react.php';
-}
-
-// 5. Scripts & Styles
-add_action('admin_enqueue_scripts', 'umh_enqueue_scripts');
-function umh_enqueue_scripts($hook) {
-    global $umh_admin_hook;
-    
-    // Hanya load di halaman plugin kita
-    if ($hook !== $umh_admin_hook) return;
-
-    $asset_path = UMH_PLUGIN_DIR . 'build/index.asset.php';
-    $js_path = UMH_PLUGIN_DIR . 'build/index.js';
-    $css_path = UMH_PLUGIN_DIR . 'build/index.css';
-
-    // Fallback version jika asset file belum generate
-    $version = UMH_VERSION;
-    $dependencies = ['wp-element', 'wp-components', 'wp-i18n'];
-
-    if (file_exists($asset_path)) {
-        $asset_file = include($asset_path);
-        $version = $asset_file['version'];
-        $dependencies = $asset_file['dependencies'];
+function umh_admin_assets($hook) {
+    if ($hook !== 'toplevel_page_umroh-manager') {
+        return;
     }
 
-    // Load React App JS
+    $asset_file = include(UMH_PLUGIN_DIR . 'build/index.asset.php');
+
     wp_enqueue_script(
-        'umh-react-app', 
-        UMH_PLUGIN_URL . 'build/index.js', 
-        $dependencies, 
-        $version, 
+        'umh-react-app',
+        UMH_PLUGIN_URL . 'build/index.js',
+        $asset_file['dependencies'],
+        $asset_file['version'],
         true
     );
-    
-    // Load React App CSS
-    if (file_exists($css_path)) {
-        wp_enqueue_style(
-            'umh-react-style', 
-            UMH_PLUGIN_URL . 'build/index.css', 
-            ['wp-components'], 
-            $version
-        );
-    }
 
-    // Load Admin Style Khusus (Reset UI WordPress)
     wp_enqueue_style(
-        'umh-admin-reset', 
-        UMH_PLUGIN_URL . 'assets/css/admin-style.css', 
-        [], 
-        UMH_VERSION
+        'umh-react-style',
+        UMH_PLUGIN_URL . 'build/index.css',
+        [],
+        $asset_file['version']
     );
 
-    // Kirim Data ke JS (Global Variable)
+    // Kirim data ke React
     wp_localize_script('umh-react-app', 'umhSettings', [
         'root' => esc_url_raw(rest_url()),
         'nonce' => wp_create_nonce('wp_rest'),
-        'adminUrl' => admin_url(),
-        'currentUser' => wp_get_current_user(),
-        'siteName' => get_bloginfo('name')
+        'userId' => get_current_user_id(),
+        'siteUrl' => get_site_url(),
+        'isFrontend' => false // Ini mode Backend WP
     ]);
 }
+add_action('admin_enqueue_scripts', 'umh_admin_assets');
+
+function umh_render_admin_page() {
+    echo '<div id="umh-admin-app"></div>';
+}
+
+/**
+ * =========================================================================
+ * 2. SECURITY: PROTEKSI WP-ADMIN (HEADLESS ENFORCEMENT)
+ * =========================================================================
+ * Logika: Jika user login tapi BUKAN 'administrator', tendang ke Frontend App
+ */
+function umh_restrict_admin_access() {
+    // Jika sedang melakukan AJAX atau API call, biarkan lewat
+    if (defined('DOING_AJAX') && DOING_AJAX) return;
+    if (defined('REST_REQUEST') && REST_REQUEST) return;
+
+    // Cek User Login
+    if (is_user_logged_in()) {
+        $user = wp_get_current_user();
+        
+        // Cek Role: Jika TIDAK punya kapabilitas 'manage_options' (Artinya bukan Super Admin)
+        // Maka blokir akses ke /wp-admin
+        if (!in_array('administrator', (array) $user->roles)) {
+            
+            // Redirect ke Halaman Aplikasi Frontend
+            // Ganti '/app' dengan slug halaman tempat shortcode [umroh_app] berada
+            wp_redirect(home_url('/app')); 
+            exit;
+        }
+    }
+}
+add_action('admin_init', 'umh_restrict_admin_access');
+
+/**
+ * Sembunyikan Admin Bar untuk Non-Admin
+ */
+function umh_hide_admin_bar() {
+    if (!current_user_can('manage_options')) {
+        show_admin_bar(false);
+    }
+}
+add_action('after_setup_theme', 'umh_hide_admin_bar');
+
+/**
+ * Redirect Login WP Default ke Halaman Login App Custom
+ * (Opsional: Jika user mengakses wp-login.php langsung)
+ */
+function umh_redirect_login_page() {
+    global $pagenow;
+    // Jika membuka wp-login.php dan method GET (bukan sedang submit form login)
+    if ($pagenow == 'wp-login.php' && $_SERVER['REQUEST_METHOD'] == 'GET' && !isset($_GET['action'])) {
+        // Cek jika user belum login, arahkan ke login app custom
+        if (!is_user_logged_in()) {
+            wp_redirect(home_url('/app#/login'));
+            exit;
+        }
+    }
+}
+add_action('init', 'umh_redirect_login_page');

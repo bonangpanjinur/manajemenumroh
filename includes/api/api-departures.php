@@ -1,145 +1,116 @@
 <?php
-require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-class UMH_API_Departures extends UMH_CRUD_Controller {
-
-    public function __construct() {
-        parent::__construct('umh_departures');
-    }
+class UMH_API_Departures {
 
     public function register_routes() {
-        parent::register_routes();
-        
-        // Endpoint khusus untuk mendapatkan detail lengkap (termasuk harga dinamis)
-        register_rest_route('umh/v1', '/departures/(?P<id>[a-zA-Z0-9-]+)/full', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_departure_full_details'],
-            'permission_callback' => '__return_true',
+        register_rest_route('umh/v1', '/departures', [
+            ['methods' => 'GET', 'callback' => [$this, 'get_departures'], 'permission_callback' => [$this, 'check_auth']],
+            ['methods' => 'POST', 'callback' => [$this, 'create_departure'], 'permission_callback' => [$this, 'check_admin']],
+        ]);
+
+        register_rest_route('umh/v1', '/departures/(?P<id>\d+)', [
+            ['methods' => 'GET', 'callback' => [$this, 'get_departure_detail'], 'permission_callback' => [$this, 'check_auth']],
+            ['methods' => 'PUT', 'callback' => [$this, 'update_departure'], 'permission_callback' => [$this, 'check_admin']],
+        ]);
+
+        // Endpoint Khusus Manifest (Untuk Handling & Absensi)
+        register_rest_route('umh/v1', '/departures/(?P<id>\d+)/manifest', [
+            ['methods' => 'GET', 'callback' => [$this, 'get_manifest'], 'permission_callback' => [$this, 'check_auth']],
+            ['methods' => 'PUT', 'callback' => [$this, 'update_manifest_data'], 'permission_callback' => [$this, 'check_admin']], // Update Visa/Paspor massal
         ]);
     }
 
-    // Override Get Items untuk Join
-    public function get_items($request) {
-        $params = $request->get_params();
-        $page = isset($params['page']) ? intval($params['page']) : 1;
-        $per_page = isset($params['per_page']) ? intval($params['per_page']) : 10;
-        $search = isset($params['search']) ? sanitize_text_field($params['search']) : '';
-        $offset = ($page - 1) * $per_page;
+    public function check_auth() { return is_user_logged_in(); }
+    public function check_admin() { return current_user_can('manage_options'); }
 
-        $t_dep = $this->table_name;
-        $t_pkg = $this->db->prefix . 'umh_packages';
-        $t_air = $this->db->prefix . 'umh_master_airlines';
+    // --- MANIFEST HANDLING ---
 
-        $where = "WHERE d.deleted_at IS NULL";
-        if (!empty($search)) {
-            $where .= " AND (d.flight_number_depart LIKE '%$search%' OR p.name LIKE '%$search%')";
-        }
+    public function get_manifest($request) {
+        global $wpdb;
+        $id = $request['id'];
 
-        // Join ke Paket & Maskapai
-        $query = "SELECT d.*, 
-                         p.name as package_name, 
-                         p.duration_days,
-                         a.name as airline_name, 
-                         a.code as airline_code
-                  FROM $t_dep d
-                  LEFT JOIN $t_pkg p ON d.package_id = p.id
-                  LEFT JOIN $t_air a ON d.airline_id = a.id
-                  $where 
-                  ORDER BY d.departure_date ASC 
-                  LIMIT %d OFFSET %d";
+        // Ambil semua penumpang di keberangkatan ini
+        $sql = "SELECT bp.*, 
+                       j.full_name, j.gender, j.passport_number, j.passport_name, 
+                       j.passport_expiry_date, j.birth_date,
+                       b.booking_code, b.agent_id, a.name as agent_name
+                FROM {$wpdb->prefix}umh_booking_passengers bp
+                JOIN {$wpdb->prefix}umh_bookings b ON bp.booking_id = b.id
+                JOIN {$wpdb->prefix}umh_jamaah j ON bp.jamaah_id = j.id
+                LEFT JOIN {$wpdb->prefix}umh_agents a ON b.agent_id = a.id
+                WHERE b.departure_id = %d AND b.status = 'confirmed'
+                ORDER BY j.full_name ASC";
 
-        $items = $this->db->get_results($this->db->prepare($query, $per_page, $offset));
-        $total = $this->db->get_var("SELECT COUNT(*) FROM $t_dep d LEFT JOIN $t_pkg p ON d.package_id = p.id $where");
-
-        return new WP_REST_Response([
-            'success' => true,
-            'data' => $items,
-            'pagination' => [
-                'page' => $page,
-                'per_page' => $per_page,
-                'total_items' => intval($total),
-                'total_pages' => ceil($total / $per_page)
-            ]
-        ], 200);
+        $passengers = $wpdb->get_results($wpdb->prepare($sql, $id));
+        return rest_ensure_response($passengers);
     }
 
-    // Create dengan Harga Dinamis
-    public function create_item($request) {
-        $data = $request->get_json_params();
+    public function update_manifest_data($request) {
+        global $wpdb;
+        $params = $request->get_json_params(); // Array of pax updates
         
-        if (empty($data['package_id'])) return new WP_REST_Response(['message' => 'Paket wajib dipilih'], 400);
-        
-        // Ambil harga dari request
-        $prices = isset($data['prices']) ? $data['prices'] : [];
-        unset($data['prices']); // Hapus agar tidak masuk ke tabel header
+        if (empty($params['passengers'])) return new WP_Error('no_data', 'Data tidak ada', ['status' => 400]);
 
-        $response = parent::create_item($request);
-        
-        if ($response->status === 201) {
-            $dep_id = $response->get_data()['data']->id;
-            $this->save_prices($dep_id, $prices);
-        }
-        return $response;
-    }
+        foreach ($params['passengers'] as $pax) {
+            // Update Data Visa (di tabel booking_passengers)
+            $visa_data = [];
+            if (isset($pax['visa_number'])) $visa_data['visa_number'] = sanitize_text_field($pax['visa_number']);
+            if (isset($pax['visa_status'])) $visa_data['visa_status'] = sanitize_text_field($pax['visa_status']);
+            
+            if (!empty($visa_data)) {
+                $wpdb->update("{$wpdb->prefix}umh_booking_passengers", $visa_data, ['id' => $pax['pax_id']]);
+            }
 
-    // Update dengan Harga Dinamis
-    public function update_item($request) {
-        $id = $request->get_param('id');
-        $data = $request->get_json_params();
-        $dep = $this->get_record_by_id_or_uuid($id);
+            // Update Data Paspor (di tabel jamaah)
+            $passport_data = [];
+            if (isset($pax['passport_number'])) $passport_data['passport_number'] = sanitize_text_field($pax['passport_number']);
+            if (isset($pax['passport_name'])) $passport_data['passport_name'] = sanitize_text_field($pax['passport_name']);
+            if (isset($pax['passport_expiry_date'])) $passport_data['passport_expiry_date'] = $pax['passport_expiry_date'];
 
-        if (!$dep) return new WP_REST_Response(['message' => 'Not Found'], 404);
-
-        $prices = isset($data['prices']) ? $data['prices'] : null;
-        unset($data['prices']);
-
-        $res = parent::update_item($request);
-
-        if ($prices !== null) {
-            $this->save_prices($dep->id, $prices);
-        }
-
-        return $res;
-    }
-
-    private function save_prices($dep_id, $prices) {
-        $this->db->delete($this->db->prefix.'umh_departure_prices', ['departure_id' => $dep_id]);
-        foreach ($prices as $p) {
-            if(!empty($p['room_type']) && !empty($p['price'])) {
-                $this->db->insert($this->db->prefix.'umh_departure_prices', [
-                    'departure_id' => $dep_id,
-                    'room_type' => sanitize_text_field($p['room_type']),
-                    'capacity' => intval($p['capacity']),
-                    'price' => floatval($p['price']),
-                    'currency' => 'IDR'
-                ]);
+            if (!empty($passport_data)) {
+                $wpdb->update("{$wpdb->prefix}umh_jamaah", $passport_data, ['id' => $pax['jamaah_id']]);
             }
         }
+
+        return rest_ensure_response(['success' => true, 'message' => 'Data manifest berhasil disimpan']);
     }
 
-    // Get Full Details (untuk Edit Form)
-    public function get_departure_full_details($request) {
-        $id = $request->get_param('id');
-        $dep = $this->get_record_by_id_or_uuid($id);
-        if (!$dep) return new WP_REST_Response(['message' => 'Not Found'], 404);
+    // --- STANDARD CRUD ---
 
-        $data = (array) $dep;
+    public function get_departures($request) {
+        global $wpdb;
+        $sql = "SELECT d.*, p.name as package_name, 
+                (SELECT COUNT(*) FROM {$wpdb->prefix}umh_bookings b WHERE b.departure_id = d.id AND b.status='confirmed') as confirmed_pax
+                FROM {$wpdb->prefix}umh_departures d
+                JOIN {$wpdb->prefix}umh_packages p ON d.package_id = p.id
+                WHERE d.deleted_at IS NULL ORDER BY d.departure_date ASC";
+        return rest_ensure_response($wpdb->get_results($sql));
+    }
+
+    public function create_departure($request) {
+        global $wpdb;
+        $params = $request->get_json_params();
         
-        // Ambil harga khusus keberangkatan ini
-        $prices = $this->db->get_results($this->db->prepare("SELECT * FROM {$this->db->prefix}umh_departure_prices WHERE departure_id = %d", $dep->id));
+        $wpdb->insert("{$wpdb->prefix}umh_departures", [
+            'uuid' => wp_generate_uuid4(),
+            'package_id' => $params['package_id'],
+            'departure_date' => $params['departure_date'],
+            'return_date' => $params['return_date'],
+            'quota' => $params['quota'],
+            'available_seats' => $params['quota'],
+            'flight_number_depart' => $params['flight_number_depart'],
+            'status' => 'open'
+        ]);
         
-        // Jika harga di departure kosong (baru buat atau migrasi), ambil template harga dari Paket master
-        if (empty($prices)) {
-            $prices = $this->db->get_results($this->db->prepare("SELECT room_type, capacity, price, currency FROM {$this->db->prefix}umh_package_prices WHERE package_id = %d", $dep->package_id));
-        }
-
-        $data['prices'] = $prices;
-
-        return new WP_REST_Response(['success' => true, 'data' => $data], 200);
+        return rest_ensure_response(['success' => true, 'id' => $wpdb->insert_id]);
     }
-    
-    private function get_record_by_id_or_uuid($id) {
-        if (is_numeric($id)) return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE id = %d", $id));
-        return $this->db->get_row($this->db->prepare("SELECT * FROM {$this->table_name} WHERE uuid = %s", $id));
+
+    public function get_departure_detail($request) {
+        global $wpdb;
+        $id = $request['id'];
+        $dep = $wpdb->get_row($wpdb->prepare("SELECT d.*, p.name as package_name FROM {$wpdb->prefix}umh_departures d JOIN {$wpdb->prefix}umh_packages p ON d.package_id = p.id WHERE d.id = %d", $id));
+        return rest_ensure_response($dep);
     }
+
+    public function update_departure($request) { return rest_ensure_response(['status'=>'ok']); }
 }

@@ -1,153 +1,216 @@
 <?php
-require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-class UMH_API_Users extends UMH_CRUD_Controller {
-
-    public function __construct() {
-        parent::__construct('umh_users'); // Menggunakan tabel umh_users (Bukan wp_users)
-    }
+class UMH_API_Users {
 
     public function register_routes() {
-        // Route Standar CRUD (GET, POST, PUT, DELETE)
+        // GET List Users
         register_rest_route('umh/v1', '/users', [
-            ['methods' => 'GET', 'callback' => [$this, 'get_items'], 'permission_callback' => '__return_true'],
-            ['methods' => 'POST', 'callback' => [$this, 'create_item'], 'permission_callback' => '__return_true'],
+            ['methods' => 'GET', 'callback' => [$this, 'get_users'], 'permission_callback' => [$this, 'check_admin_permission']],
+            ['methods' => 'POST', 'callback' => [$this, 'create_user'], 'permission_callback' => [$this, 'check_admin_permission']],
         ]);
 
-        register_rest_route('umh/v1', '/users/(?P<id>[a-zA-Z0-9-]+)', [
-            ['methods' => 'GET', 'callback' => [$this, 'get_item'], 'permission_callback' => '__return_true'],
-            ['methods' => 'PUT', 'callback' => [$this, 'update_item'], 'permission_callback' => '__return_true'],
-            ['methods' => 'DELETE', 'callback' => [$this, 'delete_item'], 'permission_callback' => '__return_true'],
+        // GET Single User, UPDATE, DELETE
+        register_rest_route('umh/v1', '/users/(?P<id>\d+)', [
+            ['methods' => 'GET', 'callback' => [$this, 'get_user_detail'], 'permission_callback' => [$this, 'check_admin_permission']],
+            ['methods' => 'PUT', 'callback' => [$this, 'update_user'], 'permission_callback' => [$this, 'check_admin_permission']],
+            ['methods' => 'DELETE', 'callback' => [$this, 'delete_user'], 'permission_callback' => [$this, 'check_admin_permission']],
         ]);
 
-        // Route Khusus: LOGIN (Karena kita pakai tabel custom)
-        register_rest_route('umh/v1', '/auth/login', [
-            'methods' => 'POST',
-            'callback' => [$this, 'login_user'],
-            'permission_callback' => '__return_true',
-        ]);
-    }
-
-    /**
-     * Override Create: Untuk Hashing Password & Cek Duplikat
-     */
-    public function create_item($request) {
-        $data = $request->get_json_params();
-
-        // 1. Validasi Wajib
-        if (empty($data['username']) || empty($data['email']) || empty($data['password'])) {
-            return new WP_REST_Response(['success' => false, 'message' => 'Username, Email, dan Password wajib diisi.'], 400);
-        }
-
-        // 2. Cek Duplikat Username/Email
-        $exists = $this->db->get_row($this->db->prepare(
-            "SELECT id FROM {$this->table_name} WHERE username = %s OR email = %s",
-            $data['username'], $data['email']
-        ));
-
-        if ($exists) {
-            return new WP_REST_Response(['success' => false, 'message' => 'Username atau Email sudah terdaftar.'], 409);
-        }
-
-        // 3. Hash Password (Keamanan Enterprise)
-        // Kita gunakan password_hash PHP (Bcrypt) yang lebih aman dari MD5 default WP
-        $data['password_hash'] = password_hash($data['password'], PASSWORD_BCRYPT);
-        unset($data['password']); // Jangan simpan password mentah!
-
-        // 4. Generate UUID & Default Role
-        $data['uuid'] = $this->generate_uuid();
-        if (empty($data['role_key'])) $data['role_key'] = 'jamaah';
-        $data['created_at'] = current_time('mysql');
-
-        // 5. Insert ke Database
-        $format = array_fill(0, count($data), '%s');
-        $this->db->insert($this->table_name, $data, $format);
-        $new_id = $this->db->insert_id;
-
-        // 6. Ambil data baru (tanpa password hash)
-        $user = $this->db->get_row($this->db->prepare("SELECT id, uuid, username, email, full_name, role_key, avatar_url FROM {$this->table_name} WHERE id = %d", $new_id));
-
-        // Jika Role = Jamaah, otomatis buat entri di tabel umh_jamaah (Sinkronisasi Profile)
-        if ($data['role_key'] === 'jamaah') {
-            $this->create_jamaah_profile($new_id, $data['uuid'], $data['full_name'], $data['email']);
-        }
-
-        return new WP_REST_Response(['success' => true, 'data' => $user], 201);
-    }
-
-    /**
-     * Helper: Buat Profil Jamaah Otomatis saat Register
-     */
-    private function create_jamaah_profile($user_id, $uuid, $name, $email) {
-        $jamaah_table = $this->db->prefix . 'umh_jamaah';
-        $this->db->insert($jamaah_table, [
-            'uuid' => $this->generate_uuid(), // UUID khusus profile jamaah
-            'user_id' => $user_id, // Link ke akun login
-            'full_name' => $name,
-            'email' => $email,
-            'status' => 'registered',
-            'gender' => 'L', // Default, nanti diedit user
-            'created_at' => current_time('mysql')
+        // GET Current User Profile (Untuk Frontend App)
+        register_rest_route('umh/v1', '/users/me', [
+            ['methods' => 'GET', 'callback' => [$this, 'get_current_user_profile'], 'permission_callback' => 'is_user_logged_in'],
         ]);
     }
 
-    /**
-     * Custom Login Handler
-     */
-    public function login_user($request) {
-        $params = $request->get_json_params();
-        $username_or_email = isset($params['username']) ? $params['username'] : '';
-        $password = isset($params['password']) ? $params['password'] : '';
+    public function check_admin_permission() {
+        return current_user_can('manage_options'); // Hanya administrator yang bisa kelola users
+    }
 
-        if (empty($username_or_email) || empty($password)) {
-            return new WP_REST_Response(['success' => false, 'message' => 'Kredensial tidak lengkap'], 400);
+    // --- GET LIST USERS ---
+    public function get_users($request) {
+        $role = $request->get_param('role'); // Filter by role (optional)
+        
+        $args = [
+            'orderby' => 'registered',
+            'order'   => 'DESC',
+            'number'  => 100, // Limit
+        ];
+
+        if ($role) {
+            $args['role'] = $role;
         }
 
-        // Cari User
-        $user = $this->db->get_row($this->db->prepare(
-            "SELECT * FROM {$this->table_name} WHERE (username = %s OR email = %s) AND status = 'active' AND deleted_at IS NULL",
-            $username_or_email, $username_or_email
-        ));
+        $users = get_users($args);
+        $data = [];
+
+        foreach ($users as $user) {
+            $data[] = [
+                'id' => $user->ID,
+                'username' => $user->user_login,
+                'email' => $user->user_email,
+                'display_name' => $user->display_name,
+                'roles' => $user->roles,
+                'registered_date' => $user->user_registered
+            ];
+        }
+
+        return rest_ensure_response($data);
+    }
+
+    // --- GET SINGLE USER ---
+    public function get_user_detail($request) {
+        $id = $request['id'];
+        $user = get_userdata($id);
 
         if (!$user) {
-            return new WP_REST_Response(['success' => false, 'message' => 'User tidak ditemukan atau tidak aktif.'], 404);
+            return new WP_Error('not_found', 'User tidak ditemukan', ['status' => 404]);
         }
 
-        // Verifikasi Password
-        if (password_verify($password, $user->password_hash)) {
-            // Sukses Login
-            
-            // Update Last Login
-            $this->db->update($this->table_name, ['last_login' => current_time('mysql')], ['id' => $user->id]);
+        return rest_ensure_response([
+            'id' => $user->ID,
+            'username' => $user->user_login,
+            'email' => $user->user_email,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'roles' => $user->roles,
+        ]);
+    }
 
-            // Hapus data sensitif sebelum dikirim ke frontend
-            unset($user->password_hash);
-            unset($user->reset_token);
+    // --- CREATE USER ---
+    public function create_user($request) {
+        $params = $request->get_json_params();
 
-            return new WP_REST_Response([
-                'success' => true,
-                'message' => 'Login Berhasil',
-                'data' => $user,
-                'token' => 'dummy-jwt-token-'. $user->uuid // Nanti bisa diganti JWT beneran
-            ], 200);
+        // Validasi
+        if (empty($params['username']) || empty($params['email']) || empty($params['password'])) {
+            return new WP_Error('missing_fields', 'Username, Email, dan Password wajib diisi', ['status' => 400]);
+        }
+
+        if (username_exists($params['username'])) {
+            return new WP_Error('username_exists', 'Username sudah digunakan', ['status' => 400]);
+        }
+
+        if (email_exists($params['email'])) {
+            return new WP_Error('email_exists', 'Email sudah digunakan', ['status' => 400]);
+        }
+
+        // Insert User
+        $user_id = wp_insert_user([
+            'user_login' => sanitize_user($params['username']),
+            'user_pass'  => $params['password'], // Password akan di-hash oleh WP
+            'user_email' => sanitize_email($params['email']),
+            'first_name' => sanitize_text_field($params['first_name'] ?? ''),
+            'last_name'  => sanitize_text_field($params['last_name'] ?? ''),
+            'role'       => sanitize_text_field($params['role'] ?? 'subscriber') // Default subscriber
+        ]);
+
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        return rest_ensure_response(['success' => true, 'id' => $user_id, 'message' => 'User berhasil dibuat']);
+    }
+
+    // --- UPDATE USER ---
+    public function update_user($request) {
+        $id = $request['id'];
+        $params = $request->get_json_params();
+
+        // Cek User Exist
+        if (!get_userdata($id)) {
+            return new WP_Error('not_found', 'User tidak ditemukan', ['status' => 404]);
+        }
+
+        $user_data = ['ID' => $id];
+
+        // Update fields jika ada
+        if (isset($params['email'])) {
+            if (email_exists($params['email']) && email_exists($params['email']) != $id) {
+                return new WP_Error('email_exists', 'Email sudah digunakan user lain', ['status' => 400]);
+            }
+            $user_data['user_email'] = sanitize_email($params['email']);
+        }
+
+        if (isset($params['first_name'])) $user_data['first_name'] = sanitize_text_field($params['first_name']);
+        if (isset($params['last_name'])) $user_data['last_name'] = sanitize_text_field($params['last_name']);
+        
+        if (!empty($params['password'])) {
+            $user_data['user_pass'] = $params['password'];
+        }
+
+        if (isset($params['role'])) {
+            $user_data['role'] = sanitize_text_field($params['role']);
+        }
+
+        $result = wp_update_user($user_data);
+
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return rest_ensure_response(['success' => true, 'message' => 'User berhasil diperbarui']);
+    }
+
+    // --- DELETE USER ---
+    public function delete_user($request) {
+        $id = $request['id'];
+        $current_user_id = get_current_user_id();
+
+        if ($id == $current_user_id) {
+            return new WP_Error('self_delete', 'Anda tidak bisa menghapus diri sendiri', ['status' => 400]);
+        }
+
+        // Hapus user dan assign kontennya ke user admin lain (opsional, disini kita hapus permanen)
+        // require_once(ABSPATH.'wp-admin/includes/user.php'); // Mungkin perlu di-include
+        
+        if (wp_delete_user($id)) {
+            return rest_ensure_response(['success' => true, 'message' => 'User berhasil dihapus']);
         } else {
-            return new WP_REST_Response(['success' => false, 'message' => 'Password salah.'], 401);
+            return new WP_Error('delete_failed', 'Gagal menghapus user', ['status' => 500]);
         }
     }
 
-    /**
-     * Override Get Items: Sembunyikan Password Hash
-     */
-    public function get_items($request) {
-        $response = parent::get_items($request);
-        if ($response->status === 200) {
-            $data = $response->get_data();
-            foreach ($data['data'] as &$user) {
-                unset($user->password_hash);
-                unset($user->reset_token);
-            }
-            $response->set_data($data);
+    // --- GET CURRENT USER PROFILE (Frontend Context) ---
+    public function get_current_user_profile($request) {
+        $user_id = get_current_user_id();
+        $user = get_userdata($user_id);
+        
+        if (!$user) {
+            return new WP_Error('not_logged_in', 'User tidak login', ['status' => 401]);
         }
-        return $response;
+
+        // Cek Konteks Tambahan (Agen / Jamaah)
+        global $wpdb;
+        
+        // 1. Cek apakah user ini terhubung dengan data Agen
+        $agent_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}umh_agents WHERE user_id = %d AND status = 'active'", $user_id));
+        
+        // 2. Cek apakah user ini terhubung dengan data Jamaah
+        $jamaah_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}umh_jamaah WHERE user_id = %d", $user_id));
+
+        // Tentukan Role Utama untuk Frontend
+        $app_role = 'guest';
+        if (in_array('administrator', $user->roles)) {
+            $app_role = 'administrator';
+        } elseif ($agent_id) {
+            $app_role = 'agent';
+        } elseif ($jamaah_id) {
+            $app_role = 'jamaah';
+        } else {
+            $app_role = 'subscriber'; // Fallback
+        }
+
+        return rest_ensure_response([
+            'id' => $user_id,
+            'username' => $user->user_login,
+            'email' => $user->user_email,
+            'display_name' => $user->display_name,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'roles' => $user->roles,
+            'app_role' => $app_role, // Role yang disederhanakan untuk frontend logic
+            'agent_id' => $agent_id ? (int)$agent_id : null,
+            'jamaah_id' => $jamaah_id ? (int)$jamaah_id : null,
+            'avatar_url' => get_avatar_url($user_id)
+        ]);
     }
 }

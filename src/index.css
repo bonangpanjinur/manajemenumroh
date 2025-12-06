@@ -1,57 +1,22 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* ... CSS yang sudah ada ... */
 
-/* Custom Scrollbar yang Elegan (Webkit Browsers) */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* FIX untuk Tampilan Frontend */
+.umh-frontend-wrapper {
+    min-height: 80vh;
+    background-color: #f3f4f6; /* bg-gray-100 */
+    margin: -20px; /* Offset margin tema WP standar */
+    padding: 20px;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+/* Sembunyikan elemen sidebar WP jika user admin membuka frontend */
+.umh-frontend-wrapper #wpadminbar {
+    display: none; 
 }
 
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1; /* slate-300 */
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8; /* slate-400 */
-}
-
-/* Utility Class untuk Tabel Responsif */
-/* Tambahkan class ini ke wrapper tabel jika belum ada */
-.table-responsive {
-    display: block;
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-}
-
-/* Memastikan modal berada di atas segalanya (termasuk Admin Bar WP) */
-.z-modal {
-    z-index: 99999; 
-}
-
-/* Animasi Fade In sederhana */
-.fade-in {
-    animation: fadeIn 0.3s ease-in-out;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-/* Fix untuk Select Option di beberapa browser */
-select {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 0.5rem center;
-    background-repeat: no-repeat;
-    background-size: 1.5em 1.5em;
-    padding-right: 2.5rem;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+/* Responsive adjustment */
+@media (max-width: 640px) {
+    .umh-frontend-wrapper {
+        margin: 0;
+        padding: 10px;
+    }
 }

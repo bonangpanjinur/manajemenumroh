@@ -1,262 +1,206 @@
-import React, { useState } from 'react';
-import CrudTable from '../components/CrudTable';
-import Modal from '../components/Modal';
-import useCRUD from '../hooks/useCRUD';
+import React, { useState, useEffect } from 'react';
+import Layout from '../components/Layout';
 import api from '../utils/api';
-import { Calendar, CreditCard, CheckCircle, Clock, Upload, FileText, Eye, Check, X } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { formatCurrency, formatDate } from '../utils/formatters';
+import Spinner from '../components/Spinner';
+import Alert from '../components/Alert';
+import Modal from '../components/Modal';
+import { 
+    PlusIcon, 
+    PrinterIcon, 
+    DocumentTextIcon, 
+    CurrencyDollarIcon,
+    BriefcaseIcon,
+    UserIcon
+} from '@heroicons/react/24/outline';
 
-const Bookings = () => {
-    const { data, loading, fetchData } = useCRUD('umh/v1/bookings');
-    const [viewMode, setViewMode] = useState('list'); // list | verify
-    
-    // State Modals
-    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+export default function Bookings() {
+    const [bookings, setBookings] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [alert, setAlert] = useState(null);
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [selectedBooking, setSelectedBooking] = useState(null);
-    const [proofHistory, setProofHistory] = useState([]);
-    
-    // State Forms
-    const [paymentForm, setPaymentForm] = useState({ amount: 0, bank_destination: 'BCA', proof_file: '' });
-    const [uploading, setUploading] = useState(false);
 
-    const formatMoney = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(n || 0);
-
-    // 1. User/Agen: Buka Modal Bayar
-    const handlePaymentClick = (booking) => {
-        setSelectedBooking(booking);
-        const remaining = parseFloat(booking.total_price) - parseFloat(booking.total_paid);
-        setPaymentForm({ amount: remaining, bank_destination: 'BCA', proof_file: '' });
-        setIsPaymentModalOpen(true);
-    };
-
-    // 2. Staff: Buka Modal Verifikasi
-    const handleVerifyClick = async (booking) => {
-        setSelectedBooking(booking);
+    const fetchBookings = async () => {
+        setLoading(true);
         try {
-            const res = await api.get(`umh/v1/bookings/${booking.id}/payment-proofs`);
-            if(res.data.success) {
-                setProofHistory(res.data.data);
-                setIsVerifyModalOpen(true);
-            }
-        } catch(e) { toast.error("Gagal memuat history pembayaran"); }
-    };
-
-    // Aksi Upload Bukti
-    const handleFileChange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const formData = new FormData();
-        formData.append('file', file);
-        setUploading(true);
-        try {
-            // Upload Temporary via Utility API dulu (Opsional, atau langsung ke endpoint booking)
-            // Di sini kita langsung pakai endpoint booking agar atomik
-            const bookingId = selectedBooking.uuid || selectedBooking.id;
-            formData.append('amount', paymentForm.amount);
-            formData.append('bank_destination', paymentForm.bank_destination);
-            
-            await api.post(`umh/v1/bookings/${bookingId}/upload-proof`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            
-            toast.success("Bukti berhasil diupload dan menunggu verifikasi!");
-            setIsPaymentModalOpen(false);
-            fetchData();
+            const res = await api.get('/bookings');
+            setBookings(res);
         } catch (error) {
-            toast.error("Gagal: " + (error.response?.data?.message || error.message));
+            console.error(error);
+            setAlert({ type: 'error', message: 'Gagal memuat data booking' });
         } finally {
-            setUploading(false);
+            setLoading(false);
         }
     };
 
-    // Aksi Verifikasi (Approve/Reject)
-    const submitVerification = async (proofId, action, notes='') => {
-        if(!confirm(action === 'approve' ? "Terima pembayaran ini?" : "Tolak pembayaran ini?")) return;
+    useEffect(() => {
+        fetchBookings();
+    }, []);
+
+    const handlePrintClick = (booking) => {
+        setSelectedBooking(booking);
+        setIsPrintModalOpen(true);
+    };
+
+    const handleGenerateDocument = async (type) => {
+        if (!selectedBooking) return;
+        
+        // Membuka jendela baru untuk proses cetak
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write('<html><body><h3 style="text-align:center;">Memproses Dokumen... Mohon Tunggu.</h3></body></html>');
+
         try {
-            await api.post(`umh/v1/payments/${proofId}/verify`, { action, notes });
-            toast.success(action === 'approve' ? "Pembayaran diterima!" : "Pembayaran ditolak.");
-            setIsVerifyModalOpen(false);
-            fetchData();
-        } catch (e) {
-            toast.error("Gagal: " + e.message);
+            const res = await api.get(`/documents/generate?type=${type}&id=${selectedBooking.id}`);
+            if (res.html) {
+                printWindow.document.open();
+                printWindow.document.write(res.html);
+                printWindow.document.close();
+            } else {
+                printWindow.close();
+                setAlert({ type: 'error', message: 'Gagal menghasilkan dokumen' });
+            }
+        } catch (error) {
+            printWindow.close();
+            console.error(error);
+            setAlert({ type: 'error', message: 'Terjadi kesalahan saat mencetak' });
         }
     };
-
-    // Kolom Tabel
-    const columns = [
-        { header: 'Kode Booking', accessor: 'booking_code', render: r => (
-            <div>
-                <div className="font-bold text-blue-600 cursor-pointer hover:underline">{r.booking_code}</div>
-                <div className="text-xs text-gray-500">{r.contact_name}</div>
-            </div>
-        )},
-        { header: 'Tagihan', accessor: 'total_price', render: r => (
-            <div className="font-mono text-sm">
-                <div>{formatMoney(r.total_price)}</div>
-                <div className="text-xs text-gray-400">Sisa: <span className="text-red-500">{formatMoney(r.total_price - r.total_paid)}</span></div>
-            </div>
-        )},
-        { header: 'Status', accessor: 'payment_status', render: r => {
-            const colors = { paid: 'bg-green-100 text-green-700', partial: 'bg-yellow-100 text-yellow-700', unpaid: 'bg-red-100 text-red-700' };
-            return <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${colors[r.payment_status]}`}>{r.payment_status}</span>
-        }},
-        { header: 'Verifikasi', accessor: 'status', render: r => (
-            r.status === 'pending' ? 
-            <span className="flex items-center gap-1 text-xs text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded border border-orange-200">
-                <Clock size={12}/> Butuh Verifikasi
-            </span> : <span className="text-gray-400 text-xs">-</span>
-        )},
-        { header: 'Aksi', accessor: 'id', render: r => (
-            <div className="flex gap-2 justify-end">
-                {/* Tombol User: Bayar */}
-                {r.payment_status !== 'paid' && (
-                    <button onClick={() => handlePaymentClick(r)} className="btn-secondary px-2 py-1 text-xs flex items-center gap-1">
-                        <Upload size={12}/> Upload Bukti
-                    </button>
-                )}
-                {/* Tombol Staff: Verifikasi */}
-                <button onClick={() => handleVerifyClick(r)} className="btn-primary px-2 py-1 text-xs flex items-center gap-1">
-                    <CheckCircle size={12}/> Cek Bukti
-                </button>
-            </div>
-        )}
-    ];
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
+        <Layout title="Manajemen Booking & Transaksi">
+            {alert && <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+
+            {/* Action Bar */}
+            <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Transaksi & Pembayaran</h1>
-                    <p className="text-gray-500 text-sm">Kelola pesanan masuk dan verifikasi bukti transfer manual.</p>
+                    <h2 className="text-lg font-medium text-gray-900">Data Booking</h2>
+                    <p className="text-sm text-gray-500">Kelola pendaftaran jamaah dan status pembayaran.</p>
                 </div>
-                
-                <div className="flex bg-white border rounded-lg p-1 shadow-sm">
-                    <button onClick={()=>setViewMode('list')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${viewMode==='list'?'bg-blue-50 text-blue-600':'text-gray-500'}`}>Semua Data</button>
-                    <button onClick={()=>setViewMode('verify')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${viewMode==='verify'?'bg-orange-50 text-orange-600':'text-gray-500'}`}>Perlu Verifikasi</button>
-                </div>
+                <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
+                    <PlusIcon className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
+                    Booking Baru
+                </button>
             </div>
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
-                    <div><p className="text-sm text-gray-500">Total Booking</p><h3 className="text-xl font-bold">{data.length}</h3></div>
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-full"><FileText size={20}/></div>
+            {/* Table Content */}
+            {loading ? (
+                <Spinner />
+            ) : bookings.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                    <p className="text-gray-500">Belum ada data booking.</p>
                 </div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
-                    <div><p className="text-sm text-gray-500">Menunggu Verifikasi</p><h3 className="text-xl font-bold text-orange-600">{data.filter(i => i.status === 'pending').length}</h3></div>
-                    <div className="p-3 bg-orange-50 text-orange-600 rounded-full"><Clock size={20}/></div>
-                </div>
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
-                    <div><p className="text-sm text-gray-500">Sudah Lunas</p><h3 className="text-xl font-bold text-green-600">{data.filter(i => i.payment_status === 'paid').length}</h3></div>
-                    <div className="p-3 bg-green-50 text-green-600 rounded-full"><CheckCircle size={20}/></div>
-                </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow border border-gray-200">
-                <CrudTable 
-                    columns={columns} 
-                    data={viewMode === 'verify' ? data.filter(i => i.status === 'pending') : data} 
-                    loading={loading} 
-                    onDelete={() => {}} 
-                />
-            </div>
-
-            {/* MODAL 1: UPLOAD BUKTI (USER/AGEN) */}
-            <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Konfirmasi Pembayaran">
-                <div className="space-y-4">
-                    <div className="bg-blue-50 p-4 rounded border border-blue-100 text-sm">
-                        <p className="font-bold text-blue-800 mb-1">Instruksi Transfer:</p>
-                        <ul className="list-disc pl-4 text-blue-700 space-y-1">
-                            <li>Silakan transfer ke <b>BCA 1234567890</b> a.n PT Travel Umroh</li>
-                            <li>Upload bukti transfer di bawah ini agar diproses Admin.</li>
-                        </ul>
-                    </div>
-                    <div>
-                        <label className="label">Nominal Transfer</label>
-                        <input type="number" className="input-field text-lg font-bold" value={paymentForm.amount} onChange={e => setPaymentForm({...paymentForm, amount: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="label">Bank Tujuan</label>
-                        <select className="input-field" value={paymentForm.bank_destination} onChange={e => setPaymentForm({...paymentForm, bank_destination: e.target.value})}>
-                            <option value="BCA">BCA - 1234567890</option>
-                            <option value="Mandiri">Mandiri - 0987654321</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="label">Bukti Foto (JPG/PNG/PDF)</label>
-                        <input type="file" className="input-field pt-2" onChange={handleFileChange} disabled={uploading} accept="image/*,application/pdf"/>
-                        {uploading && <p className="text-xs text-blue-500 mt-1 animate-pulse">Sedang mengupload...</p>}
-                    </div>
-                </div>
-            </Modal>
-
-            {/* MODAL 2: VERIFIKASI (STAFF FINANCE) */}
-            <Modal isOpen={isVerifyModalOpen} onClose={() => setIsVerifyModalOpen(false)} title="Verifikasi Pembayaran" size="max-w-3xl">
-                <div className="flex gap-6">
-                    {/* Kiri: List History Bukti */}
-                    <div className="w-1/2 space-y-3 border-r pr-4">
-                        <h4 className="font-bold text-gray-700 mb-2">Riwayat Upload Bukti</h4>
-                        {proofHistory.length === 0 && <p className="text-gray-400 italic text-sm">Belum ada bukti diupload.</p>}
-                        
-                        {proofHistory.map(proof => (
-                            <div key={proof.id} className="border rounded p-3 bg-gray-50">
-                                <div className="flex justify-between text-xs mb-2">
-                                    <span className="text-gray-500">{new Date(proof.created_at).toLocaleString()}</span>
-                                    <span className={`font-bold uppercase ${proof.status==='verified'?'text-green-600':'text-orange-600'}`}>{proof.status}</span>
-                                </div>
-                                <div className="font-bold text-gray-800 mb-1">{formatMoney(proof.amount)}</div>
-                                <div className="text-xs text-gray-600 mb-3">via {proof.bank_destination}</div>
-                                
-                                <div className="mb-3">
-                                    <a href={proof.file_url} target="_blank" rel="noreferrer" className="block w-full h-32 bg-gray-200 rounded overflow-hidden hover:opacity-80 transition relative group">
-                                        <img src={proof.file_url} alt="Bukti" className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black bg-opacity-30 text-white font-bold text-xs">
-                                            <Eye size={16} className="mr-1"/> Lihat Full
-                                        </div>
-                                    </a>
-                                </div>
-
-                                {proof.status === 'pending' && (
-                                    <div className="flex gap-2">
-                                        <button onClick={() => submitVerification(proof.id, 'approve')} className="flex-1 bg-green-600 text-white py-1.5 rounded text-xs font-bold hover:bg-green-700 flex justify-center gap-1">
-                                            <Check size={14}/> Terima
+            ) : (
+                <div className="bg-white shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jamaah (Kontak)</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paket</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Keberangkatan</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Harga</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {bookings.map((booking) => (
+                                <tr key={booking.id} className="hover:bg-gray-50">
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-indigo-600 font-bold">
+                                        {booking.booking_code}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <div className="font-medium">{booking.contact_person_name || booking.contact_name}</div>
+                                        <div className="text-xs text-gray-500">{booking.contact_phone}</div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {booking.package_name}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {formatDate(booking.departure_date)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
+                                        {formatCurrency(booking.total_price)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                            booking.status === 'confirmed' ? 'bg-green-100 text-green-800' : 
+                                            booking.status === 'cancelled' ? 'bg-red-100 text-red-800' : 
+                                            'bg-yellow-100 text-yellow-800'
+                                        }`}>
+                                            {booking.status.toUpperCase()}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button 
+                                            onClick={() => handlePrintClick(booking)}
+                                            className="text-gray-600 hover:text-indigo-900 flex items-center justify-end w-full"
+                                            title="Cetak Dokumen"
+                                        >
+                                            <PrinterIcon className="h-5 w-5 mr-1" /> Cetak
                                         </button>
-                                        <button onClick={() => submitVerification(proof.id, 'reject')} className="flex-1 bg-red-50 text-red-600 border border-red-200 py-1.5 rounded text-xs font-bold hover:bg-red-100 flex justify-center gap-1">
-                                            <X size={14}/> Tolak
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Kanan: Info Booking */}
-                    <div className="w-1/2 pl-2">
-                        <h4 className="font-bold text-gray-700 mb-4">Detail Booking</h4>
-                        <div className="space-y-3 text-sm">
-                            <div className="flex justify-between py-2 border-b">
-                                <span className="text-gray-500">Kode Booking</span>
-                                <span className="font-mono font-bold text-blue-600">{selectedBooking?.booking_code}</span>
-                            </div>
-                            <div className="flex justify-between py-2 border-b">
-                                <span className="text-gray-500">Total Tagihan</span>
-                                <span className="font-bold">{formatMoney(selectedBooking?.total_price)}</span>
-                            </div>
-                            <div className="flex justify-between py-2 border-b">
-                                <span className="text-gray-500">Sudah Dibayar</span>
-                                <span className="font-bold text-green-600">{formatMoney(selectedBooking?.total_paid)}</span>
-                            </div>
-                            <div className="flex justify-between py-2 border-b">
-                                <span className="text-gray-500">Sisa Kekurangan</span>
-                                <span className="font-bold text-red-600">{formatMoney(selectedBooking?.total_price - selectedBooking?.total_paid)}</span>
-                            </div>
-                        </div>
-                    </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
-            </Modal>
-        </div>
+            )}
+
+            {/* Modal Cetak Dokumen */}
+            {isPrintModalOpen && selectedBooking && (
+                <Modal title={`Cetak Dokumen: ${selectedBooking.booking_code}`} onClose={() => setIsPrintModalOpen(false)}>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <button
+                            onClick={() => handleGenerateDocument('receipt')}
+                            className="flex items-center p-4 border rounded-lg hover:bg-gray-50 transition border-indigo-200 bg-indigo-50"
+                        >
+                            <CurrencyDollarIcon className="h-8 w-8 text-indigo-600 mr-3" />
+                            <div className="text-left">
+                                <h4 className="font-bold text-gray-900">Kwitansi Pembayaran</h4>
+                                <p className="text-xs text-gray-500">Cetak bukti pembayaran terakhir atau total.</p>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => handleGenerateDocument('payment_history')}
+                            className="flex items-center p-4 border rounded-lg hover:bg-gray-50 transition"
+                        >
+                            <DocumentTextIcon className="h-8 w-8 text-gray-600 mr-3" />
+                            <div className="text-left">
+                                <h4 className="font-bold text-gray-900">Riwayat Mutasi</h4>
+                                <p className="text-xs text-gray-500">Laporan detail semua transaksi masuk.</p>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => handleGenerateDocument('passport_rec')}
+                            className="flex items-center p-4 border rounded-lg hover:bg-gray-50 transition"
+                        >
+                            <UserIcon className="h-8 w-8 text-green-600 mr-3" />
+                            <div className="text-left">
+                                <h4 className="font-bold text-gray-900">Rekomendasi Paspor</h4>
+                                <p className="text-xs text-gray-500">Surat pengantar ke Kantor Imigrasi.</p>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => handleGenerateDocument('leave_permit')}
+                            className="flex items-center p-4 border rounded-lg hover:bg-gray-50 transition"
+                        >
+                            <BriefcaseIcon className="h-8 w-8 text-orange-600 mr-3" />
+                            <div className="text-left">
+                                <h4 className="font-bold text-gray-900">Surat Izin Cuti</h4>
+                                <p className="text-xs text-gray-500">Surat permohonan cuti kerja untuk jamaah.</p>
+                            </div>
+                        </button>
+                    </div>
+                    <div className="mt-6 text-center text-xs text-gray-400">
+                        Dokumen akan terbuka di tab baru dan otomatis memunculkan dialog print.
+                    </div>
+                </Modal>
+            )}
+        </Layout>
     );
-};
-
-export default Bookings;
+}

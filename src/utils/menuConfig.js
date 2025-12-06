@@ -1,64 +1,45 @@
 import { 
-    LayoutDashboard, Users, Calendar, Briefcase, 
-    Settings, Package, FileText, DollarSign, 
-    UserCheck, Megaphone, Database, Truck, PieChart,
-    ShoppingBag, Globe, Layers
-} from 'lucide-react';
+    HomeIcon, 
+    UserGroupIcon, 
+    BriefcaseIcon, 
+    CurrencyDollarIcon,
+    ChartBarIcon,
+    CogIcon,
+    UsersIcon,
+    ClipboardDocumentListIcon,
+    PaperAirplaneIcon,
+    TruckIcon,
+    MegaphoneIcon,
+    BanknotesIcon,
+    CheckBadgeIcon,
+    ArchiveBoxIcon,
+    ArrowLeftOnRectangleIcon
+} from '@heroicons/react/24/outline';
 
-export const menuItems = [
-    // 1. Dashboard Utama
-    { 
-        label: 'Dashboard', 
-        path: '/', 
-        icon: LayoutDashboard 
-    },
-
-    // 2. Produk (Core Business) - Ditaruh paling atas
-    {
-        section: 'Produk & Katalog',
-        items: [
-            { label: 'Master Paket', path: '/packages', icon: Package },
-            { label: 'Kategori Paket', path: '/package-categories', icon: Layers },
-            { label: 'Simulasi Storefront', path: '/storefront', icon: Globe }, // Menu Baru
-        ]
-    },
-
-    // 3. Penjualan & Marketing (Front Office)
-    {
-        section: 'Penjualan & Marketing',
-        items: [
-            { label: 'Booking & Order', path: '/bookings', icon: FileText },
-            { label: 'Pipeline Leads (CRM)', path: '/marketing', icon: Megaphone },
-            { label: 'Kemitraan Agen', path: '/agents', icon: UserCheck },
-        ]
-    },
-
-    // 4. Operasional (Back Office)
-    {
-        section: 'Operasional Travel',
-        items: [
-            { label: 'Data Jemaah', path: '/jamaah', icon: Users },
-            { label: 'Jadwal Keberangkatan', path: '/departures', icon: Calendar },
-            { label: 'Logistik & Gudang', path: '/logistics', icon: Truck },
-            { label: 'HR & Karyawan', path: '/hr', icon: Briefcase },
-        ]
-    },
-
-    // 5. Keuangan (Finance)
-    {
-        section: 'Keuangan & Akuntansi',
-        items: [
-            { label: 'Arus Kas (Finance)', path: '/finance', icon: DollarSign },
-            { label: 'Laporan Akuntansi', path: '/accounting', icon: PieChart },
-        ]
-    },
-
-    // 6. Pengaturan Sistem
-    {
-        section: 'Sistem',
-        items: [
-            { label: 'Master Data Center', path: '/masters', icon: Database },
-            { label: 'Pengaturan', path: '/settings', icon: Settings },
-        ]
-    }
+const menuConfig = [
+    { name: 'Dashboard', path: '/', icon: HomeIcon, roles: ['administrator', 'manager', 'staff'] },
+    { name: 'Jamaah', path: '/jamaah', icon: UserGroupIcon, roles: ['administrator', 'manager', 'staff'] },
+    
+    // Fitur Baru: Tabungan Umroh
+    { name: 'Tabungan Umroh', path: '/savings', icon: BanknotesIcon, roles: ['administrator', 'manager', 'finance'] },
+    
+    { name: 'Bookings', path: '/bookings', icon: ClipboardDocumentListIcon, roles: ['administrator', 'manager', 'staff'] },
+    { name: 'Keberangkatan', path: '/departures', icon: PaperAirplaneIcon, roles: ['administrator', 'manager', 'staff'] },
+    { name: 'Paket Travel', path: '/packages', icon: BriefcaseIcon, roles: ['administrator', 'manager'] }, 
+    { name: 'Kategori Paket', path: '/package-categories', icon: ArchiveBoxIcon, roles: ['administrator', 'manager'] },
+    
+    { name: 'Agen & Mitra', path: '/agents', icon: UsersIcon, roles: ['administrator', 'manager'] },
+    
+    // ... item menu lainnya ...
+    { name: 'Keuangan', path: '/finance', icon: CurrencyDollarIcon, roles: ['administrator', 'manager', 'finance'] },
+    { name: 'Akuntansi', path: '/accounting', icon: ChartBarIcon, roles: ['administrator', 'finance'] },
+    { name: 'Marketing', path: '/marketing', icon: MegaphoneIcon, roles: ['administrator', 'marketing'] },
+    { name: 'Logistik', path: '/logistics', icon: TruckIcon, roles: ['administrator', 'logistics'] },
+    { name: 'HR', path: '/hr', icon: UsersIcon, roles: ['administrator', 'hr'] },
+    { name: 'Laporan', path: '/stats', icon: ChartBarIcon, roles: ['administrator', 'manager'] },
+    
+    { name: 'Master Data', path: '/masters', icon: CheckBadgeIcon, roles: ['administrator'] },
+    { name: 'Pengaturan', path: '/settings', icon: CogIcon, roles: ['administrator'] },
 ];
+
+export default menuConfig;

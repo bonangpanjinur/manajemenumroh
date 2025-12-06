@@ -1,46 +1,48 @@
 <?php
-require_once dirname(__FILE__) . '/../class-umh-crud-controller.php';
 
-class UMH_API_Uploads extends UMH_CRUD_Controller {
-
-    public function __construct() {
-        // Tidak pakai tabel khusus, ini utility controller
-        parent::__construct('posts'); 
-    }
+class UMH_API_Uploads {
 
     public function register_routes() {
-        register_rest_route('umh/v1', '/upload', [
-            'methods' => 'POST',
-            'callback' => [$this, 'handle_upload'],
-            'permission_callback' => '__return_true', // Nanti amankan dengan nonce/auth
+        register_rest_route('umh/v1', '/uploads', [
+            ['methods' => 'POST', 'callback' => [$this, 'handle_upload'], 'permission_callback' => [$this, 'check_auth']],
         ]);
     }
 
+    public function check_auth() { return is_user_logged_in(); }
+
     public function handle_upload($request) {
-        $files = $request->get_file_params();
-        
-        if (empty($files['file'])) {
-            return new WP_REST_Response(['success' => false, 'message' => 'No file uploaded'], 400);
+        if (empty($_FILES['file'])) {
+            return new WP_Error('no_file', 'Tidak ada file yang diunggah', ['status' => 400]);
         }
 
-        $file = $files['file'];
+        $file = $_FILES['file'];
         
-        // Gunakan wp_handle_upload untuk memproses file
-        if (!function_exists('wp_handle_upload')) {
-            require_once(ABSPATH . 'wp-admin/includes/file.php');
+        // 1. Security Check: File Type
+        $allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+        if (!in_array($file['type'], $allowed_types)) {
+            return new WP_Error('invalid_type', 'Hanya file JPG, PNG, dan PDF yang diperbolehkan', ['status' => 400]);
         }
 
-        $upload_overrides = array('test_form' => false);
+        // 2. Security Check: Size (Max 2MB)
+        if ($file['size'] > 2 * 1024 * 1024) {
+            return new WP_Error('file_too_large', 'Ukuran file maksimal 2MB', ['status' => 400]);
+        }
+
+        // 3. WordPress Upload Process
+        require_once(ABSPATH . 'wp-admin/includes/file.php');
+        
+        $upload_overrides = ['test_form' => false];
         $movefile = wp_handle_upload($file, $upload_overrides);
 
         if ($movefile && !isset($movefile['error'])) {
-            return new WP_REST_Response([
-                'success' => true, 
-                'url' => $movefile['url'], 
-                'file' => $movefile['file']
-            ], 201);
+            // Sukses
+            return rest_ensure_response([
+                'success' => true,
+                'url' => $movefile['url'],
+                'file' => $movefile['file'] // Path server (jangan expose ke frontend jika tidak perlu, cukup URL)
+            ]);
         } else {
-            return new WP_REST_Response(['success' => false, 'message' => $movefile['error']], 500);
+            return new WP_Error('upload_error', $movefile['error'], ['status' => 500]);
         }
     }
 }
