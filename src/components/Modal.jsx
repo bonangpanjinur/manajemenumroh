@@ -1,63 +1,64 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-// PERBAIKAN: Mengganti prop 'show' menjadi 'isOpen' agar sesuai dengan panggilan di Pages
-const Modal = ({ isOpen, onClose, title, children, size = 'max-w-2xl', footer }) => {
-    
-    // Efek untuk menutup modal saat menekan tombol Escape
-    useEffect(() => {
-        const handleEsc = (event) => {
-            if (event.keyCode === 27) {
-                onClose();
-            }
-        };
-        window.addEventListener('keydown', handleEsc);
-        return () => window.removeEventListener('keydown', handleEsc);
-    }, [onClose]);
-
-    // Jika tidak open, jangan render apa-apa
-    if (!isOpen) {
-        return null;
-    }
-
-    // Klik di luar modal (overlay) akan menutup modal
-    const handleOverlayClick = (e) => {
-        if (e.target === e.currentTarget) {
-            onClose();
-        }
+const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
+  // Close on Escape key
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') onClose();
     };
+    if (isOpen) window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
 
-    return (
+  if (!isOpen) return null;
+
+  const sizeClasses = {
+    sm: 'max-w-md',
+    md: 'max-w-lg',
+    lg: 'max-w-2xl',
+    xl: 'max-w-4xl',
+    full: 'max-w-full mx-4',
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-gray-900 bg-opacity-50 transition-opacity backdrop-blur-sm" 
+        onClick={onClose}
+        aria-hidden="true"
+      ></div>
+
+      {/* Modal Positioning */}
+      <div className="flex min-h-screen items-center justify-center p-4 text-center sm:p-0">
         <div 
-            className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start pt-10"
-            onClick={handleOverlayClick}
+          className={`relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 w-full ${sizeClasses[size]} flex flex-col max-h-[90vh]`}
         >
-            <div className={`bg-white rounded-lg shadow-xl w-full ${size} m-4 flex flex-col max-h-[90vh]`}>
-                {/* Header Modal */}
-                <div className="flex justify-between items-center p-4 border-b">
-                    <h3 className="text-xl font-semibold text-gray-800">{title}</h3>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
-                
-                {/* Konten Modal (scrollable) */}
-                <div className="p-6 overflow-y-auto">
-                    {children}
-                </div>
-                
-                {/* Footer Modal (jika ada) */}
-                {footer && (
-                    <div className="flex justify-end items-center p-4 border-t space-x-2 bg-gray-50 rounded-b-lg">
-                        {footer}
-                    </div>
-                )}
-            </div>
+          {/* Header - Fixed */}
+          <div className="bg-white px-4 py-3 sm:px-6 border-b border-gray-200 flex justify-between items-center shrink-0">
+            <h3 className="text-lg font-semibold leading-6 text-gray-900" id="modal-title">
+              {title}
+            </h3>
+            <button
+              type="button"
+              className="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              onClick={onClose}
+            >
+              <span className="sr-only">Close</span>
+              <X className="h-6 w-6" aria-hidden="true" />
+            </button>
+          </div>
+
+          {/* Body - Scrollable */}
+          <div className="px-4 py-5 sm:p-6 overflow-y-auto flex-1">
+            {children}
+          </div>
+          
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
 export default Modal;

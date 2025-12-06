@@ -1,146 +1,129 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, X, Loader2 } from 'lucide-react';
-import api from '../utils/api';
+import { MapPin, Loader, X } from 'lucide-react';
+// import { api } from '../utils/api'; // Enable this if using real API
 
-const AsyncCitySelect = ({ value, onChange, placeholder = "Cari Kota / Kabupaten..." }) => {
-    const [query, setQuery] = useState('');
-    const [options, setOptions] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [isOpen, setIsOpen] = useState(false);
-    const [selectedLabel, setSelectedLabel] = useState('');
-    const wrapperRef = useRef(null);
+const AsyncCitySelect = ({ value, onChange, placeholder = "Cari Kota..." }) => {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef(null);
 
-    // 1. Load Initial Label jika ada Value (ID)
-    useEffect(() => {
-        if (value && !selectedLabel) {
-            // Fetch nama kota berdasarkan ID (jika belum ada label)
-            api.get(`umh/v1/cities/${value}`).then(res => {
-                if (res.data.success) {
-                    const city = res.data.data;
-                    setSelectedLabel(`${city.name}, ${city.province}`);
-                }
-            }).catch(() => {});
-        }
-    }, [value]);
+  // Jika value sudah ada (misal saat edit), set query ke value tersebut
+  useEffect(() => {
+    if (value) {
+        setQuery(value);
+    }
+  }, [value]);
 
-    // 2. Handle Pencarian (Debounce)
-    useEffect(() => {
-        const delayDebounceFn = setTimeout(() => {
-            if (query.length > 1 && isOpen) {
-                searchCities();
-            }
-        }, 500); // Tunggu 500ms setelah user berhenti mengetik
-
-        return () => clearTimeout(delayDebounceFn);
-    }, [query]);
-
-    const searchCities = async () => {
-        setLoading(true);
-        try {
-            // Panggil API dengan parameter search
-            const res = await api.get(`umh/v1/cities?search=${query}&per_page=10`);
-            if (res.data.success) {
-                // Handle struktur data dari useCRUD (bisa array langsung atau object data)
-                const list = Array.isArray(res.data.data) ? res.data.data : [];
-                setOptions(list);
-            }
-        } catch (error) {
-            console.error("Gagal cari kota", error);
-            setOptions([]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // 3. Handle Klik Luar untuk menutup dropdown
-    useEffect(() => {
-        function handleClickOutside(event) {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-                setIsOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [wrapperRef]);
-
-    const handleSelect = (city) => {
-        const label = `${city.name}, ${city.province}`;
-        setSelectedLabel(label);
-        setQuery('');
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
         setIsOpen(false);
-        onChange(city.id); // Kirim ID ke Parent
-    };
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [wrapperRef]);
 
-    const handleClear = (e) => {
-        e.stopPropagation();
-        setSelectedLabel('');
-        onChange('');
-        setOptions([]);
-    };
+  // Debounce search
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (query.length >= 3 && isOpen) {
+        searchCities(query);
+      }
+    }, 500);
 
-    return (
-        <div className="relative w-full" ref={wrapperRef}>
-            {/* Tampilan Input / Selected Value */}
-            <div 
-                className="input-field flex items-center justify-between cursor-text relative"
-                onClick={() => { setIsOpen(true); if(!query) searchCities(); }}
-            >
-                {selectedLabel ? (
-                    <div className="flex items-center gap-2 w-full">
-                        <MapPin size={16} className="text-blue-600 shrink-0" />
-                        <span className="text-gray-800 truncate">{selectedLabel}</span>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-2 text-gray-400 w-full">
-                        <Search size={16} />
-                        <input 
-                            className="bg-transparent border-none outline-none w-full text-sm text-gray-700 placeholder-gray-400 p-0 focus:ring-0"
-                            placeholder={placeholder}
-                            value={query}
-                            onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
-                        />
-                    </div>
-                )}
+    return () => clearTimeout(delayDebounceFn);
+  }, [query, isOpen]);
 
-                {selectedLabel && (
-                    <button 
-                        onClick={handleClear}
-                        className="absolute right-2 p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-red-500"
-                    >
-                        <X size={14} />
-                    </button>
-                )}
-            </div>
+  const searchCities = async (searchTerm) => {
+    setLoading(true);
+    try {
+      // NOTE: Ganti URL ini dengan endpoint API Master Kota Anda yang sebenarnya.
+      // Contoh: const response = await api.get(`/masters?type=city&search=${searchTerm}`);
+      
+      // MOCK DATA sementara agar UI berfungsi (Hapus ini jika API sudah siap)
+      const mockCities = [
+        "Jakarta Selatan", "Jakarta Pusat", "Jakarta Barat", 
+        "Bandung", "Surabaya", "Semarang", "Yogyakarta", 
+        "Makassar", "Medan", "Denpasar", "Bekasi", "Depok"
+      ].filter(c => c.toLowerCase().includes(searchTerm.toLowerCase()));
 
-            {/* Dropdown Results */}
-            {isOpen && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto animate-fade-in">
-                    {loading ? (
-                        <div className="p-4 text-center text-gray-400 flex justify-center items-center gap-2">
-                            <Loader2 size={16} className="animate-spin" /> Mencari...
-                        </div>
-                    ) : options.length > 0 ? (
-                        <ul className="py-1">
-                            {options.map((city) => (
-                                <li 
-                                    key={city.id}
-                                    onClick={() => handleSelect(city)}
-                                    className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
-                                >
-                                    <div className="font-medium text-sm text-gray-800">{city.name}</div>
-                                    <div className="text-xs text-gray-500">{city.province}</div>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <div className="p-4 text-center text-sm text-gray-400">
-                            {query ? `Tidak ada kota "${query}"` : "Ketik nama kota..."}
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    );
+      setResults(mockCities);
+      
+    } catch (error) {
+      console.error("Error fetching cities:", error);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelect = (city) => {
+    setQuery(city);
+    onChange(city);
+    setIsOpen(false);
+  };
+
+  const handleClear = () => {
+      setQuery('');
+      onChange('');
+      setResults([]);
+  };
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+        <MapPin className="h-5 w-5 text-gray-400" />
+      </div>
+      
+      <input
+        type="text"
+        className="pl-10 pr-10 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+        placeholder={placeholder}
+        value={query}
+        onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(true);
+        }}
+        onFocus={() => setIsOpen(true)}
+      />
+
+      {query && (
+         <button 
+            type="button"
+            onClick={handleClear}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer text-gray-400 hover:text-gray-600"
+         >
+             <X className="h-4 w-4" />
+         </button>
+      )}
+
+      {isOpen && (results.length > 0 || loading) && (
+        <ul className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
+          {loading ? (
+             <li className="text-gray-500 cursor-default select-none relative py-2 pl-3 pr-9 flex items-center gap-2">
+                <Loader className="w-4 h-4 animate-spin" /> Mencari...
+             </li>
+          ) : (
+            results.map((city, index) => (
+                <li
+                key={index}
+                className="text-gray-900 cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-indigo-50"
+                onClick={() => handleSelect(city)}
+                >
+                <span className="font-normal block truncate">
+                    {city}
+                </span>
+                </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
 };
 
 export default AsyncCitySelect;
