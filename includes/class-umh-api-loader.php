@@ -1,5 +1,14 @@
 <?php
-// Require semua file API yang diperlukan
+/**
+ * File: includes/class-umh-api-loader.php
+ * Deskripsi: Loader utama untuk memuat dan menginisialisasi semua endpoint REST API.
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// 1. Load Semua File Class API
 require_once UMH_PLUGIN_DIR . 'includes/api/api-masters.php';
 require_once UMH_PLUGIN_DIR . 'includes/api/api-packages.php';
 require_once UMH_PLUGIN_DIR . 'includes/api/api-jamaah.php';
@@ -21,20 +30,28 @@ require_once UMH_PLUGIN_DIR . 'includes/api/api-package-categories.php';
 require_once UMH_PLUGIN_DIR . 'includes/api/api-rooming.php';
 require_once UMH_PLUGIN_DIR . 'includes/api/api-logs.php';
 require_once UMH_PLUGIN_DIR . 'includes/api/api-export.php';
-require_once UMH_PLUGIN_DIR . 'includes/api/api-savings.php';
-require_once UMH_PLUGIN_DIR . 'includes/api/api-documents.php';
-require_once UMH_PLUGIN_DIR . 'includes/api/api-auth.php'; 
-require_once UMH_PLUGIN_DIR . 'includes/class-umh-frontend.php'; 
+
+// 2. Load Modul Tambahan (Fitur Baru)
+require_once UMH_PLUGIN_DIR . 'includes/api/api-savings.php';   // Fitur Tabungan Umroh
+require_once UMH_PLUGIN_DIR . 'includes/api/api-documents.php'; // Generator Dokumen (Kwitansi/Surat)
+require_once UMH_PLUGIN_DIR . 'includes/api/api-auth.php';      // Auth Headless (Login/Logout Frontend)
+
+// 3. Load Frontend Controller
+require_once UMH_PLUGIN_DIR . 'includes/class-umh-frontend.php'; // Shortcode [umroh_app]
 
 class UMH_API_Loader {
+
     public function init() {
-        // Inisialisasi dan registrasi rute untuk setiap modul API
+        // --- Inisialisasi Modul Master Data & Operasional ---
         
         $api_masters = new UMH_API_Masters();
         $api_masters->register_routes();
 
         $api_packages = new UMH_API_Packages();
         $api_packages->register_routes();
+
+        $api_package_categories = new UMH_API_PackageCategories();
+        $api_package_categories->register_routes();
 
         $api_jamaah = new UMH_API_Jamaah();
         $api_jamaah->register_routes();
@@ -48,11 +65,18 @@ class UMH_API_Loader {
         $api_departures = new UMH_API_Departures();
         $api_departures->register_routes();
         
+        // --- Inisialisasi Modul Manajemen User & HR ---
+
         $api_users = new UMH_API_Users();
         $api_users->register_routes();
 
         $api_roles = new UMH_API_Roles();
         $api_roles->register_routes();
+
+        $api_hr = new UMH_API_HR();
+        $api_hr->register_routes();
+
+        // --- Inisialisasi Modul Marketing & CRM ---
 
         $api_marketing = new UMH_API_Marketing();
         $api_marketing->register_routes();
@@ -63,14 +87,15 @@ class UMH_API_Loader {
         $api_tasks = new UMH_API_Tasks();
         $api_tasks->register_routes();
 
+        // --- Inisialisasi Modul Keuangan & Akuntansi ---
+
         $api_finance = new UMH_API_Finance();
         $api_finance->register_routes();
 
         $api_accounting = new UMH_API_Accounting();
         $api_accounting->register_routes();
 
-        $api_hr = new UMH_API_HR();
-        $api_hr->register_routes();
+        // --- Inisialisasi Modul Logistik & Utilitas ---
 
         $api_logistics = new UMH_API_Logistics();
         $api_logistics->register_routes();
@@ -81,9 +106,6 @@ class UMH_API_Loader {
         $api_stats = new UMH_API_Stats();
         $api_stats->register_routes();
 
-        $api_package_categories = new UMH_API_PackageCategories();
-        $api_package_categories->register_routes();
-
         $api_rooming = new UMH_API_Rooming();
         $api_rooming->register_routes();
 
@@ -93,17 +115,21 @@ class UMH_API_Loader {
         $api_export = new UMH_API_Export();
         $api_export->register_routes();
         
+        // --- Inisialisasi Fitur Khusus (New Features) ---
+
         $api_savings = new UMH_API_Savings();
         $api_savings->register_routes();
 
         $api_documents = new UMH_API_Documents();
         $api_documents->register_routes();
 
-        // Init Auth API untuk login headless
+        // --- Inisialisasi Auth Headless ---
+        
         $api_auth = new UMH_API_Auth();
         $api_auth->register_routes();
 
-        // Init Frontend Shortcode & Assets
+        // --- Inisialisasi Frontend App (Shortcode) ---
+        
         $frontend = new UMH_Frontend();
         $frontend->init();
     }

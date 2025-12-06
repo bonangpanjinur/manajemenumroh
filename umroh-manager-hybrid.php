@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Umroh Manager Hybrid
  * Description: Sistem Manajemen Travel Umroh (SaaS Ready) - Backend & Frontend React
- * Version: 7.7.0
+ * Version: 7.8.0
  * Author: Bonang Panji Nur
  */
 
@@ -17,22 +17,39 @@ define('UMH_PLUGIN_URL', plugin_dir_url(__FILE__));
 // Load Core Classes
 require_once UMH_PLUGIN_DIR . 'includes/db-schema.php';
 require_once UMH_PLUGIN_DIR . 'includes/class-umh-api-loader.php';
-require_once UMH_PLUGIN_DIR . 'includes/cors.php'; // Header CORS untuk API
-require_once UMH_PLUGIN_DIR . 'includes/admin-login-customizer.php'; // Opsional: Custom Login WP
+require_once UMH_PLUGIN_DIR . 'includes/cors.php'; 
+require_once UMH_PLUGIN_DIR . 'includes/admin-login-customizer.php'; 
 
 // Activation Hook (Database)
 register_activation_hook(__FILE__, 'umh_create_db_tables');
 
-// Initialize API & System
-function umh_init_system() {
+/**
+ * Inisialisasi Sistem
+ * Kita pisahkan logika API dan Frontend agar sesuai standar WordPress
+ */
+
+// 1. Init API Routes (Hanya berjalan saat REST API dipanggil)
+function umh_register_api_routes() {
     $api_loader = new UMH_API_Loader();
     $api_loader->init();
 }
-add_action('plugins_loaded', 'umh_init_system');
+add_action('rest_api_init', 'umh_register_api_routes');
+
+// 2. Init Frontend & Shortcodes (Berjalan saat WordPress loading)
+function umh_init_frontend() {
+    // Load class frontend jika belum diload oleh API Loader (untuk safety)
+    if (!class_exists('UMH_Frontend')) {
+        require_once UMH_PLUGIN_DIR . 'includes/class-umh-frontend.php';
+    }
+    $frontend = new UMH_Frontend();
+    $frontend->init();
+}
+add_action('init', 'umh_init_frontend');
+
 
 /**
  * =========================================================================
- * 1. ADMIN MENU & ASSETS (Untuk Super Admin di WP Dashboard)
+ * 3. ADMIN MENU & ASSETS (Untuk Super Admin di WP Dashboard)
  * =========================================================================
  */
 function umh_admin_menu() {
@@ -49,6 +66,7 @@ function umh_admin_menu() {
 add_action('admin_menu', 'umh_admin_menu');
 
 function umh_admin_assets($hook) {
+    // Hanya load di halaman plugin kita
     if ($hook !== 'toplevel_page_umroh-manager') {
         return;
     }
@@ -87,9 +105,8 @@ function umh_render_admin_page() {
 
 /**
  * =========================================================================
- * 2. SECURITY: PROTEKSI WP-ADMIN (HEADLESS ENFORCEMENT)
+ * 4. SECURITY: PROTEKSI WP-ADMIN (HEADLESS ENFORCEMENT)
  * =========================================================================
- * Logika: Jika user login tapi BUKAN 'administrator', tendang ke Frontend App
  */
 function umh_restrict_admin_access() {
     // Jika sedang melakukan AJAX atau API call, biarkan lewat
@@ -104,8 +121,8 @@ function umh_restrict_admin_access() {
         // Maka blokir akses ke /wp-admin
         if (!in_array('administrator', (array) $user->roles)) {
             
-            // Redirect ke Halaman Aplikasi Frontend
-            // Ganti '/app' dengan slug halaman tempat shortcode [umroh_app] berada
+            // Redirect ke Halaman Aplikasi Frontend (Pastikan halaman dengan slug 'app' ada)
+            // Atau redirect ke halaman depan (home) jika belum ada
             wp_redirect(home_url('/app')); 
             exit;
         }
@@ -125,13 +142,10 @@ add_action('after_setup_theme', 'umh_hide_admin_bar');
 
 /**
  * Redirect Login WP Default ke Halaman Login App Custom
- * (Opsional: Jika user mengakses wp-login.php langsung)
  */
 function umh_redirect_login_page() {
     global $pagenow;
-    // Jika membuka wp-login.php dan method GET (bukan sedang submit form login)
     if ($pagenow == 'wp-login.php' && $_SERVER['REQUEST_METHOD'] == 'GET' && !isset($_GET['action'])) {
-        // Cek jika user belum login, arahkan ke login app custom
         if (!is_user_logged_in()) {
             wp_redirect(home_url('/app#/login'));
             exit;
