@@ -1,60 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import Header from './Header';
-import Dashboard from '../pages/Dashboard';
-import Users from '../pages/Users';
-import Roles from '../pages/Roles';
-import Packages from '../pages/Packages';
-import PackageCategories from '../pages/PackageCategories';
-import Departures from '../pages/Departures';
-import Bookings from '../pages/Bookings';
-import Jamaah from '../pages/Jamaah';
-import Agents from '../pages/Agents';
-import Finance from '../pages/Finance';
-import Accounting from '../pages/Accounting';
-import Masters from '../pages/Masters';
-import Settings from '../pages/Settings';
-import StorefrontSimulation from '../pages/StorefrontSimulation'; // Import halaman baru
+import Header from './Header'; 
 
-const Layout = () => {
-    // Ambil path dari hash URL agar SPA jalan di WP Admin tanpa reload
-    const [currentPath, setCurrentPath] = useState(window.location.hash.replace('#', '') || '/');
+const Layout = ({ children, title }) => {
+    // State untuk kontrol Sidebar di Mobile
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-    useEffect(() => {
-        const handleHashChange = () => {
-            setCurrentPath(window.location.hash.replace('#', '') || '/');
-        };
-        window.addEventListener('hashchange', handleHashChange);
-        return () => window.removeEventListener('hashchange', handleHashChange);
-    }, []);
-
-    const renderContent = () => {
-        switch (currentPath) {
-            case '/': return <Dashboard />;
-            case '/users': return <Users />;
-            case '/roles': return <Roles />;
-            case '/packages': return <Packages />;
-            case '/package-categories': return <PackageCategories />;
-            case '/departures': return <Departures />;
-            case '/bookings': return <Bookings />;
-            case '/jamaah': return <Jamaah />;
-            case '/agents': return <Agents />;
-            case '/finance': return <Finance />;
-            case '/accounting': return <Accounting />;
-            case '/masters': return <Masters />;
-            case '/settings': return <Settings />;
-            case '/storefront-simulation': return <StorefrontSimulation />; // Route Baru
-            default: return <Dashboard />;
-        }
-    };
+    const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
     return (
-        <div className="flex h-screen bg-gray-100 font-sans">
-            <Sidebar currentPath={currentPath} />
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <Header title="Umroh Manager Enterprise" />
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
-                    {renderContent()}
+        <div className="flex h-screen bg-gray-50 overflow-hidden font-sans text-gray-900">
+            {/* Sidebar Component - Passing props untuk kontrol mobile */}
+            <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+
+            {/* Overlay Gelap untuk Mobile saat Sidebar terbuka */}
+            {isSidebarOpen && (
+                <div 
+                    className="fixed inset-0 z-20 bg-black/50 lg:hidden"
+                    onClick={() => setIsSidebarOpen(false)}
+                ></div>
+            )}
+
+            {/* Main Content Area */}
+            {/* lg:ml-64 artinya margin-left 64 hanya di layar besar (Desktop) */}
+            <div className="flex-1 flex flex-col min-w-0 lg:ml-64 h-full transition-all duration-300">
+                
+                {/* Header (Top Bar) */}
+                <Header toggleSidebar={toggleSidebar} title={title} />
+
+                {/* Scrollable Content Area */}
+                <main className="flex-1 overflow-y-auto p-4 md:p-8">
+                    <div className="max-w-7xl mx-auto">
+                        {/* Render Halaman di sini */}
+                        {children ? children : <Outlet />}
+                    </div>
                 </main>
             </div>
         </div>

@@ -1,98 +1,105 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { menuItems } from '../utils/menuConfig';
-import { LogOut, LayoutGrid, ChevronDown, ChevronRight } from 'lucide-react';
+import { LogOut, LayoutGrid, X } from 'lucide-react';
 
-const Sidebar = () => {
-    const location = useLocation();
-    
-    // State untuk toggle submenu (jika nanti dibutuhkan accordion)
-    const [openMenus, setOpenMenus] = useState({});
-
-    const toggleMenu = (title) => {
-        setOpenMenus(prev => ({ ...prev, [title]: !prev[title] }));
-    };
-
-    // Helper: Fungsi untuk merender satu link menu
+const Sidebar = ({ isOpen, setIsOpen }) => {
+    // Helper untuk merender link
     const renderLink = (item, index) => (
         <NavLink
             key={index}
             to={item.path}
+            onClick={() => setIsOpen(false)} // Tutup sidebar saat menu diklik (Mobile)
             className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
                     isActive
-                        ? 'bg-blue-50 text-blue-700 shadow-sm'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'text-gray-600 hover:bg-blue-50 hover:text-blue-700'
                 }`
             }
         >
-            {/* Pastikan icon ada sebelum dirender */}
-            {item.icon && <item.icon size={18} />}
-            {item.label}
+            {/* Render Icon jika ada */}
+            {item.icon && <item.icon size={20} className="shrink-0" />}
+            <span className="truncate">{item.label}</span>
         </NavLink>
     );
 
     return (
-        <div className="w-64 bg-white h-screen border-r border-gray-200 flex flex-col fixed left-0 top-0 overflow-y-auto z-50 font-inter">
-            {/* Logo Area */}
-            <div className="p-6 flex items-center gap-3 border-b border-gray-100">
-                <div className="bg-blue-600 text-white p-2 rounded-lg shadow-md">
-                    <LayoutGrid size={24} />
-                </div>
-                <div>
-                    <h1 className="font-bold text-lg text-gray-800 leading-tight">UMH Travel</h1>
-                    <p className="text-xs text-gray-500 font-medium">Enterprise System v7.0</p>
-                </div>
-            </div>
-
-            {/* Menu Navigasi */}
-            <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
-                {menuItems.map((item, idx) => {
-                    // KASUS 1: Jika item adalah Section (Grup Menu dengan Judul)
-                    // Struktur: { section: 'Nama', items: [...] }
-                    if (item.section) {
-                        return (
-                            <div key={idx} className="pt-4 first:pt-0">
-                                <div className="px-3 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                    {item.section}
-                                </div>
-                                <div className="space-y-1">
-                                    {item.items.map((subItem, subIdx) => 
-                                        renderLink(subItem, `sub-${idx}-${subIdx}`)
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    }
-
-                    // KASUS 2: Jika item adalah Menu Tunggal (Top Level)
-                    // Struktur: { label: 'Nama', path: '/', icon: ... }
-                    return renderLink(item, idx);
-                })}
-            </nav>
-
-            {/* User Profile / Logout (Fixed Bottom) */}
-            <div className="p-4 border-t border-gray-100 bg-gray-50">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm">
-                            AD
+        <>
+            {/* Sidebar Container */}
+            <aside 
+                className={`
+                    fixed top-0 left-0 z-30 h-full w-64 bg-white border-r border-gray-200 
+                    transition-transform duration-300 ease-in-out shadow-xl lg:shadow-none
+                    ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+                `}
+            >
+                {/* Logo & Header Sidebar */}
+                <div className="flex items-center justify-between h-16 px-6 border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm">
+                            <LayoutGrid size={24} />
                         </div>
-                        <div className="text-xs">
-                            <div className="font-bold text-gray-700 truncate w-24">Administrator</div>
-                            <div className="text-xs text-gray-500">Super Admin</div>
+                        <div>
+                            <h1 className="font-bold text-lg text-gray-800 leading-none">UMH Travel</h1>
+                            <span className="text-[10px] text-gray-500 font-medium">Enterprise v7.0</span>
                         </div>
                     </div>
+                    {/* Tombol Close (Hanya di Mobile) */}
                     <button 
-                        onClick={() => window.location.href = window.umhSettings?.adminUrl + 'admin.php?page=umroh-manager&action=logout'} 
-                        className="text-gray-400 hover:text-red-600 transition p-1 rounded-md hover:bg-red-50" 
-                        title="Logout"
+                        onClick={() => setIsOpen(false)} 
+                        className="lg:hidden text-gray-500 hover:text-red-500"
                     >
-                        <LogOut size={18} />
+                        <X size={24} />
                     </button>
                 </div>
-            </div>
-        </div>
+
+                {/* Menu Scroll Area */}
+                <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar" style={{ height: 'calc(100% - 130px)' }}>
+                    {menuItems.map((item, idx) => {
+                        // Jika item adalah Section (Grup)
+                        if (item.section) {
+                            return (
+                                <div key={idx} className="pt-4 first:pt-0 pb-2">
+                                    <h3 className="px-3 mb-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                        {item.section}
+                                    </h3>
+                                    <div className="space-y-1">
+                                        {item.items.map((subItem, subIdx) => 
+                                            renderLink(subItem, `sub-${idx}-${subIdx}`)
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        }
+                        // Jika item adalah Menu Tunggal
+                        return renderLink(item, idx);
+                    })}
+                </nav>
+
+                {/* Footer User Info */}
+                <div className="absolute bottom-0 w-full p-4 border-t border-gray-100 bg-gray-50">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs border border-blue-200">
+                                AD
+                            </div>
+                            <div className="overflow-hidden">
+                                <div className="text-sm font-bold text-gray-700 truncate">Administrator</div>
+                                <div className="text-xs text-gray-500 truncate">Super Admin</div>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => window.location.href = window.umhSettings?.adminUrl + 'admin.php?page=umroh-manager&action=logout'} 
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
+                            title="Logout"
+                        >
+                            <LogOut size={18} />
+                        </button>
+                    </div>
+                </div>
+            </aside>
+        </>
     );
 };
 

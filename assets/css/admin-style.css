@@ -1,19 +1,8 @@
 /* * ADMIN STYLE - UMROH MANAGER HYBRID
- * Menyembunyikan elemen WordPress standar untuk tampilan aplikasi full
+ * Memaksa aplikasi tampil FULL SCREEN di atas interface WordPress
  */
 
-/* 1. Reset Dasar & Font */
-body.toplevel_page_umroh-manager {
-    margin: 0 !important;
-    padding: 0 !important;
-    height: 100vh !important;
-    overflow: hidden !important;
-    background: #f3f4f6 !important; /* Cool Gray 50 */
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-/* 2. Sembunyikan Elemen WordPress (Admin Bar, Menu, Footer, Notices) */
-/* Gunakan !important untuk menimpa style bawaan WP */
+/* 1. Sembunyikan elemen bawaan WordPress */
 body.toplevel_page_umroh-manager #wpadminbar,
 body.toplevel_page_umroh-manager #adminmenumain,
 body.toplevel_page_umroh-manager #adminmenuback,
@@ -22,53 +11,41 @@ body.toplevel_page_umroh-manager #wpfooter,
 body.toplevel_page_umroh-manager .update-nag,
 body.toplevel_page_umroh-manager .notice,
 body.toplevel_page_umroh-manager #wpbody-content > .wrap > h1,
-body.toplevel_page_umroh-manager .auto-fold #wpcontent,
-body.toplevel_page_umroh-manager #screen-meta,
-body.toplevel_page_umroh-manager #screen-meta-links {
+body.toplevel_page_umroh-manager .auto-fold #wpcontent {
     display: none !important;
     visibility: hidden !important;
     height: 0 !important;
     width: 0 !important;
     opacity: 0 !important;
-    pointer-events: none !important;
     z-index: -9999 !important;
 }
 
-/* 3. Reset Container WordPress agar Full Width */
-body.toplevel_page_umroh-manager #wpcontent {
-    margin-left: 0 !important;
+/* 2. Reset Margin & Padding Body WordPress */
+body.toplevel_page_umroh-manager {
+    margin: 0 !important;
     padding: 0 !important;
     height: 100vh !important;
-    overflow: hidden !important;
+    width: 100vw !important;
+    overflow: hidden !important; /* Mencegah scroll ganda */
     background: #f3f4f6 !important;
 }
 
-body.toplevel_page_umroh-manager #wpbody-content {
-    padding-bottom: 0 !important;
-    float: none !important;
-}
-
-body.toplevel_page_umroh-manager #wpbody {
-    padding-top: 0 !important;
-}
-
-/* 4. Container Utama Aplikasi React */
-#umh-admin-app { 
+/* 3. Container Root React - HARUS DI ATAS SEGALANYA */
+#umh-admin-root {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 999999; /* Pastikan di atas layer WP apapun */
-    background: #f3f4f6;
+    z-index: 999999; /* Layer paling atas */
+    background: #f9fafb;
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* Scroll ditangani di dalam Layout React */
+    overflow-y: auto; /* Scroll ditangani di dalam app */
 }
 
-/* 5. Reset style WP Wrap agar tidak mengganggu layout */
-body.toplevel_page_umroh-manager .wrap {
-    margin: 0 !important;
-    padding: 0 !important;
-    max-width: 100% !important;
+/* 4. Reset WP Content Area */
+body.toplevel_page_umroh-manager #wpcontent {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
 }
