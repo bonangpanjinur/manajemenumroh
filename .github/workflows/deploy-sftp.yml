@@ -1,0 +1,67 @@
+name: Deploy Plugin to WordPress via SFTP
+
+on:
+  push:
+    branches: [ "main" ] # Pastikan branch utama di GitHub Anda bernama 'main'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Ambil kode dari repository
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Setup Node.js untuk build React
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      # 3. Install & Build React
+      #    CI=false agar warning tidak dianggap error
+      - name: Install & Build Assets
+        run: |
+          npm ci --legacy-peer-deps
+          npm run build
+        env:
+          CI: false
+
+      # 4. Hapus folder development yang tidak perlu di-upload
+      - name: Cleanup before deploy
+        run: rm -rf node_modules src
+
+      # 5. Upload ke Shared Hosting
+      - name: FTP Deploy
+        uses: SamKirkland/FTP-Deploy-Action@4.3.3
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          
+          # Ganti ke 'ftp' jika hosting Anda menolak 'ftps'. 
+          # Shared hosting biasanya menggunakan port 21.
+          protocol: ftps 
+          port: 21
+          
+          # Upload semua file dari folder saat ini
+          local-dir: ./
+          
+          # ⚠️ PENTING: Ganti path di bawah ini sesuai struktur folder di Hosting Anda.
+          # Pastikan diakhiri dengan garis miring (/)
+          server-dir: /public_html/umrohweb.site/wp-content/plugins/manajemenumroh/
+          
+          # File yang tidak akan di-upload/ditimpa
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            .github/**
+            .gitignore
+            README.md
+            package.json
+            package-lock.json
+            webpack.config.js
+            tailwind.config.js
