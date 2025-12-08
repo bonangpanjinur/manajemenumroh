@@ -30,34 +30,64 @@ import './index.css';
 // Komponen Pembungkus untuk Membersihkan UI WordPress
 const ImmersiveModeWrapper = ({ children }) => {
     useLayoutEffect(() => {
-        // 1. Buat Style Element
+        // 1. PINDAHKAN CONTAINER APP KE BODY LANGSUNG (PENTING!)
+        // Ini mencegah app ikut hilang saat kita menyembunyikan #wpcontent atau #wpbody
+        const appContainer = document.getElementById('umroh-manager-app');
+        if (appContainer && document.body.contains(appContainer)) {
+            // Jika container masih di dalam struktur WP, pindahkan ke direct child dari body
+            if (appContainer.parentElement !== document.body) {
+                document.body.appendChild(appContainer);
+            }
+        }
+
+        // 2. Buat Style Element untuk Override CSS
         const style = document.createElement('style');
         style.id = 'umroh-immersive-style';
         
-        // 2. Isi dengan CSS Agresif (!important)
+        // 3. CSS Agresif tapi AMAN untuk App Kita
         style.innerHTML = `
-            /* Sembunyikan Semua Elemen Bawaan WP */
-            #wpadminbar, #adminmenumain, #adminmenuback, #adminmenuwrap, #wpfooter, #wpcontent, .update-nag, .notice, .error, .updated { 
+            /* Sembunyikan Elemen UI WordPress */
+            #wpadminbar, 
+            #adminmenumain, 
+            #adminmenuback, 
+            #adminmenuwrap, 
+            #wpfooter, 
+            .update-nag, 
+            .notice, 
+            .error, 
+            .updated { 
                 display: none !important; 
                 visibility: hidden !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                z-index: -9999 !important;
+            }
+
+            /* Sembunyikan konten WP Wrapper tapi JANGAN display:none body */
+            #wpcontent, #wpbody, #wpbody-content {
+                margin-left: 0 !important;
+                padding: 0 !important;
+                /* Jangan display:none disini karena script WP mungkin butuh, cukup sembunyikan visual */
+                opacity: 0 !important; 
                 height: 0 !important;
-                width: 0 !important;
-                position: absolute !important;
-                z-index: -999 !important;
+                overflow: hidden !important;
             }
             
-            /* Reset Body */
+            /* Reset Body agar Full Screen */
             html, body { 
                 margin: 0 !important; 
                 padding: 0 !important; 
                 height: 100vh !important; 
                 width: 100vw !important;
-                overflow: hidden !important; 
-                background-color: #f3f4f6 !important;
+                overflow: hidden !important; /* Mencegah scroll dari body WP */
+                background-color: #f3f4f6 !important; /* Warna latar belakang app */
             }
 
-            /* Paksa App Container Fullscreen */
+            /* Pastikan App Container Selalu Tampil & Full Screen */
             #umroh-manager-app {
+                display: block !important; /* Pastikan selalu tampil */
+                opacity: 1 !important;
+                visibility: visible !important;
                 position: fixed !important;
                 top: 0 !important;
                 left: 0 !important;
@@ -65,18 +95,17 @@ const ImmersiveModeWrapper = ({ children }) => {
                 bottom: 0 !important;
                 width: 100vw !important;
                 height: 100vh !important;
-                z-index: 2147483647 !important;
-                overflow-y: auto !important;
+                z-index: 2147483647 !important; /* Z-Index Maksimum */
+                overflow-y: auto !important; /* Scroll internal app */
                 background-color: #f3f4f6;
             }
         `;
         
-        // 3. Suntikkan ke Head
         document.head.appendChild(style);
 
-        // Cleanup saat unmount (opsional, untuk SPA biasanya tidak perlu)
+        // Cleanup function
         return () => {
-            // document.head.removeChild(style); 
+            // Optional: Kembalikan tampilan jika unmount (biasanya tidak perlu di mode ini)
         };
     }, []);
 
@@ -120,8 +149,11 @@ const App = () => {
     );
 };
 
+// Mount Logic
 const container = document.getElementById('umroh-manager-app');
 if (container) {
     const root = createRoot(container);
     root.render(<App />);
+} else {
+    console.error("Gagal menemukan container #umroh-manager-app. Pastikan plugin aktif.");
 }
