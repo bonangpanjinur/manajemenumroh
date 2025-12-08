@@ -27,86 +27,76 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import DataContext from './contexts/DataContext';
 import './index.css';
 
-// Komponen Pembungkus untuk Membersihkan UI WordPress
+// Komponen Pembungkus untuk Membersihkan UI WordPress (CSS ONLY)
 const ImmersiveModeWrapper = ({ children }) => {
     useLayoutEffect(() => {
-        // 1. PINDAHKAN CONTAINER APP KE BODY LANGSUNG (PENTING!)
-        // Ini mencegah app ikut hilang saat kita menyembunyikan #wpcontent atau #wpbody
-        const appContainer = document.getElementById('umroh-manager-app');
-        if (appContainer && document.body.contains(appContainer)) {
-            // Jika container masih di dalam struktur WP, pindahkan ke direct child dari body
-            if (appContainer.parentElement !== document.body) {
-                document.body.appendChild(appContainer);
-            }
-        }
-
-        // 2. Buat Style Element untuk Override CSS
-        const style = document.createElement('style');
-        style.id = 'umroh-immersive-style';
-        
-        // 3. CSS Agresif tapi AMAN untuk App Kita
-        style.innerHTML = `
-            /* Sembunyikan Elemen UI WordPress */
-            #wpadminbar, 
-            #adminmenumain, 
-            #adminmenuback, 
-            #adminmenuwrap, 
-            #wpfooter, 
-            .update-nag, 
-            .notice, 
-            .error, 
-            .updated { 
-                display: none !important; 
-                visibility: hidden !important;
-                opacity: 0 !important;
-                pointer-events: none !important;
-                z-index: -9999 !important;
-            }
-
-            /* Sembunyikan konten WP Wrapper tapi JANGAN display:none body */
-            #wpcontent, #wpbody, #wpbody-content {
-                margin-left: 0 !important;
-                padding: 0 !important;
-                /* Jangan display:none disini karena script WP mungkin butuh, cukup sembunyikan visual */
-                opacity: 0 !important; 
-                height: 0 !important;
-                overflow: hidden !important;
-            }
+        // Buat Style Element untuk Override CSS secara Agresif
+        const styleId = 'umroh-immersive-style';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
             
-            /* Reset Body agar Full Screen */
-            html, body { 
-                margin: 0 !important; 
-                padding: 0 !important; 
-                height: 100vh !important; 
-                width: 100vw !important;
-                overflow: hidden !important; /* Mencegah scroll dari body WP */
-                background-color: #f3f4f6 !important; /* Warna latar belakang app */
-            }
+            style.innerHTML = `
+                /* 1. Sembunyikan Elemen UI Bawaan WordPress */
+                #wpadminbar, 
+                #adminmenumain, 
+                #adminmenuback, 
+                #adminmenuwrap, 
+                #wpfooter, 
+                .update-nag, 
+                .notice, 
+                .error, 
+                .updated { 
+                    display: none !important; 
+                    visibility: hidden !important;
+                    opacity: 0 !important;
+                    pointer-events: none !important;
+                    z-index: -9999 !important;
+                    height: 0 !important;
+                    width: 0 !important;
+                    position: absolute !important;
+                }
 
-            /* Pastikan App Container Selalu Tampil & Full Screen */
-            #umroh-manager-app {
-                display: block !important; /* Pastikan selalu tampil */
-                opacity: 1 !important;
-                visibility: visible !important;
-                position: fixed !important;
-                top: 0 !important;
-                left: 0 !important;
-                right: 0 !important;
-                bottom: 0 !important;
-                width: 100vw !important;
-                height: 100vh !important;
-                z-index: 2147483647 !important; /* Z-Index Maksimum */
-                overflow-y: auto !important; /* Scroll internal app */
-                background-color: #f3f4f6;
-            }
-        `;
-        
-        document.head.appendChild(style);
+                /* 2. Sembunyikan Wrapper Konten WP (tapi jangan display:none body) */
+                #wpcontent, #wpbody, #wpbody-content, .wrap {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    opacity: 0 !important; 
+                    height: 0 !important;
+                    overflow: hidden !important;
+                    pointer-events: none !important;
+                }
+                
+                /* 3. Reset Body agar Full Screen untuk App Kita */
+                html, body { 
+                    margin: 0 !important; 
+                    padding: 0 !important; 
+                    height: 100vh !important; 
+                    width: 100vw !important;
+                    overflow: hidden !important; /* Mencegah scroll dari body WP */
+                    background-color: #f3f4f6 !important;
+                }
 
-        // Cleanup function
-        return () => {
-            // Optional: Kembalikan tampilan jika unmount (biasanya tidak perlu di mode ini)
-        };
+                /* 4. Pastikan App Container Selalu Tampil & Full Screen */
+                #umroh-manager-app {
+                    display: block !important;
+                    opacity: 1 !important;
+                    visibility: visible !important;
+                    pointer-events: auto !important;
+                    position: fixed !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    right: 0 !important;
+                    bottom: 0 !important;
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    z-index: 2147483647 !important; /* Z-Index Maksimum Browser */
+                    overflow-y: auto !important;
+                    background-color: #f3f4f6;
+                }
+            `;
+            document.head.appendChild(style);
+        }
     }, []);
 
     return children;
@@ -149,11 +139,33 @@ const App = () => {
     );
 };
 
-// Mount Logic
-const container = document.getElementById('umroh-manager-app');
-if (container) {
-    const root = createRoot(container);
-    root.render(<App />);
+// --- MOUNTING LOGIC (PERBAIKAN UTAMA DI SINI) ---
+
+const initApp = () => {
+    const containerId = 'umroh-manager-app';
+    const container = document.getElementById(containerId);
+
+    if (container) {
+        // TEKNIK PENYELAMATAN:
+        // Pindahkan container aplikasi keluar dari dalam div WordPress (#wpcontent/wrap)
+        // Langsung tempel ke <body> agar tidak ikut tersembunyi oleh CSS Immersive kita.
+        if (document.body.contains(container) && container.parentElement !== document.body) {
+            document.body.appendChild(container);
+        }
+
+        // Render React
+        const root = createRoot(container);
+        root.render(<App />);
+    } else {
+        // Jika masih tidak ketemu, coba lagi sedikit nanti (Fallback)
+        console.warn(`Container #${containerId} belum siap. Mencoba ulang...`);
+        setTimeout(initApp, 500); 
+    }
+};
+
+// Pastikan DOM sudah siap sebelum menjalankan script
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
 } else {
-    console.error("Gagal menemukan container #umroh-manager-app. Pastikan plugin aktif.");
+    initApp();
 }
