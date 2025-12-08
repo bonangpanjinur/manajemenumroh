@@ -1,52 +1,42 @@
 import axios from 'axios';
 
-// --- KONFIGURASI API ---
-
-const getBaseUrl = () => {
-    // 1. Cek Global Variable dari WP (Paling Akurat)
-    if (typeof window.umh_api_settings !== 'undefined' && window.umh_api_settings.root) {
-        return window.umh_api_settings.root;
+// Konfigurasi Dinamis dari WordPress
+const getApiSettings = () => {
+    if (typeof window.umh_api_settings !== 'undefined') {
+        return window.umh_api_settings;
     }
-
-    // 2. Fallback Relative Path (Cerdas)
-    const path = window.location.pathname;
-    const wpAdminIndex = path.indexOf('/wp-admin');
-    
-    if (wpAdminIndex !== -1) {
-        const rootPath = path.substring(0, wpAdminIndex);
-        return `${rootPath}/wp-json/umh/v1`;
-    }
-
-    return '/wp-json/umh/v1';
+    // Fallback development (hati-hati dengan nonce di dev)
+    return {
+        root: '/wp-json/umh/v1',
+        nonce: '' 
+    };
 };
 
-const getNonce = () => {
-    // Nonce sangat penting untuk menghindari 403 Forbidden
-    if (typeof window.umh_api_settings !== 'undefined' && window.umh_api_settings.nonce) {
-        return window.umh_api_settings.nonce;
-    }
-    console.warn("API Warning: Nonce WordPress tidak ditemukan. Request mungkin gagal (403).");
-    return '';
-};
-
-// Buat Instance Axios
 const axiosInstance = axios.create({
     headers: {
         'Content-Type': 'application/json'
     }
 });
 
-// REQUEST INTERCEPTOR: Inject URL & Nonce Dinamis
+// REQUEST INTERCEPTOR: Selalu ambil nonce terbaru
 axiosInstance.interceptors.request.use((config) => {
-    config.baseURL = getBaseUrl();
-    config.headers['X-WP-Nonce'] = getNonce();
+    const settings = getApiSettings();
+    
+    // Set Base URL
+    config.baseURL = settings.root;
+    
+    // Set Nonce Header (Wajib untuk POST/PUT/DELETE dan GET protected)
+    if (settings.nonce) {
+        config.headers['X-WP-Nonce'] = settings.nonce;
+    }
+
     return config;
 }, (error) => Promise.reject(error));
 
 // RESPONSE INTERCEPTOR
 axiosInstance.interceptors.response.use(
     (response) => {
-        // Normalisasi response
+        // Unpack data
         if (response.data && response.data.data !== undefined) {
             return response.data.data;
         }
@@ -54,20 +44,16 @@ axiosInstance.interceptors.response.use(
     },
     (error) => {
         const url = error.config?.url || 'Unknown';
-        const status = error.response?.status;
-        
         console.warn(`API Error [${url}]:`, error.message);
 
-        // Handle 403 Forbidden (Biasanya karena Nonce expired atau logout)
-        if (status === 403) {
-            console.error("Akses Ditolak (403). Cek Nonce atau Login ulang.");
-            // Opsional: Redirect ke login jika session habis
-            // window.location.href = '/wp-login.php'; 
+        // Khusus error 403 (Forbidden)
+        if (error.response && error.response.status === 403) {
+            console.error("⛔ API 403 Forbidden: Nonce invalid atau expired.");
+            // Jangan redirect login otomatis dulu, karena bisa jadi hanya masalah nonce sementara
         }
 
-        // Return empty array untuk GET request agar UI tidak crash (Blank)
+        // Return array kosong untuk GET agar UI tidak crash (Blank)
         if (error.config && error.config.method === 'get') {
-            console.log(`Safe Fail GET ${url} -> Returning empty []`);
             return Promise.resolve([]); 
         }
         
@@ -77,10 +63,7 @@ axiosInstance.interceptors.response.use(
 );
 
 export const api = {
-    get: async (url, params = {}) => {
-        // Wrapper aman, error sudah di-handle interceptor
-        return await axiosInstance.get(url, { params });
-    },
+    get: (url, params = {}) => axiosInstance.get(url, { params }),
     post: (url, data) => axiosInstance.post(url, data),
     put: (url, data) => axiosInstance.put(url, data),
     delete: (url) => axiosInstance.delete(url)
