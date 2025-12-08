@@ -1,97 +1,124 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import CrudTable from '../components/CrudTable';
 import { api } from '../utils/api';
-import { formatCurrency, formatDate } from '../utils/formatters';
+import { formatCurrency } from '../utils/formatters';
 
 const Badal = () => {
-  const [mutawwifs, setMutawwifs] = useState([]);
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [mutawwifs, setMutawwifs] = useState([]);
 
-  useEffect(() => {
-    const fetchM = async () => {
-      try {
-        const res = await api.get('/mutawwif?status=active');
-        if (Array.isArray(res)) setMutawwifs(res);
-      } catch (e) { console.error(e); }
-    };
-    fetchM();
-  }, []);
+    const fetchBadal = useCallback(async () => {
+        setLoading(true);
+        try {
+            const response = await api.get('/badal');
+            setData(Array.isArray(response) ? response : []);
+        } catch (error) {
+            console.error("Error fetching badal:", error);
+            setData([]);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
-  const columns = [
-    { key: 'badal_for_name', label: 'Badal Untuk (Nama)' },
-    { key: 'badal_reason', label: 'Alasan', render: (val) => val === 'deceased' ? 'Almarhum/ah' : 'Sakit/Uzur' },
-    { key: 'mutawwif_name', label: 'Pelaksana', render: (val) => val || <span className="text-gray-400 italic">Belum ditentukan</span> },
-    { key: 'price', label: 'Harga', render: (val) => formatCurrency(val) },
-    { 
-      key: 'status', 
-      label: 'Status',
-      render: (val) => {
-        const colors = {
-          pending: 'bg-yellow-100 text-yellow-800',
-          paid: 'bg-blue-100 text-blue-800',
-          assigned: 'bg-purple-100 text-purple-800',
-          completed: 'bg-green-100 text-green-800',
-          certificate_sent: 'bg-teal-100 text-teal-800'
+    useEffect(() => {
+        const fetchMasters = async () => {
+            try {
+                const res = await api.get('/mutawwif?status=active');
+                setMutawwifs(Array.isArray(res) ? res : []);
+            } catch (e) {
+                setMutawwifs([]);
+            }
         };
-        return <span className={`px-2 py-1 rounded text-xs ${colors[val] || 'bg-gray-100'}`}>{val.replace('_', ' ').toUpperCase()}</span>;
-      }
-    }
-  ];
+        fetchBadal();
+        fetchMasters();
+    }, [fetchBadal]);
 
-  const formFields = [
-    { section: 'Info Badal' },
-    { name: 'badal_for_name', label: 'Nama Yang Dibadalkan', type: 'text', required: true, width: 'half' },
-    { 
-      name: 'badal_for_gender', 
-      label: 'Jenis Kelamin', 
-      type: 'select', 
-      options: [{value: 'L', label: 'Laki-laki'}, {value: 'P', label: 'Perempuan'}], 
-      width: 'quarter' 
-    },
-    { 
-      name: 'badal_reason', 
-      label: 'Kondisi', 
-      type: 'select', 
-      options: [{value: 'deceased', label: 'Meninggal'}, {value: 'sick', label: 'Sakit Keras'}, {value: 'old_age', label: 'Lansia Renta'}], 
-      width: 'quarter' 
-    },
-    
-    { section: 'Biaya & Pelaksanaan' },
-    { name: 'price', label: 'Harga Paket (Rp)', type: 'number', required: true, width: 'half' },
-    { 
-      name: 'assigned_mutawwif_id', 
-      label: 'Tunjuk Pelaksana (Mutawwif)', 
-      type: 'select',
-      options: [{value: '', label: '- Pilih Nanti -'}, ...mutawwifs.map(m => ({ value: m.id, label: m.name }))],
-      width: 'half'
-    },
-    
-    { section: 'Status & Bukti' },
-    { 
-      name: 'status', 
-      label: 'Status Proses', 
-      type: 'select', 
-      options: [
-        {value: 'pending', label: 'Pending (Belum Bayar)'},
-        {value: 'paid', label: 'Paid (Sudah Bayar)'},
-        {value: 'assigned', label: 'Assigned (Sedang Dilaksanakan)'},
-        {value: 'completed', label: 'Completed (Selesai)'},
-        {value: 'certificate_sent', label: 'Certificate Sent'}
-      ],
-      width: 'full'
-    },
-    { name: 'video_proof_url', label: 'Link Video Bukti', type: 'url', width: 'half' },
-    { name: 'certificate_url', label: 'Link Sertifikat', type: 'url', width: 'half' },
-  ];
+    const columns = [
+        { 
+            key: 'badal_for_name', 
+            label: 'Badal Untuk (Alm)',
+            render: (val, row) => (
+                <div>
+                    <div className="font-bold text-gray-800">{val}</div>
+                    <div className="text-xs text-gray-500">Bin/Binti: {row.bin_binti || '-'}</div>
+                </div>
+            )
+        },
+        { 
+            key: 'ordered_by_name', 
+            label: 'Pemesan',
+            render: (val, row) => (
+                <div className="text-sm">
+                    <div>{val}</div>
+                    <div className="text-xs text-gray-500">{row.ordered_by_phone}</div>
+                </div>
+            )
+        },
+        { 
+            key: 'executor_name', 
+            label: 'Pelaksana (Mutawwif)',
+            render: (val) => val ? <span className="text-blue-600 font-medium">{val}</span> : <span className="text-gray-400 italic">Belum ditunjuk</span>
+        },
+        { 
+            key: 'status', 
+            label: 'Status',
+            render: (val) => {
+                const map = { pending: 'bg-gray-100', assigned: 'bg-blue-100 text-blue-800', completed: 'bg-green-100 text-green-800', certificate_sent: 'bg-purple-100 text-purple-800' };
+                return <span className={`px-2 py-1 rounded text-xs ${map[val] || 'bg-gray-100'}`}>{val ? val.replace('_', ' ').toUpperCase() : '-'}</span>;
+            }
+        }
+    ];
 
-  return (
-    <CrudTable
-      title="Layanan Badal Umrah"
-      endpoint="/badal"
-      columns={columns}
-      formFields={formFields}
-      searchPlaceholder="Cari nama..."
-    />
-  );
+    const formFields = [
+        { section: 'Data Almarhum/ah' },
+        { name: 'badal_for_name', label: 'Nama Yang Dibadalkan', type: 'text', required: true, width: 'half' },
+        { name: 'bin_binti', label: 'Bin / Binti', type: 'text', required: true, width: 'half' },
+        { name: 'gender', label: 'Jenis Kelamin', type: 'select', options: [{value: 'L', label: 'Laki-laki'}, {value: 'P', label: 'Perempuan'}], width: 'half' },
+        { name: 'notes', label: 'Catatan Khusus', type: 'text', width: 'half' },
+
+        { section: 'Data Pemesan' },
+        { name: 'ordered_by_name', label: 'Nama Pemesan', type: 'text', required: true, width: 'half' },
+        { name: 'ordered_by_phone', label: 'No. WhatsApp Pemesan', type: 'text', required: true, width: 'half' },
+        { name: 'price', label: 'Biaya Badal', type: 'number', defaultValue: 2500000, width: 'full' },
+
+        { section: 'Pelaksanaan' },
+        { 
+            name: 'executor_id', 
+            label: 'Pilih Pelaksana (Mutawwif)', 
+            type: 'select', 
+            // SAFETY CHECK
+            options: [{value: '', label: '- Belum Ditunjuk -'}, ...(mutawwifs || []).map(m => ({ value: m.id, label: m.name }))],
+            width: 'full' 
+        },
+        { 
+            name: 'status', 
+            label: 'Status Pengerjaan', 
+            type: 'select', 
+            options: [
+                {value: 'pending', label: 'Menunggu'}, 
+                {value: 'assigned', label: 'Pelaksana Ditunjuk'}, 
+                {value: 'completed', label: 'Selesai Dilaksanakan'},
+                {value: 'certificate_sent', label: 'Sertifikat Dikirim'}
+            ],
+            defaultValue: 'pending',
+            width: 'full' 
+        }
+    ];
+
+    return (
+        <div className="p-6">
+            <CrudTable
+                title="Layanan Badal Umrah"
+                data={data}
+                columns={columns}
+                loading={loading}
+                onRefresh={fetchBadal}
+                formFields={formFields}
+                searchPlaceholder="Cari nama almarhum..."
+            />
+        </div>
+    );
 };
 
 export default Badal;

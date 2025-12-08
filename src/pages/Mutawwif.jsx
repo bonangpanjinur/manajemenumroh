@@ -1,76 +1,78 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import CrudTable from '../components/CrudTable';
+import { api } from '../utils/api';
 
 const Mutawwif = () => {
-  const columns = [
-    { key: 'name', label: 'Nama Lengkap' },
-    { key: 'phone', label: 'No. HP/WA' },
-    { 
-      key: 'base_location', 
-      label: 'Lokasi Basis',
-      render: (val) => (
-        <span className={`px-2 py-1 rounded text-xs ${val === 'Makkah' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-          {val}
-        </span>
-      )
-    },
-    { key: 'languages', label: 'Bahasa' },
-    { key: 'specialization', label: 'Spesialisasi' },
-    { key: 'rating', label: 'Rating', render: (val) => val ? `⭐ ${val}` : '-' },
-    { 
-      key: 'status', 
-      label: 'Status',
-      render: (val) => (
-        <span className={`px-2 py-1 rounded-full text-xs ${val === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-          {val.toUpperCase()}
-        </span>
-      )
-    },
-  ];
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-  const formFields = [
-    { name: 'name', label: 'Nama Mutawwif', type: 'text', required: true, width: 'full' },
-    { name: 'phone', label: 'No. WhatsApp', type: 'tel', required: true, width: 'half' },
-    { name: 'email', label: 'Email', type: 'email', width: 'half' },
-    { 
-      name: 'base_location', 
-      label: 'Lokasi Basis', 
-      type: 'select', 
-      options: [
-        { value: 'Indonesia', label: 'Indonesia' },
-        { value: 'Makkah', label: 'Makkah' },
-        { value: 'Madinah', label: 'Madinah' }
-      ],
-      required: true,
-      width: 'half'
-    },
-    { name: 'experience_years', label: 'Pengalaman (Tahun)', type: 'number', width: 'half' },
-    { name: 'languages', label: 'Bahasa (Pisahkan koma)', type: 'text', placeholder: 'Indonesia, Arab, Inggris', width: 'full' },
-    { name: 'specialization', label: 'Spesialisasi', type: 'text', placeholder: 'Sejarah, Lansia, VVIP', width: 'full' },
-    { name: 'license_number', label: 'Nomor Sertifikat/Lisensi', type: 'text', width: 'full' },
-    { name: 'photo_url', label: 'URL Foto Profil', type: 'url', width: 'full' },
-    { 
-      name: 'status', 
-      label: 'Status', 
-      type: 'select', 
-      options: [
-        { value: 'active', label: 'Aktif' },
-        { value: 'inactive', label: 'Tidak Aktif' },
-        { value: 'suspended', label: 'Suspend' }
-      ],
-      width: 'full'
-    }
-  ];
+    const fetchMutawwif = useCallback(async () => {
+        setLoading(true);
+        try {
+            const response = await api.get('/mutawwif');
+            setData(Array.isArray(response) ? response : []);
+        } catch (error) {
+            console.error("Error fetching mutawwif:", error);
+            setData([]);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
-  return (
-    <CrudTable
-      title="Manajemen Mutawwif"
-      endpoint="/mutawwif"
-      columns={columns}
-      formFields={formFields}
-      searchPlaceholder="Cari Mutawwif..."
-    />
-  );
+    useEffect(() => {
+        fetchMutawwif();
+    }, [fetchMutawwif]);
+
+    const columns = [
+        { 
+            key: 'name', 
+            label: 'Nama Mutawwif',
+            render: (val, row) => (
+                <div>
+                    <div className="font-bold text-gray-800">{val}</div>
+                    <div className="text-xs text-gray-500">{row.phone}</div>
+                </div>
+            )
+        },
+        { key: 'city_base', label: 'Basis Kota', render: (val) => val || 'Makkah' },
+        { 
+            key: 'rating', 
+            label: 'Rating', 
+            render: (val) => val ? <span className="text-yellow-600">★ {val}</span> : '-' 
+        },
+        { 
+            key: 'status', 
+            label: 'Status', 
+            render: (val) => val === 'active' 
+                ? <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Aktif</span> 
+                : <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">Non-Aktif</span>
+        }
+    ];
+
+    const formFields = [
+        { section: 'Profil Mutawwif' },
+        { name: 'name', label: 'Nama Lengkap', type: 'text', required: true, width: 'half' },
+        { name: 'phone', label: 'No. WhatsApp (Saudi/Indo)', type: 'text', required: true, width: 'half' },
+        { name: 'city_base', label: 'Domisili Saat Ini', type: 'select', options: [{value: 'Makkah', label: 'Makkah'}, {value: 'Madinah', label: 'Madinah'}, {value: 'Jeddah', label: 'Jeddah'}, {value: 'Indonesia', label: 'Indonesia'}], width: 'half' },
+        { name: 'education', label: 'Latar Belakang Pendidikan', type: 'text', width: 'half' },
+        
+        { section: 'Status' },
+        { name: 'status', label: 'Status Ketersediaan', type: 'select', options: [{value: 'active', label: 'Aktif / Ready'}, {value: 'inactive', label: 'Pulang Indo / Cuti'}], defaultValue: 'active', width: 'full' }
+    ];
+
+    return (
+        <div className="p-6">
+            <CrudTable
+                title="Data Mutawwif & Tour Leader"
+                data={data}
+                columns={columns}
+                loading={loading}
+                onRefresh={fetchMutawwif}
+                formFields={formFields}
+                searchPlaceholder="Cari mutawwif..."
+            />
+        </div>
+    );
 };
 
 export default Mutawwif;
