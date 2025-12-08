@@ -7,8 +7,8 @@ import { DataProvider } from './contexts/DataContext';
 // Pages - Existing
 import Dashboard from './pages/Dashboard';
 import Packages from './pages/Packages';
-import Departures from './pages/Departures'; // Updated
-import Bookings from './pages/Bookings';     // Updated
+import Departures from './pages/Departures';
+import Bookings from './pages/Bookings';
 import Jamaah from './pages/Jamaah';
 import Finance from './pages/Finance';
 import Agents from './pages/Agents';
@@ -40,7 +40,7 @@ const App = () => {
             <Route path="/packages" element={<Packages />} />
             <Route path="/departures" element={<Departures />} />
             <Route path="/private-umrah" element={<PrivateUmrah />} />
-            <Route path="/badal" element={<Badal />} /> {/* NEW */}
+            <Route path="/badal" element={<Badal />} />
             
             {/* Transaksi */}
             <Route path="/bookings" element={<Bookings />} />
@@ -50,14 +50,14 @@ const App = () => {
             {/* Operasional */}
             <Route path="/jamaah" element={<Jamaah />} />
             <Route path="/mutawwif" element={<Mutawwif />} />
-            <Route path="/manasik" element={<Manasik />} /> {/* NEW */}
+            <Route path="/manasik" element={<Manasik />} />
             <Route path="/logistics" element={<Logistics />} />
             
             {/* Lainnya */}
             <Route path="/marketing" element={<Marketing />} />
             <Route path="/agents" element={<Agents />} />
             <Route path="/hr" element={<HR />} />
-            <Route path="/support" element={<Support />} /> {/* NEW */}
+            <Route path="/support" element={<Support />} />
             <Route path="/masters" element={<Masters />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
@@ -67,8 +67,11 @@ const App = () => {
   );
 };
 
-const rootElement = document.getElementById('umroh-manager-root');
-if (rootElement) {
-  const root = createRoot(rootElement);
-  root.render(<App />);
-}
+// Pastikan DOM sudah siap sebelum render
+document.addEventListener('DOMContentLoaded', () => {
+  const rootElement = document.getElementById('umroh-manager-root');
+  if (rootElement) {
+    const root = createRoot(rootElement);
+    root.render(<App />);
+  }
+});
