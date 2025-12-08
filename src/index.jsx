@@ -32,28 +32,54 @@ import Mutawwif from './pages/Mutawwif';
 // Component untuk Fullscreen Mode
 const ImmersiveWrapper = ({ children }) => {
     useLayoutEffect(() => {
+        // Hanya jalankan di halaman plugin kita
+        if (!window.location.search.includes('page=umroh-manager')) return;
+
         // Suntikkan CSS Global untuk Reset Tampilan WP
         const style = document.createElement('style');
+        style.id = 'umroh-immersive-css';
         style.innerHTML = `
             /* Sembunyikan elemen WP */
-            #wpadminbar, #adminmenumain, #adminmenuback, #adminmenuwrap, #wpfooter, .update-nag, .notice { display: none !important; }
-            #wpcontent, #wpbody { margin: 0 !important; padding: 0 !important; }
+            #wpadminbar, #adminmenumain, #adminmenuback, #adminmenuwrap, #wpfooter, .update-nag, .notice { 
+                display: none !important; 
+            }
+            /* Sembunyikan Wrapper Konten WP tapi tetap jaga layout */
+            #wpcontent, #wpbody, #wpbody-content, .wrap { 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                height: 100vh !important; 
+                width: 100vw !important;
+                overflow: hidden !important;
+            }
             
             /* Reset Body */
-            html, body { height: 100vh; width: 100vw; overflow: hidden; margin: 0; padding: 0; }
+            html, body { 
+                height: 100vh !important; 
+                width: 100vw !important; 
+                overflow: hidden !important; 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                background-color: #f3f4f6 !important;
+            }
             
             /* Pastikan Root App Fullscreen */
             #umroh-manager-app {
-                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                width: 100vw; height: 100vh;
-                z-index: 999999;
-                background-color: #f3f4f6;
-                overflow-y: auto;
+                position: fixed !important; 
+                top: 0 !important; 
+                left: 0 !important; 
+                right: 0 !important; 
+                bottom: 0 !important;
+                width: 100vw !important; 
+                height: 100vh !important;
+                z-index: 999999 !important;
+                background-color: #f3f4f6 !important;
+                overflow-y: auto !important;
+                display: block !important;
             }
         `;
         document.head.appendChild(style);
         return () => {
-            // document.head.removeChild(style); // Opsional
+            // Cleanup jika perlu
         };
     }, []);
     return children;
@@ -94,30 +120,60 @@ const App = () => (
     </ImmersiveWrapper>
 );
 
-// --- MOUNTING LOGIC ---
+// --- MOUNTING LOGIC YANG DIPERBAIKI ---
 const mountApp = () => {
-    const containerId = 'umroh-manager-app';
-    const container = document.getElementById(containerId);
+    // 1. Cek Apakah Kita di Halaman Plugin?
+    // Sesuaikan 'page=umroh-manager' dengan slug menu di PHP plugin Anda
+    const isPluginPage = window.location.search.includes('page=umroh-manager');
+    
+    if (!isPluginPage) {
+        // Jika bukan halaman plugin, jangan lakukan apa-apa.
+        // Ini mencegah error "Container not found" di halaman admin lain.
+        return;
+    }
 
-    if (container) {
-        // Pindahkan ke body agar aman dari CSS hide WP
-        if (document.body.contains(container) && container.parentElement !== document.body) {
+    const containerId = 'umroh-manager-app';
+    let container = document.getElementById(containerId);
+
+    // 2. Jika container belum ada, kita tunggu sebentar atau buat fallback
+    if (!container) {
+        console.warn(`Container #${containerId} belum siap. Mencoba mencari lagi...`);
+        
+        // Coba cari lagi setelah delay pendek (memberi waktu PHP render)
+        setTimeout(() => {
+            container = document.getElementById(containerId);
+            if (container) {
+                renderReact(container);
+            } else {
+                console.error(`Gagal menemukan container #${containerId}. Pastikan Anda berada di halaman plugin yang benar.`);
+                
+                // OPSI TERAKHIR: Inject container secara manual jika PHP gagal render
+                // Ini "Force Mode" agar app tetap jalan
+                const newContainer = document.createElement('div');
+                newContainer.id = containerId;
+                document.body.appendChild(newContainer);
+                renderReact(newContainer);
+            }
+        }, 1000); // Tunggu 1 detik
+        return;
+    }
+
+    renderReact(container);
+};
+
+// Fungsi Render Terpisah agar bersih
+const renderReact = (container) => {
+    try {
+        // Pindahkan ke body agar aman dari CSS hide WP (jika belum)
+        if (container.parentElement !== document.body) {
             document.body.appendChild(container);
         }
         
-        try {
-            const root = createRoot(container);
-            root.render(<App />);
-            console.log("✅ App Mounted Successfully");
-        } catch (e) {
-            console.error("❌ React Render Error:", e);
-        }
-    } else {
-        // Jangan looping error, cukup log sekali jika memang bukan di halaman plugin
-        // Cek URL apakah ini halaman plugin kita?
-        if (window.location.search.includes('page=umroh-manager')) {
-            console.error(`❌ Container #${containerId} tidak ditemukan di halaman plugin! Cek file PHP.`);
-        }
+        const root = createRoot(container);
+        root.render(<App />);
+        console.log("✅ Umroh Manager App Mounted Successfully");
+    } catch (e) {
+        console.error("❌ React Render Error:", e);
     }
 };
 

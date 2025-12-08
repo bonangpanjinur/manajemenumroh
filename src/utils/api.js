@@ -7,9 +7,10 @@ const getBaseUrl = () => {
         return window.umh_api_settings.root;
     }
 
-    // 2. Fallback Relative Path
+    // 2. Fallback Relative Path (Cerdas)
     // Deteksi apakah WP diinstall di subfolder atau root domain
     const path = window.location.pathname;
+    // Cari posisi '/wp-admin/' untuk menentukan root
     const wpAdminIndex = path.indexOf('/wp-admin');
     
     if (wpAdminIndex !== -1) {
@@ -18,23 +19,39 @@ const getBaseUrl = () => {
         return `${rootPath}/wp-json/umh/v1`;
     }
 
+    // Default asumsi root
     return '/wp-json/umh/v1';
 };
 
+// Helper untuk mendapatkan Nonce kapanpun dibutuhkan
+// Jangan simpan di variabel const statis di luar fungsi, 
+// karena mungkin window.umh_api_settings belum ready saat file di-import.
 const getNonce = () => {
     if (typeof window.umh_api_settings !== 'undefined' && window.umh_api_settings.nonce) {
         return window.umh_api_settings.nonce;
     }
-    console.warn("Nonce tidak ditemukan. Request POST/PUT mungkin gagal.");
+    // Coba ambil dari header meta tag jika ada (opsional)
+    // const metaNonce = document.querySelector('meta[name="csrf-token"]');
+    // if (metaNonce) return metaNonce.content;
+    
     return '';
 };
 
+// Buat instance axios dasar
 const axiosInstance = axios.create({
-    baseURL: getBaseUrl(),
     headers: {
-        'X-WP-Nonce': getNonce(),
         'Content-Type': 'application/json'
     }
+});
+
+// Request Interceptor: Inject URL & Nonce secara dinamis SAAT request dilakukan
+// Ini menjamin kita selalu dapat nilai terbaru/benar
+axiosInstance.interceptors.request.use((config) => {
+    config.baseURL = getBaseUrl();
+    config.headers['X-WP-Nonce'] = getNonce();
+    return config;
+}, (error) => {
+    return Promise.reject(error);
 });
 
 // Interceptor Response
@@ -63,7 +80,9 @@ export const api = {
             return res;
         } catch (error) {
             console.error(`Safe Fail GET ${url}`, error);
-            return []; // Kembalikan array kosong biar UI gak crash
+            // Return array kosong untuk list endpoints agar UI tidak crash
+            // Tapi throw error untuk detail/single item
+            return []; 
         }
     },
     post: (url, data) => axiosInstance.post(url, data),
