@@ -32,3 +32,5 @@ export const menuItems = [
   { path: '/masters', label: 'Data Master', icon: Settings },
   { path: '/settings', label: 'Pengaturan', icon: Settings },
 ];
+
+export default menuItems;
