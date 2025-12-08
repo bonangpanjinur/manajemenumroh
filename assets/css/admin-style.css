@@ -1,93 +1,59 @@
-/* * ADMIN STYLE - UMROH MANAGER HYBRID
- * Menyembunyikan elemen WordPress standar untuk tampilan aplikasi full
- */
+/* --- OVERRIDE TAMPILAN WORDPRESS --- */
 
-/* 1. Reset Dasar & Font */
-body.umroh-manager-page {
-    margin: 0 !important;
-    padding: 0 !important;
-    height: 100vh !important;
-    overflow: hidden !important;
-    background: #f3f4f6 !important; /* Cool Gray 50 */
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-}
-
-/* 2. Sembunyikan Elemen WordPress (Admin Bar, Menu, Footer, Notices) */
-body.umroh-manager-page #wpadminbar,
-body.umroh-manager-page #adminmenumain,
-body.umroh-manager-page #adminmenuback,
-body.umroh-manager-page #adminmenuwrap,
-body.umroh-manager-page #wpfooter,
-body.umroh-manager-page .update-nag,
-body.umroh-manager-page .notice,
-body.umroh-manager-page #wpbody-content > .wrap > h1,
-body.umroh-manager-page .auto-fold #wpcontent,
-body.umroh-manager-page #screen-meta,
-body.umroh-manager-page #screen-meta-links {
+/* 1. Sembunyikan Admin Bar (Top Bar Hitam) */
+#wpadminbar {
     display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    width: 0 !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-    z-index: -9999 !important;
 }
 
-/* 3. Reset Container WordPress agar Full Width */
-body.umroh-manager-page #wpcontent {
-    margin-left: 0 !important;
-    padding: 0 !important;
-    height: 100vh !important;
-    overflow: hidden !important;
-    background: #f3f4f6 !important;
+/* 2. Sembunyikan Sidebar Menu WordPress (Kiri) */
+#adminmenumain, 
+#adminmenuback, 
+#adminmenuwrap {
+    display: none !important;
 }
 
-body.umroh-manager-page #wpbody-content {
-    padding-bottom: 0 !important;
-    float: none !important;
+/* 3. Sembunyikan Footer WordPress ("Thank you for creating with WordPress") */
+#wpfooter {
+    display: none !important;
 }
 
-body.umroh-manager-page #wpbody {
+/* 4. Reset Padding HTML (Biasanya ada padding-top 32px karena admin bar) */
+html.wp-toolbar {
     padding-top: 0 !important;
 }
 
-/* 4. Container Utama Aplikasi React */
-#umh-app-root {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 999999; /* Pastikan di atas layer WP apapun */
-    background: #f3f4f6;
+/* 5. Reset Area Konten Utama WordPress */
+#wpcontent {
+    margin-left: 0 !important; /* Hilangkan margin kiri bekas sidebar */
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    height: 100vh; /* Paksa tinggi penuh */
+    background-color: #f9fafb; /* Sesuaikan dengan bg-gray-50 Tailwind */
+}
+
+/* 6. Hilangkan margin pada body content */
+#wpbody, 
+#wpbody-content {
+    padding-bottom: 0 !important;
+    float: none !important;
+    height: 100%;
+}
+
+/* 7. Sembunyikan Notifikasi/Nag WordPress yang mengganggu layout */
+.update-nag, 
+.notice, 
+.is-dismissible, 
+.error, 
+.updated {
+    display: none !important;
+}
+
+/* --- KONTAINER APLIKASI --- */
+#umroh-manager-app {
+    height: 100vh; /* Viewport Height penuh */
+    width: 100%;
+    margin: 0;
+    padding: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* Scroll ditangani di dalam Layout React */
-}
-
-/* 5. Loading Spinner (Saat React dimuat) */
-.umh-loading-container {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    width: 100vw;
-    background: #fff;
-    color: #4b5563;
-}
-
-.umh-spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #e5e7eb;
-    border-top: 4px solid #2563eb; /* Blue 600 */
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 16px;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
 }
