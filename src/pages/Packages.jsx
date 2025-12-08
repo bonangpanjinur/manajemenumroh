@@ -4,6 +4,10 @@ import { api } from '../utils/api';
 import { formatCurrency } from '../utils/formatters';
 
 const Packages = () => {
+  // Tambahkan state untuk data tabel
+  const [tableData, setTableData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const [masters, setMasters] = useState({
     categories: [],
     airlines: [],
@@ -11,7 +15,22 @@ const Packages = () => {
     hotels_madinah: []
   });
 
-  // Fetch Data Master untuk Dropdown Relasi
+  // Fungsi untuk memuat data tabel (Paket)
+  const fetchTableData = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/packages');
+      // Pastikan response selalu array agar tidak error .map()
+      setTableData(Array.isArray(response) ? response : []);
+    } catch (error) {
+      console.error("Gagal memuat data paket:", error);
+      setTableData([]); // Fallback ke array kosong jika error
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch Data Master & Data Tabel saat pertama kali load
   useEffect(() => {
     const fetchMasters = async () => {
       try {
@@ -32,7 +51,9 @@ const Packages = () => {
         console.error("Gagal memuat master data paket", e);
       }
     };
+
     fetchMasters();
+    fetchTableData(); // Panggil fungsi fetch data tabel
   }, []);
 
   const columns = [
@@ -42,7 +63,7 @@ const Packages = () => {
       render: (val, row) => (
         <div>
           <div className="font-bold text-gray-800">{val}</div>
-          <div className="text-xs text-gray-500">{row.duration_days} Hari - {row.type.toUpperCase()}</div>
+          <div className="text-xs text-gray-500">{row.duration_days} Hari - {row.type ? row.type.toUpperCase() : '-'}</div>
         </div>
       )
     },
@@ -67,7 +88,7 @@ const Packages = () => {
       label: 'Status',
       render: (val) => {
         const colors = { active: 'bg-green-100 text-green-800', draft: 'bg-gray-100 text-gray-800', archived: 'bg-red-100 text-red-800' };
-        return <span className={`px-2 py-1 rounded text-xs ${colors[val]}`}>{val ? val.toUpperCase() : '-'}</span>;
+        return <span className={`px-2 py-1 rounded text-xs ${colors[val] || 'bg-gray-100'}`}>{val ? val.toUpperCase() : '-'}</span>;
       }
     }
   ];
@@ -146,6 +167,9 @@ const Packages = () => {
     <CrudTable
       title="Katalog Paket Umrah & Haji"
       endpoint="/packages"
+      data={tableData} // PERBAIKAN: Kirim data eksplisit ke CrudTable
+      loading={loading} // PERBAIKAN: Kirim status loading
+      onDataLoaded={fetchTableData} // Callback untuk refresh data setelah add/edit/delete (jika didukung CrudTable)
       columns={columns}
       formFields={formFields}
       searchPlaceholder="Cari nama paket..."
