@@ -1,7 +1,7 @@
 <?php
 /**
- * Template Dashboard React
- * File ini dipanggil oleh class-umh-crud-controller.php
+ * Template Dashboard React - PRO VERSION
+ * Tampilan Full Screen dengan Loader Animasi Modern
  */
 
 if (!defined('ABSPATH')) {
@@ -9,30 +9,112 @@ if (!defined('ABSPATH')) {
 }
 ?>
 
-<!-- CONTAINER UTAMA - TARGET MOUNT REACT -->
+<!-- CONTAINER UTAMA -->
 <div id="umroh-manager-app">
-    <!-- Loader HTML (Tampil sebelum React siap) -->
-    <div style="display: flex; height: 100vh; width: 100%; justify-content: center; align-items: center; background-color: #f3f4f6; color: #6b7280; flex-direction: column;">
-        <svg style="animation: spin 1s linear infinite; width: 50px; height: 50px; color: #2563eb; margin-bottom: 20px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle style="opacity: 0.25;" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path style="opacity: 0.75;" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <h3 style="font-family: sans-serif; font-weight: 500;">Memuat Aplikasi Umrah...</h3>
+    <!-- Pro Loader HTML -->
+    <div class="umroh-loader-container">
+        <div class="umroh-logo-animation">
+            <!-- Icon Ka'bah Abstract -->
+            <svg class="kaaba-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M2 10h20v11a1 1 0 01-1 1H3a1 1 0 01-1-1V10z" opacity="0.8"/>
+                <path d="M2 7h20v2H2V7z" />
+                <path d="M4 4h16v2H4V4z" opacity="0.6"/>
+            </svg>
+        </div>
+        <div class="loading-bar-wrapper">
+            <div class="loading-bar"></div>
+        </div>
+        <h3 class="loading-text">Memuat Sistem Manajemen Umrah...</h3>
+        <p class="loading-subtext">Menyiapkan data jamaah dan jadwal keberangkatan</p>
     </div>
 </div>
 
 <style>
-    @keyframes spin { 100% { transform: rotate(360deg); } }
+    /* Reset & Fullscreen Fix */
+    html, body { 
+        margin: 0 !important; 
+        padding: 0 !important; 
+        overflow: hidden !important; 
+        height: 100vh !important; 
+        background-color: #f8fafc !important; /* Slate-50 */
+    }
     
-    /* Paksa Full Screen sejak awal render PHP */
-    html, body { margin: 0; padding: 0; overflow: hidden; height: 100vh; }
-    #wpadminbar, #adminmenumain, #wpfooter { display: none !important; }
-    #wpcontent { margin: 0 !important; padding: 0 !important; }
-    
+    #wpadminbar, #adminmenumain, #wpfooter, #wpcontent { display: none !important; }
+
     #umroh-manager-app {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
         z-index: 999999;
-        background-color: #f3f4f6;
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* Loader Styling */
+    .umroh-loader-container {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        width: 100%;
+    }
+
+    .umroh-logo-animation {
+        width: 80px;
+        height: 80px;
+        background: white;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        margin-bottom: 24px;
+        animation: float 3s ease-in-out infinite;
+    }
+
+    .kaaba-icon {
+        width: 48px;
+        height: 48px;
+        color: #0f172a; /* Slate-900 */
+    }
+
+    .loading-bar-wrapper {
+        width: 200px;
+        height: 6px;
+        background: #e2e8f0;
+        border-radius: 99px;
+        overflow: hidden;
+        margin-bottom: 16px;
+    }
+
+    .loading-bar {
+        width: 50%;
+        height: 100%;
+        background: #2563eb; /* Blue-600 */
+        border-radius: 99px;
+        animation: loading 1.5s ease-in-out infinite;
+    }
+
+    .loading-text {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0 0 8px 0;
+    }
+
+    .loading-subtext {
+        font-size: 13px;
+        color: #64748b;
+        margin: 0;
+    }
+
+    @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
+
+    @keyframes loading {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(200%); }
     }
 </style>
