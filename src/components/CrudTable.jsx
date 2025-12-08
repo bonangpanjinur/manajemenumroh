@@ -13,11 +13,19 @@ const CrudTable = ({
     renderRowActions,
     userCapabilities = [],
     editCapability,
-    deleteCapability
+    deleteCapability,
+    formFields, // Ditambahkan agar tidak warning jika dipass
+    searchPlaceholder, // Ditambahkan
+    onDataLoaded, // Ditambahkan
+    createEndpoint, // Ditambahkan
+    title // Ditambahkan
 }) => {
 
-    // PERBAIKAN: Double protection agar tidak map() pada null/undefined/object
+    // PERBAIKAN 1: Pastikan data selalu array
     const safeData = Array.isArray(data) ? data : [];
+    
+    // PERBAIKAN 2: Pastikan columns selalu array
+    const safeColumns = Array.isArray(columns) ? columns : [];
 
     const canPerformAction = (capability) => {
         if (!capability) return true;
@@ -50,18 +58,19 @@ const CrudTable = ({
             <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                     <tr>
-                        {columns.map((col) => (
+                        {/* PERBAIKAN 3: Gunakan safeColumns untuk mencegah error map of undefined */}
+                        {safeColumns.map((col) => (
                             <th
-                                key={col.accessor || col.header} 
+                                key={col.accessor || col.key || col.header || Math.random()} 
                                 scope="col"
                                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                                onClick={() => col.sortable && onSort && onSort(col.accessor)}
+                                onClick={() => col.sortable && onSort && onSort(col.accessor || col.key)}
                             >
                                 <div className="flex items-center gap-1">
-                                    {col.Header || col.header}
+                                    {col.Header || col.header || col.label}
                                     {col.sortable && sortBy && (
                                         <span className="inline-block">
-                                            {sortBy.field === col.accessor ? (
+                                            {sortBy.field === (col.accessor || col.key) ? (
                                                 sortBy.order === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
                                             ) : (
                                                 <ArrowUp size={14} className="text-gray-300" />
@@ -81,7 +90,7 @@ const CrudTable = ({
                 <tbody className="bg-white divide-y divide-gray-200">
                     {loading && (
                         <tr>
-                            <td colSpan={columns.length + 1} className="p-2 bg-blue-50">
+                            <td colSpan={safeColumns.length + 1} className="p-2 bg-blue-50">
                                 <div className="flex justify-center items-center text-blue-600 text-xs">
                                     <Spinner size={16} text="Memperbarui data..." />
                                 </div>
@@ -90,12 +99,11 @@ const CrudTable = ({
                     )}
                     {safeData.map((item, index) => (
                         <tr key={item.id || index} className="hover:bg-gray-50 transition-colors">
-                            {columns.map((col) => (
-                                <td key={col.accessor || index} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-700 ${col.className || ''}`}>
-                                    {/* PERBAIKAN: Safe render untuk nilai null/undefined */}
+                            {safeColumns.map((col) => (
+                                <td key={col.accessor || col.key || index} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-700 ${col.className || ''}`}>
                                     {col.render 
-                                        ? col.render(item, index) // Pass full item to render
-                                        : (item[col.accessor] !== undefined && item[col.accessor] !== null ? item[col.accessor] : '-')}
+                                        ? col.render(item[col.accessor || col.key], item) // Pass value and full item
+                                        : (item[col.accessor || col.key] !== undefined && item[col.accessor || col.key] !== null ? item[col.accessor || col.key] : '-')}
                                 </td>
                             ))}
                             {(onEdit || onDelete || renderRowActions) && (

@@ -22,6 +22,7 @@ const Packages = () => {
         ]);
 
         setMasters({
+          // Defensive check: Pastikan selalu array
           categories: Array.isArray(cats) ? cats : [],
           airlines: Array.isArray(airs) ? airs : [],
           hotels_makkah: Array.isArray(hotels) ? hotels.filter(h => h.city === 'Makkah') : [],
@@ -66,7 +67,7 @@ const Packages = () => {
       label: 'Status',
       render: (val) => {
         const colors = { active: 'bg-green-100 text-green-800', draft: 'bg-gray-100 text-gray-800', archived: 'bg-red-100 text-red-800' };
-        return <span className={`px-2 py-1 rounded text-xs ${colors[val]}`}>{val.toUpperCase()}</span>;
+        return <span className={`px-2 py-1 rounded text-xs ${colors[val]}`}>{val ? val.toUpperCase() : '-'}</span>;
       }
     }
   ];
@@ -87,7 +88,8 @@ const Packages = () => {
       name: 'category_id', 
       label: 'Kategori Paket', 
       type: 'select', 
-      options: masters.categories.map(c => ({ value: c.id, label: c.name })),
+      // PERBAIKAN: Guard mapping
+      options: (masters.categories || []).map(c => ({ value: c.id, label: c.name })),
       width: 'full'
     },
 
@@ -96,21 +98,21 @@ const Packages = () => {
       name: 'airline_id', 
       label: 'Maskapai', 
       type: 'select', 
-      options: masters.airlines.map(a => ({ value: a.id, label: `${a.name} (${a.code})` })),
+      options: (masters.airlines || []).map(a => ({ value: a.id, label: `${a.name} (${a.code})` })),
       width: 'third' 
     },
     { 
       name: 'hotel_makkah_id', 
       label: 'Hotel Makkah', 
       type: 'select', 
-      options: masters.hotels_makkah.map(h => ({ value: h.id, label: `${h.name} (${h.rating}★)` })),
+      options: (masters.hotels_makkah || []).map(h => ({ value: h.id, label: `${h.name} (${h.rating}★)` })),
       width: 'third' 
     },
     { 
       name: 'hotel_madinah_id', 
       label: 'Hotel Madinah', 
       type: 'select', 
-      options: masters.hotels_madinah.map(h => ({ value: h.id, label: `${h.name} (${h.rating}★)` })),
+      options: (masters.hotels_madinah || []).map(h => ({ value: h.id, label: `${h.name} (${h.rating}★)` })),
       width: 'third' 
     },
 

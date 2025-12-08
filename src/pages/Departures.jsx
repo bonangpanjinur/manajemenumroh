@@ -4,6 +4,7 @@ import { api } from '../utils/api';
 import { formatDate } from '../utils/formatters';
 
 const Departures = () => {
+  // Inisialisasi state dengan array kosong []
   const [mutawwifs, setMutawwifs] = useState([]);
   const [packages, setPackages] = useState([]);
   const [airlines, setAirlines] = useState([]);
@@ -14,11 +15,12 @@ const Departures = () => {
       try {
         const mData = await api.get('/mutawwif?status=active');
         const pData = await api.get('/packages'); 
-        const aData = await api.get('/masters?type=airlines'); // Asumsi endpoint master airlines
+        const aData = await api.get('/masters?type=airlines'); 
         
-        if (mData && Array.isArray(mData)) setMutawwifs(mData);
-        if (pData && Array.isArray(pData)) setPackages(pData);
-        if (aData && Array.isArray(aData)) setAirlines(aData);
+        // Defensive check saat set state
+        if (Array.isArray(mData)) setMutawwifs(mData);
+        if (Array.isArray(pData)) setPackages(pData);
+        if (Array.isArray(aData)) setAirlines(aData);
       } catch (e) {
         console.error("Failed to fetch masters for departures", e);
       }
@@ -54,7 +56,7 @@ const Departures = () => {
         label: 'Seat', 
         render: (val, row) => {
             const filled = row.filled_seats || 0;
-            const percent = Math.min(100, Math.round((filled / val) * 100));
+            const percent = val > 0 ? Math.min(100, Math.round((filled / val) * 100)) : 0;
             let color = 'bg-green-500';
             if (percent > 80) color = 'bg-yellow-500';
             if (percent >= 100) color = 'bg-red-500';
@@ -93,7 +95,7 @@ const Departures = () => {
                 completed: 'bg-gray-100 text-gray-800',
                 cancelled: 'bg-gray-800 text-white'
             };
-            return <span className={`px-2 py-1 rounded text-xs ${colors[val]}`}>{val.toUpperCase()}</span>
+            return <span className={`px-2 py-1 rounded text-xs ${colors[val] || 'bg-gray-100'}`}>{val ? val.toUpperCase() : '-'}</span>
         }
     },
   ];
@@ -104,7 +106,8 @@ const Departures = () => {
       name: 'package_id', 
       label: 'Pilih Paket Utama', 
       type: 'select', 
-      options: packages.map(p => ({ value: p.id, label: p.name })),
+      // PERBAIKAN: Gunakan (packages || []) agar tidak crash jika undefined
+      options: (packages || []).map(p => ({ value: p.id, label: p.name })),
       required: true, 
       width: 'full' 
     },
@@ -125,7 +128,8 @@ const Departures = () => {
         name: 'airline_id', 
         label: 'Maskapai', 
         type: 'select', 
-        options: airlines.map(a => ({ value: a.id, label: `${a.name} (${a.code})` })),
+        // PERBAIKAN: Gunakan (airlines || [])
+        options: (airlines || []).map(a => ({ value: a.id, label: `${a.name} (${a.code})` })),
         width: 'third' 
     },
     { name: 'flight_number_depart', label: 'No. Flight Pergi', type: 'text', width: 'third' },
@@ -139,12 +143,13 @@ const Departures = () => {
     
     { section: 'Petugas Lapangan' },
     { name: 'tour_leader_name', label: 'Tour Leader', type: 'text', width: 'half' },
-    { name: 'tour_leader_id', label: 'ID TL (Opsional)', type: 'number', width: 'half' }, // Nanti bisa relasi ke karyawan
+    { name: 'tour_leader_id', label: 'ID TL (Opsional)', type: 'number', width: 'half' }, 
     { 
       name: 'mutawwif_id', 
       label: 'Assign Mutawwif', 
       type: 'select', 
-      options: [{value: '', label: '- Belum Ditentukan -'}, ...mutawwifs.map(m => ({ value: m.id, label: m.name }))],
+      // PERBAIKAN: Gunakan (mutawwifs || [])
+      options: [{value: '', label: '- Belum Ditentukan -'}, ...(mutawwifs || []).map(m => ({ value: m.id, label: m.name }))],
       width: 'full'
     },
     

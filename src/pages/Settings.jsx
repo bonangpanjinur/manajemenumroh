@@ -53,6 +53,9 @@ const SettingsForm = ({ fields, initialData, onSubmit }) => {
     }
   };
 
+  // PERBAIKAN: Pastikan fields adalah array
+  const safeFields = Array.isArray(fields) ? fields : [];
+
   return (
     <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 max-w-4xl">
       {message && (
@@ -62,7 +65,7 @@ const SettingsForm = ({ fields, initialData, onSubmit }) => {
       )}
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {fields.map((field) => (
+        {safeFields.map((field) => (
           <div key={field.name} className={field.fullWidth ? 'md:col-span-2' : ''}>
             <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
             {field.type === 'textarea' ? (
@@ -104,7 +107,6 @@ const Settings = () => {
   const [activeTab, setActiveTab] = useState('company');
   const [settingsData, setSettingsData] = useState({});
 
-  // Simulasi Load Data (Nanti diganti API endpoint /settings)
   useEffect(() => {
     // Mock data fetching
     setSettingsData({
@@ -119,7 +121,6 @@ const Settings = () => {
   }, []);
 
   const handleSaveSettings = async (data) => {
-    // Simulasi API Call
     console.log("Saving settings:", data);
     await new Promise(resolve => setTimeout(resolve, 1000)); // Fake delay
     setSettingsData(data);
