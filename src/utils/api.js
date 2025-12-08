@@ -1,22 +1,31 @@
 import axios from 'axios';
 
-// Dapatkan base URL yang dinamis dan aman
+// Dapatkan Base URL API dengan Aman
 const getBaseUrl = () => {
-    // 1. Prioritas: Ambil dari Global Variable WordPress (jika disuntikkan via wp_localize_script)
+    // 1. Cek Variable Global dari WP (Paling Akurat)
     if (typeof window.umh_api_settings !== 'undefined' && window.umh_api_settings.root) {
         return window.umh_api_settings.root;
     }
+
+    // 2. Fallback Relative Path
+    // Deteksi apakah WP diinstall di subfolder atau root domain
+    const path = window.location.pathname;
+    const wpAdminIndex = path.indexOf('/wp-admin');
     
-    // 2. Fallback Aman: Gunakan Relative Path
-    // '/wp-json/umh/v1' akan otomatis mengikuti domain dan port browser (misal localhost:8000 atau domain.com)
-    // Jangan gunakan 'http://localhost' hardcode.
-    return '/wp-json/umh/v1'; 
+    if (wpAdminIndex !== -1) {
+        // Jika ada di /folder/wp-admin, ambil /folder
+        const rootPath = path.substring(0, wpAdminIndex);
+        return `${rootPath}/wp-json/umh/v1`;
+    }
+
+    return '/wp-json/umh/v1';
 };
 
 const getNonce = () => {
     if (typeof window.umh_api_settings !== 'undefined' && window.umh_api_settings.nonce) {
         return window.umh_api_settings.nonce;
     }
+    console.warn("Nonce tidak ditemukan. Request POST/PUT mungkin gagal.");
     return '';
 };
 
@@ -28,26 +37,22 @@ const axiosInstance = axios.create({
     }
 });
 
-// Response Interceptor: Menangani struktur data & error
+// Interceptor Response
 axiosInstance.interceptors.response.use(
     (response) => {
-        // Normalisasi response dari WP API
         if (response.data && response.data.data !== undefined) {
             return response.data.data;
         }
         return response.data;
     },
     (error) => {
-        // Debugging yang lebih bersih
-        const endpoint = error.config?.url || 'Unknown URL';
-        console.warn(`API Error [${endpoint}]:`, error.message);
+        const url = error.config?.url || 'Unknown';
+        console.warn(`API Error [${url}]:`, error.message);
         
-        // Return object kosong atau reject dengan pesan user-friendly
-        // Agar UI tidak crash total (Blank Screen)
-        if (error.response && error.response.data && error.response.data.message) {
-            return Promise.reject(new Error(error.response.data.message));
-        }
-        return Promise.reject(new Error("Gagal terhubung ke server. Pastikan Anda login di WordPress."));
+        // Return Promise.reject agar bisa dicatch di komponen
+        // Tapi dengan pesan yang bersih
+        const msg = error.response?.data?.message || error.message || "Kesalahan server";
+        return Promise.reject(new Error(msg));
     }
 );
 
@@ -57,9 +62,8 @@ export const api = {
             const res = await axiosInstance.get(url, { params });
             return res;
         } catch (error) {
-            // Defensive: Jangan biarkan GET request mematikan app
             console.error(`Safe Fail GET ${url}`, error);
-            return []; // Kembalikan array kosong sebagai fallback
+            return []; // Kembalikan array kosong biar UI gak crash
         }
     },
     post: (url, data) => axiosInstance.post(url, data),
