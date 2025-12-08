@@ -1,173 +1,196 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../utils/api';
-import { formatCurrency } from '../utils/formatters';
-import { Users, DollarSign, Calendar, Shield, TrendingUp, AlertCircle } from 'lucide-react';
+import { Users, Briefcase, Calendar, DollarSign, TrendingUp, UserCheck } from 'lucide-react';
+import { formatCurrency, formatDate } from '../utils/formatters';
+import Spinner from '../components/Spinner';
 
-const StatCard = ({ title, value, subtext, icon: Icon, color }) => (
-  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-start justify-between">
-    <div>
-      <p className="text-gray-500 text-sm font-medium">{title}</p>
-      <h3 className="text-2xl font-bold mt-1 text-gray-800">{value}</h3>
-      {subtext && <p className={`text-xs mt-2 ${color.text}`}>{subtext}</p>}
+const StatCard = ({ title, value, icon: Icon, color, loading }) => (
+    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center">
+        <div className={`p-3 rounded-full mr-4 ${color}`}>
+            <Icon size={24} className="text-white" />
+        </div>
+        <div>
+            <p className="text-sm text-gray-500 font-medium">{title}</p>
+            {loading ? (
+                <div className="h-6 w-24 bg-gray-200 animate-pulse rounded mt-1"></div>
+            ) : (
+                <h3 className="text-2xl font-bold text-gray-800">{value}</h3>
+            )}
+        </div>
     </div>
-    <div className={`p-3 rounded-full ${color.bg}`}>
-      <Icon className={`w-6 h-6 ${color.icon}`} />
-    </div>
-  </div>
 );
 
 const Dashboard = () => {
-  const [stats, setStats] = useState({
-    total_savings: 0,
-    active_bookings: 0,
-    private_requests: 0,
-    upcoming_departures: 0
-  });
-  const [recentRequests, setRecentRequests] = useState([]);
+    // 1. Initial State yang Aman
+    const [stats, setStats] = useState({
+        total_jamaah: 0,
+        active_packages: 0,
+        upcoming_departures: 0,
+        monthly_income: 0
+    });
+    const [recentBookings, setRecentBookings] = useState([]);
+    const [upcomingDepartures, setUpcomingDepartures] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        // Menggunakan endpoint stats yang sudah ada atau simulasi hitungan
-        const statData = await api.get('/stats/summary'); // Asumsi endpoint ini ada di api-stats.php
-        const reqData = await api.get('/private/requests'); // Ambil request private terbaru
-        
-        if (statData) setStats(statData);
-        // Jika endpoint stats belum siap, kita bisa simulasi atau biarkan 0 dulu
-        
-        if (reqData && Array.isArray(reqData)) {
-          setRecentRequests(reqData.slice(0, 5)); // Ambil 5 terbaru
+    // 2. Fetch Data dengan Error Handling Kuat
+    const fetchDashboardData = useCallback(async () => {
+        setLoading(true);
+        try {
+            // Gunakan Promise.allSettled agar jika satu widget error, dashboard tetap tampil
+            const results = await Promise.allSettled([
+                api.get('/stats/summary'),
+                api.get('/bookings?limit=5'),
+                api.get('/departures?status=open&limit=5')
+            ]);
+
+            // Helper untuk mengambil data dengan aman
+            const getVal = (res, defaultVal) => (res.status === 'fulfilled' && res.value) ? res.value : defaultVal;
+
+            // Update State
+            setStats(getVal(results[0], {
+                total_jamaah: 0,
+                active_packages: 0,
+                upcoming_departures: 0,
+                monthly_income: 0
+            }));
+
+            // Pastikan data list selalu array
+            const bookings = getVal(results[1], []);
+            setRecentBookings(Array.isArray(bookings) ? bookings : []);
+
+            const departures = getVal(results[2], []);
+            setUpcomingDepartures(Array.isArray(departures) ? departures : []);
+
+        } catch (error) {
+            console.error("Dashboard fetch error:", error);
+        } finally {
+            setLoading(false);
         }
-      } catch (e) {
-        console.error("Dashboard load failed", e);
-      }
-    };
-    fetchDashboard();
-  }, []);
+    }, []);
 
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-end">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Dashboard Overview</h1>
-          <p className="text-gray-500 text-sm mt-1">Ringkasan aktivitas travel hari ini.</p>
-        </div>
-        <div className="text-sm text-gray-500 bg-white px-3 py-1 rounded shadow-sm">
-          {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-        </div>
-      </div>
+    useEffect(() => {
+        fetchDashboardData();
+    }, [fetchDashboardData]);
 
-      {/* --- STAT CARDS --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard 
-          title="Total Booking Aktif" 
-          value={stats.active_bookings || 0} 
-          subtext="Jamaah siap berangkat"
-          icon={Users} 
-          color={{ bg: 'bg-blue-100', icon: 'text-blue-600', text: 'text-blue-600' }} 
-        />
-        <StatCard 
-          title="Dana Tabungan" 
-          value={formatCurrency(stats.total_savings || 0)} 
-          subtext="Total aset tabungan jamaah"
-          icon={TrendingUp} 
-          color={{ bg: 'bg-green-100', icon: 'text-green-600', text: 'text-green-600' }} 
-        />
-        <StatCard 
-          title="Request Private Baru" 
-          value={recentRequests.filter(r => r.status === 'new').length} 
-          subtext="Butuh follow up segera"
-          icon={Shield} 
-          color={{ bg: 'bg-purple-100', icon: 'text-purple-600', text: 'text-purple-600' }} 
-        />
-        <StatCard 
-          title="Keberangkatan Bulan Ini" 
-          value={stats.upcoming_departures || 0} 
-          subtext="Grup terjadwal"
-          icon={Calendar} 
-          color={{ bg: 'bg-orange-100', icon: 'text-orange-600', text: 'text-orange-600' }} 
-        />
-      </div>
-
-      {/* --- RECENT ACTIVITY SECTION --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left: Private Request Inbox */}
-        <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-gray-800">Request Private Umrah Terbaru</h3>
-            <button className="text-sm text-blue-600 hover:underline">Lihat Semua</button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-500 uppercase bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2">Nama Kontak</th>
-                  <th className="px-4 py-2">Pax</th>
-                  <th className="px-4 py-2">Tanggal</th>
-                  <th className="px-4 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentRequests.length > 0 ? recentRequests.map((req) => (
-                  <tr key={req.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{req.contact_name}</td>
-                    <td className="px-4 py-3">{req.pax_count} Org</td>
-                    <td className="px-4 py-3">{req.travel_date_start}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        req.status === 'new' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100'
-                      }`}>
-                        {req.status.toUpperCase()}
-                      </span>
-                    </td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan="4" className="px-4 py-4 text-center text-gray-400">Belum ada request baru</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Right: Quick Actions */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-          <h3 className="font-bold text-gray-800 mb-4">Aksi Cepat</h3>
-          <div className="space-y-3">
-            <button className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-blue-50 rounded-lg flex items-center gap-3 transition-colors group">
-              <div className="bg-blue-100 p-2 rounded-full group-hover:bg-blue-200">
-                <Users className="w-4 h-4 text-blue-600" />
-              </div>
-              <span className="font-medium text-gray-700">Daftarkan Jamaah Baru</span>
-            </button>
-            <button className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-green-50 rounded-lg flex items-center gap-3 transition-colors group">
-              <div className="bg-green-100 p-2 rounded-full group-hover:bg-green-200">
-                <DollarSign className="w-4 h-4 text-green-600" />
-              </div>
-              <span className="font-medium text-gray-700">Catat Pembayaran</span>
-            </button>
-            <button className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-purple-50 rounded-lg flex items-center gap-3 transition-colors group">
-              <div className="bg-purple-100 p-2 rounded-full group-hover:bg-purple-200">
-                <Shield className="w-4 h-4 text-purple-600" />
-              </div>
-              <span className="font-medium text-gray-700">Buat Penawaran Private</span>
-            </button>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-gray-100">
-            <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">Status Sistem</h4>
-            <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
-              <AlertCircle className="w-4 h-4" />
-              <span>Database v6.1.0 (Latest)</span>
+    return (
+        <div className="p-6 space-y-6">
+            <h1 className="text-2xl font-bold text-gray-800">Dashboard Overview</h1>
+            
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard 
+                    title="Total Jamaah" 
+                    value={stats.total_jamaah || 0} 
+                    icon={Users} 
+                    color="bg-blue-500" 
+                    loading={loading}
+                />
+                <StatCard 
+                    title="Paket Aktif" 
+                    value={stats.active_packages || 0} 
+                    icon={Briefcase} 
+                    color="bg-green-500" 
+                    loading={loading}
+                />
+                <StatCard 
+                    title="Jadwal Keberangkatan" 
+                    value={stats.upcoming_departures || 0} 
+                    icon={Calendar} 
+                    color="bg-purple-500" 
+                    loading={loading}
+                />
+                <StatCard 
+                    title="Pemasukan Bulan Ini" 
+                    value={formatCurrency(stats.monthly_income || 0)} 
+                    icon={DollarSign} 
+                    color="bg-yellow-500" 
+                    loading={loading}
+                />
             </div>
-          </div>
-        </div>
 
-      </div>
-    </div>
-  );
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Recent Bookings Widget */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                        <h2 className="font-bold text-gray-700 flex items-center gap-2">
+                            <UserCheck size={18} /> Booking Terbaru
+                        </h2>
+                    </div>
+                    <div className="p-0 overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
+                                <tr>
+                                    <th className="p-3">Jamaah</th>
+                                    <th className="p-3">Paket</th>
+                                    <th className="p-3 text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {loading ? (
+                                    <tr><td colSpan="3" className="p-6 text-center text-gray-400">Memuat data...</td></tr>
+                                ) : recentBookings.length === 0 ? (
+                                    <tr><td colSpan="3" className="p-6 text-center text-gray-400">Belum ada booking terbaru.</td></tr>
+                                ) : (
+                                    // SAFETY CHECK: .map() hanya jalan di array valid
+                                    recentBookings.map((booking, idx) => (
+                                        <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                                            <td className="p-3 font-medium">{booking.jamaah_name || 'Tanpa Nama'}</td>
+                                            <td className="p-3 text-gray-600">{booking.package_name || '-'}</td>
+                                            <td className="p-3 text-right">
+                                                <span className={`px-2 py-1 rounded text-xs ${booking.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                    {booking.status}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Upcoming Departures Widget */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                        <h2 className="font-bold text-gray-700 flex items-center gap-2">
+                            <TrendingUp size={18} /> Jadwal Terdekat
+                        </h2>
+                    </div>
+                    <div className="p-0 overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
+                                <tr>
+                                    <th className="p-3">Tanggal</th>
+                                    <th className="p-3">Program</th>
+                                    <th className="p-3 text-right">Seat</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {loading ? (
+                                    <tr><td colSpan="3" className="p-6 text-center text-gray-400">Memuat jadwal...</td></tr>
+                                ) : upcomingDepartures.length === 0 ? (
+                                    <tr><td colSpan="3" className="p-6 text-center text-gray-400">Tidak ada jadwal terdekat.</td></tr>
+                                ) : (
+                                    // SAFETY CHECK: .map() aman
+                                    upcomingDepartures.map((dept, idx) => (
+                                        <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                                            <td className="p-3 font-medium text-blue-600">{formatDate(dept.departure_date)}</td>
+                                            <td className="p-3">{dept.package_name}</td>
+                                            <td className="p-3 text-right">
+                                                <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-mono">
+                                                    {dept.filled_seats || 0}/{dept.quota}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default Dashboard;

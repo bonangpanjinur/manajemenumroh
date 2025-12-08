@@ -1,73 +1,81 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { menuItems } from '../utils/menuConfig';
-import { LogOut, LayoutGrid } from 'lucide-react';
+import { menuItems } from '../utils/menuConfig'; // Pastikan import ini benar
+import { LogOut, X } from 'lucide-react';
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, toggleSidebar, userRole }) => {
+    // SAFETY: Pastikan menuItems selalu array
+    const safeMenuItems = Array.isArray(menuItems) ? menuItems : [];
+
+    // Filter menu berdasarkan role user (jika ada logic role)
+    const filteredMenu = safeMenuItems.filter(item => {
+        if (!item.roles) return true; // Akses semua jika tidak ada batasan
+        return item.roles.includes(userRole || 'admin');
+    });
+
     return (
-        <div className="w-64 bg-white h-screen border-r border-gray-200 flex flex-col fixed left-0 top-0 overflow-y-auto z-50">
-            {/* Logo Area */}
-            <div className="p-6 flex items-center gap-3 border-b border-gray-100">
-                <div className="bg-blue-600 text-white p-2 rounded-lg shadow-md">
-                    <LayoutGrid size={24} />
-                </div>
-                <div>
-                    <h1 className="font-bold text-lg text-gray-800 leading-tight">UMH Travel</h1>
-                    <p className="text-xs text-gray-500 font-medium">Enterprise System v4.0</p>
-                </div>
-            </div>
+        <>
+            {/* Mobile Overlay */}
+            {isOpen && (
+                <div 
+                    className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden transition-opacity"
+                    onClick={toggleSidebar}
+                ></div>
+            )}
 
-            {/* Menu Navigasi Scrollable */}
-            <nav className="flex-1 p-4 space-y-6 overflow-y-auto custom-scrollbar">
-                {menuItems.map((group, idx) => (
-                    <div key={idx}>
-                        <h3 className="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                            {group.category}
-                        </h3>
-                        <div className="space-y-1">
-                            {group.items.map((item) => (
-                                <NavLink
-                                    key={item.path}
-                                    to={item.path}
-                                    className={({ isActive }) =>
-                                        `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                                            isActive
-                                                ? 'bg-blue-50 text-blue-700 shadow-sm'
-                                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                        }`
-                                    }
-                                >
-                                    <item.icon size={18} className={({ isActive }) => isActive ? 'text-blue-600' : 'text-gray-400'} />
-                                    {item.label}
-                                </NavLink>
-                            ))}
-                        </div>
-                    </div>
-                ))}
-            </nav>
-
-            {/* User Profile / Logout (Fixed Bottom) */}
-            <div className="p-4 border-t border-gray-100 bg-gray-50">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm">
-                            AD
-                        </div>
-                        <div className="text-xs">
-                            <div className="font-bold text-gray-700 truncate w-24">Administrator</div>
-                            <div className="text-gray-500">Super Admin</div>
-                        </div>
-                    </div>
-                    <button 
-                        onClick={() => window.location.href = window.umh_vars?.site_url + '/wp-login.php?action=logout'} 
-                        className="text-gray-400 hover:text-red-600 transition p-1 rounded-md hover:bg-red-50" 
-                        title="Logout"
-                    >
-                        <LogOut size={18} />
+            {/* Sidebar Container */}
+            <aside 
+                className={`fixed lg:static inset-y-0 left-0 z-30 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out ${
+                    isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+                }`}
+            >
+                {/* Logo Area */}
+                <div className="h-16 flex items-center justify-between px-6 border-b border-gray-100">
+                    <span className="text-xl font-bold text-blue-600 tracking-tight">UmrohManager</span>
+                    <button onClick={toggleSidebar} className="lg:hidden text-gray-500 hover:text-gray-700">
+                        <X size={24} />
                     </button>
                 </div>
-            </div>
-        </div>
+
+                {/* Navigation Menu */}
+                <nav className="p-4 space-y-1 overflow-y-auto h-[calc(100vh-4rem)]">
+                    {safeMenuItems.length === 0 ? (
+                        <div className="p-4 text-center text-gray-400 text-sm">Menu tidak tersedia</div>
+                    ) : (
+                        // SAFETY: Mapping menu dengan aman
+                        filteredMenu.map((item, index) => (
+                            <NavLink
+                                key={item.path || index}
+                                to={item.path}
+                                className={({ isActive }) =>
+                                    `flex items-center px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                                        isActive
+                                            ? 'bg-blue-50 text-blue-700'
+                                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                    }`
+                                }
+                                onClick={() => {
+                                    if (window.innerWidth < 1024) toggleSidebar();
+                                }}
+                            >
+                                <span className="mr-3">{item.icon}</span>
+                                {item.label}
+                            </NavLink>
+                        ))
+                    )}
+
+                    <div className="pt-4 mt-4 border-t border-gray-100">
+                        <a 
+                            href="/wp-login.php?action=logout" 
+                            className="flex items-center px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                            <LogOut size={20} className="mr-3" />
+                            Keluar
+                        </a>
+                    </div>
+                </nav>
+            </aside>
+        </>
     );
 };
 
