@@ -27,26 +27,16 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import DataContext from './contexts/DataContext';
 import './index.css';
 
-// Komponen Pembungkus untuk Membersihkan UI WordPress (CSS ONLY)
+// Komponen Pembungkus untuk Membersihkan UI WordPress (CSS Agresif)
 const ImmersiveModeWrapper = ({ children }) => {
     useLayoutEffect(() => {
-        // Buat Style Element untuk Override CSS secara Agresif
         const styleId = 'umroh-immersive-style';
         if (!document.getElementById(styleId)) {
             const style = document.createElement('style');
             style.id = styleId;
-            
             style.innerHTML = `
                 /* 1. Sembunyikan Elemen UI Bawaan WordPress */
-                #wpadminbar, 
-                #adminmenumain, 
-                #adminmenuback, 
-                #adminmenuwrap, 
-                #wpfooter, 
-                .update-nag, 
-                .notice, 
-                .error, 
-                .updated { 
+                #wpadminbar, #adminmenumain, #adminmenuback, #adminmenuwrap, #wpfooter, .update-nag, .notice, .error, .updated { 
                     display: none !important; 
                     visibility: hidden !important;
                     opacity: 0 !important;
@@ -57,7 +47,7 @@ const ImmersiveModeWrapper = ({ children }) => {
                     position: absolute !important;
                 }
 
-                /* 2. Sembunyikan Wrapper Konten WP (tapi jangan display:none body) */
+                /* 2. Sembunyikan Wrapper Konten WP */
                 #wpcontent, #wpbody, #wpbody-content, .wrap {
                     margin: 0 !important;
                     padding: 0 !important;
@@ -67,17 +57,17 @@ const ImmersiveModeWrapper = ({ children }) => {
                     pointer-events: none !important;
                 }
                 
-                /* 3. Reset Body agar Full Screen untuk App Kita */
+                /* 3. Reset Body agar Full Screen */
                 html, body { 
                     margin: 0 !important; 
                     padding: 0 !important; 
                     height: 100vh !important; 
                     width: 100vw !important;
-                    overflow: hidden !important; /* Mencegah scroll dari body WP */
+                    overflow: hidden !important; 
                     background-color: #f3f4f6 !important;
                 }
 
-                /* 4. Pastikan App Container Selalu Tampil & Full Screen */
+                /* 4. Pastikan App Container Selalu Tampil */
                 #umroh-manager-app {
                     display: block !important;
                     opacity: 1 !important;
@@ -90,7 +80,7 @@ const ImmersiveModeWrapper = ({ children }) => {
                     bottom: 0 !important;
                     width: 100vw !important;
                     height: 100vh !important;
-                    z-index: 2147483647 !important; /* Z-Index Maksimum Browser */
+                    z-index: 2147483647 !important;
                     overflow-y: auto !important;
                     background-color: #f3f4f6;
                 }
@@ -139,31 +129,48 @@ const App = () => {
     );
 };
 
-// --- MOUNTING LOGIC (PERBAIKAN UTAMA DI SINI) ---
+// --- LOGIC MOUNTING YANG AMAN & TIDAK LOOPING ---
+
+const MAX_RETRIES = 10; // Maksimal coba 10 kali (total 5 detik)
+let retryCount = 0;
 
 const initApp = () => {
     const containerId = 'umroh-manager-app';
     const container = document.getElementById(containerId);
 
+    // 1. Cek apakah container ada
     if (container) {
-        // TEKNIK PENYELAMATAN:
-        // Pindahkan container aplikasi keluar dari dalam div WordPress (#wpcontent/wrap)
-        // Langsung tempel ke <body> agar tidak ikut tersembunyi oleh CSS Immersive kita.
+        // Pindahkan container keluar dari div WP agar tidak tertutup CSS immersive
         if (document.body.contains(container) && container.parentElement !== document.body) {
             document.body.appendChild(container);
         }
 
         // Render React
-        const root = createRoot(container);
-        root.render(<App />);
+        try {
+            const root = createRoot(container);
+            root.render(<App />);
+            console.log("Umroh Manager App Mounted Successfully.");
+        } catch (e) {
+            console.error("React Mount Error:", e);
+        }
+    } 
+    // 2. Jika tidak ada, cek apakah kita masih boleh mencoba ulang
+    else if (retryCount < MAX_RETRIES) {
+        // Hanya retry jika URL mengandung indikasi kita ada di halaman plugin
+        // Ubah 'page=umroh-manager' sesuai slug menu plugin Anda di WordPress
+        if (window.location.search.includes('page=')) {
+            retryCount++;
+            console.log(`Menunggu container #${containerId}... (${retryCount}/${MAX_RETRIES})`);
+            setTimeout(initApp, 500); 
+        } else {
+            console.log("Bukan halaman Umroh Manager, menghentikan script React.");
+        }
     } else {
-        // Jika masih tidak ketemu, coba lagi sedikit nanti (Fallback)
-        console.warn(`Container #${containerId} belum siap. Mencoba ulang...`);
-        setTimeout(initApp, 500); 
+        console.warn(`Gagal menemukan #${containerId} setelah ${MAX_RETRIES} percobaan. Periksa kode PHP plugin.`);
     }
 };
 
-// Pastikan DOM sudah siap sebelum menjalankan script
+// Jalankan saat DOM siap
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initApp);
 } else {
