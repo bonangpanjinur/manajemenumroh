@@ -1,123 +1,126 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import CrudTable from '../components/CrudTable';
 import { api } from '../utils/api';
-import { formatCurrency } from '../utils/formatters'; // Pastikan ada atau ganti fungsi inline
+import { formatCurrency } from '../utils/formatters';
+import { Package, MapPin, Plane, Hotel, CheckCircle } from 'lucide-react';
 
 const Packages = () => {
-    // 1. State Inisialisasi Selalu Array Kosong []
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
-    
-    // State untuk data master (dropdown)
-    const [masters, setMasters] = useState({
-        categories: [],
-        airlines: [],
-        hotels: []
-    });
+    const [categories, setCategories] = useState([]);
 
-    // 2. Fetch Function yang Robust
-    const fetchData = useCallback(async () => {
+    const fetchPackages = useCallback(async () => {
         setLoading(true);
         try {
-            // Fetch Data Utama
-            const result = await api.get('/packages');
-            // Pastikan result selalu array
-            setData(Array.isArray(result) ? result : []);
+            const [pkgRes, catRes] = await Promise.all([
+                api.get('/packages'),
+                api.get('/package-categories')
+            ]);
+            setData(Array.isArray(pkgRes) ? pkgRes : []);
+            setCategories(Array.isArray(catRes) ? catRes : []);
         } catch (error) {
             console.error("Error fetching packages:", error);
-            setData([]); // Fallback
+            setData([]);
         } finally {
             setLoading(false);
         }
     }, []);
 
-    // 3. Fetch Master Data (Hanya sekali saat mount)
     useEffect(() => {
-        const fetchMasters = async () => {
-            try {
-                // Gunakan Promise.allSettled agar jika satu gagal, yang lain tetap jalan
-                const results = await Promise.allSettled([
-                    api.get('/package-categories'),
-                    api.get('/masters?type=airlines'),
-                    api.get('/masters?type=hotels')
-                ]);
+        fetchPackages();
+    }, [fetchPackages]);
 
-                // Helper untuk ambil value safely
-                const getValue = (res) => (res.status === 'fulfilled' && Array.isArray(res.value)) ? res.value : [];
-
-                setMasters({
-                    categories: getValue(results[0]),
-                    airlines: getValue(results[1]),
-                    hotels: getValue(results[2])
-                });
-            } catch (e) {
-                console.error("Master data error:", e);
-            }
-        };
-
-        fetchData();
-        fetchMasters();
-    }, [fetchData]);
-
-    // 4. Definisi Kolom
     const columns = [
         { 
             key: 'name', 
-            label: 'Nama Paket',
+            label: 'Nama Paket & Durasi',
             render: (val, row) => (
                 <div>
-                    <div className="font-bold">{val}</div>
-                    <div className="text-xs text-gray-500">{row?.duration_days || 0} Hari</div>
+                    <div className="font-bold text-gray-900 text-base">{val}</div>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                        <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 flex items-center gap-1">
+                            <Package size={10} /> {row.duration_days} Hari
+                        </span>
+                        <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-100 flex items-center gap-1">
+                            <Plane size={10} /> {row.airline || 'Maskapai -'}
+                        </span>
+                    </div>
                 </div>
             )
         },
         { 
-            key: 'category_name', 
-            label: 'Kategori',
-            render: (val) => <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">{val || 'Umum'}</span>
+            key: 'base_price_quad', 
+            label: 'Harga (Mulai Dari)', 
+            render: (val) => (
+                <div>
+                    <span className="block font-bold text-green-700 text-sm">{formatCurrency(val)}</span>
+                    <span className="text-[10px] text-gray-400">per pax (Quad)</span>
+                </div>
+            )
         },
         { 
-            key: 'base_price_quad', 
-            label: 'Harga (Quad)',
-            render: (val) => <span className="font-mono font-medium">{val ? `Rp ${parseInt(val).toLocaleString('id-ID')}` : '-'}</span>
+            key: 'hotel_makkah', 
+            label: 'Akomodasi',
+            render: (_, row) => (
+                <div className="text-xs space-y-1">
+                    <div className="flex items-center gap-1 text-gray-700">
+                        <Hotel size={12} className="text-orange-500" /> 
+                        <span className="font-semibold">Makkah:</span> {row.hotel_makkah || '-'}
+                    </div>
+                    <div className="flex items-center gap-1 text-gray-700">
+                        <Hotel size={12} className="text-green-500" /> 
+                        <span className="font-semibold">Madinah:</span> {row.hotel_madinah || '-'}
+                    </div>
+                </div>
+            )
         },
         { 
             key: 'status', 
             label: 'Status',
             render: (val) => {
-                const color = val === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800';
-                return <span className={`px-2 py-1 rounded text-xs uppercase ${color}`}>{val || '-'}</span>;
+                const map = { active: 'bg-green-100 text-green-800', draft: 'bg-gray-100 text-gray-600', archived: 'bg-red-100 text-red-800' };
+                return <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${map[val] || 'bg-gray-100'}`}>{val}</span>;
             }
         }
     ];
 
-    // 5. Definisi Form Fields (Dengan Safe Options)
     const formFields = [
-        { name: 'name', label: 'Nama Paket', type: 'text', required: true, width: 'half' },
+        { section: 'Informasi Dasar' },
+        { name: 'name', label: 'Nama Paket', type: 'text', required: true, width: 'full', placeholder: 'Promo Umrah Syawal 2025' },
         { 
             name: 'category_id', 
             label: 'Kategori', 
             type: 'select', 
-            // Pastikan options selalu array, jangan biarkan map berjalan di undefined
-            options: (masters.categories || []).map(c => ({ value: c.id, label: c.name })),
-            width: 'half'
+            options: categories.map(c => ({ value: c.id, label: c.name })),
+            width: 'half' 
         },
-        { name: 'base_price_quad', label: 'Harga Quad', type: 'number', width: 'half' },
-        { name: 'status', label: 'Status', type: 'select', options: [{value: 'active', label: 'Active'}, {value: 'draft', label: 'Draft'}], width: 'half' }
+        { name: 'duration_days', label: 'Durasi (Hari)', type: 'number', width: 'quarter' },
+        { name: 'status', label: 'Status Publikasi', type: 'select', options: [{value: 'active', label: 'Published'}, {value: 'draft', label: 'Draft'}], width: 'quarter' },
+
+        { section: 'Detail Harga (Per Tipe Kamar)' },
+        { name: 'base_price_quad', label: 'Harga Quad (Sekamar 4)', type: 'number', required: true, width: 'third', help: 'Harga termurah/dasar' },
+        { name: 'base_price_triple', label: 'Harga Triple (Sekamar 3)', type: 'number', width: 'third' },
+        { name: 'base_price_double', label: 'Harga Double (Sekamar 2)', type: 'number', width: 'third' },
+        { name: 'currency', label: 'Mata Uang', type: 'select', options: [{value: 'IDR', label: 'Rupiah (IDR)'}, {value: 'USD', label: 'Dollar (USD)'}], width: 'full' },
+
+        { section: 'Fasilitas & Akomodasi' },
+        { name: 'airline', label: 'Maskapai Penerbangan', type: 'text', width: 'full', placeholder: 'Garuda Indonesia / Saudia' },
+        { name: 'hotel_makkah', label: 'Hotel Makkah', type: 'text', width: 'half', placeholder: 'Zamzam Tower...' },
+        { name: 'hotel_madinah', label: 'Hotel Madinah', type: 'text', width: 'half', placeholder: 'Rove Hotel...' },
+        { name: 'included_features', label: 'Termasuk (Include)', type: 'textarea', width: 'half', placeholder: '- Visa Umrah\n- Makan 3x Sehari' },
+        { name: 'excluded_features', label: 'Tidak Termasuk (Exclude)', type: 'textarea', width: 'half', placeholder: '- Pembuatan Paspor\n- Keperluan Pribadi' },
     ];
 
     return (
         <div className="p-6">
             <CrudTable
-                title="Manajemen Paket Umrah"
+                title="Katalog Paket Umrah & Haji"
+                data={data}
                 columns={columns}
-                data={data}           // Data yang dikirim sudah dijamin array di state
                 loading={loading}
-                onRefresh={fetchData}
+                onRefresh={fetchPackages}
                 formFields={formFields}
-                onCreate={() => console.log("Create clicked")}
-                onEdit={(row) => console.log("Edit clicked", row)}
-                onDelete={(row) => console.log("Delete clicked", row)}
+                searchPlaceholder="Cari paket, hotel, atau harga..."
             />
         </div>
     );
