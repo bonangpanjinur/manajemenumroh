@@ -1,180 +1,126 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import CrudTable from '../components/CrudTable';
 import { api } from '../utils/api';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency } from '../utils/formatters'; // Pastikan ada atau ganti fungsi inline
 
 const Packages = () => {
-  // Tambahkan state untuk data tabel
-  const [tableData, setTableData] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const [masters, setMasters] = useState({
-    categories: [],
-    airlines: [],
-    hotels_makkah: [],
-    hotels_madinah: []
-  });
-
-  // Fungsi untuk memuat data tabel (Paket)
-  const fetchTableData = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get('/packages');
-      // Pastikan response selalu array agar tidak error .map()
-      setTableData(Array.isArray(response) ? response : []);
-    } catch (error) {
-      console.error("Gagal memuat data paket:", error);
-      setTableData([]); // Fallback ke array kosong jika error
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch Data Master & Data Tabel saat pertama kali load
-  useEffect(() => {
-    const fetchMasters = async () => {
-      try {
-        const [cats, airs, hotels] = await Promise.all([
-          api.get('/package-categories'),
-          api.get('/masters?type=airlines'),
-          api.get('/masters?type=hotels')
-        ]);
-
-        setMasters({
-          // Defensive check: Pastikan selalu array
-          categories: Array.isArray(cats) ? cats : [],
-          airlines: Array.isArray(airs) ? airs : [],
-          hotels_makkah: Array.isArray(hotels) ? hotels.filter(h => h.city === 'Makkah') : [],
-          hotels_madinah: Array.isArray(hotels) ? hotels.filter(h => h.city === 'Madinah') : []
-        });
-      } catch (e) {
-        console.error("Gagal memuat master data paket", e);
-      }
-    };
-
-    fetchMasters();
-    fetchTableData(); // Panggil fungsi fetch data tabel
-  }, []);
-
-  const columns = [
-    { 
-      key: 'name', 
-      label: 'Nama Paket',
-      render: (val, row) => (
-        <div>
-          <div className="font-bold text-gray-800">{val}</div>
-          <div className="text-xs text-gray-500">{row.duration_days} Hari - {row.type ? row.type.toUpperCase() : '-'}</div>
-        </div>
-      )
-    },
-    { key: 'category_name', label: 'Kategori', render: (val) => <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs">{val || 'Umum'}</span> },
-    { 
-      key: 'base_price_quad', 
-      label: 'Harga Mulai (Quad)', 
-      render: (val) => <span className="font-semibold text-green-700">{formatCurrency(val)}</span>
-    },
-    { 
-      key: 'hotel_makkah_name', 
-      label: 'Hotel',
-      render: (val, row) => (
-        <div className="text-xs">
-          <div>🕋 {val || '-'}</div>
-          <div>🕌 {row.hotel_madinah_name || '-'}</div>
-        </div>
-      )
-    },
-    { 
-      key: 'status', 
-      label: 'Status',
-      render: (val) => {
-        const colors = { active: 'bg-green-100 text-green-800', draft: 'bg-gray-100 text-gray-800', archived: 'bg-red-100 text-red-800' };
-        return <span className={`px-2 py-1 rounded text-xs ${colors[val] || 'bg-gray-100'}`}>{val ? val.toUpperCase() : '-'}</span>;
-      }
-    }
-  ];
-
-  const formFields = [
-    { section: 'Informasi Dasar' },
-    { name: 'name', label: 'Nama Paket', type: 'text', required: true, width: 'half' },
-    { 
-      name: 'type', 
-      label: 'Tipe Layanan', 
-      type: 'select', 
-      options: [{value: 'umrah', label: 'Umrah'}, {value: 'haji', label: 'Haji'}, {value: 'tour', label: 'Halal Tour'}], 
-      defaultValue: 'umrah',
-      width: 'quarter'
-    },
-    { name: 'duration_days', label: 'Durasi (Hari)', type: 'number', defaultValue: 9, width: 'quarter' },
-    { 
-      name: 'category_id', 
-      label: 'Kategori Paket', 
-      type: 'select', 
-      // PERBAIKAN: Guard mapping
-      options: (masters.categories || []).map(c => ({ value: c.id, label: c.name })),
-      width: 'full'
-    },
-
-    { section: 'Akomodasi & Transportasi' },
-    { 
-      name: 'airline_id', 
-      label: 'Maskapai', 
-      type: 'select', 
-      options: (masters.airlines || []).map(a => ({ value: a.id, label: `${a.name} (${a.code})` })),
-      width: 'third' 
-    },
-    { 
-      name: 'hotel_makkah_id', 
-      label: 'Hotel Makkah', 
-      type: 'select', 
-      options: (masters.hotels_makkah || []).map(h => ({ value: h.id, label: `${h.name} (${h.rating}★)` })),
-      width: 'third' 
-    },
-    { 
-      name: 'hotel_madinah_id', 
-      label: 'Hotel Madinah', 
-      type: 'select', 
-      options: (masters.hotels_madinah || []).map(h => ({ value: h.id, label: `${h.name} (${h.rating}★)` })),
-      width: 'third' 
-    },
-
-    { section: 'Harga Paket (Per Room Type)' },
-    { name: 'currency', label: 'Mata Uang', type: 'select', options: [{value: 'IDR', label: 'IDR'}, {value: 'USD', label: 'USD'}], defaultValue: 'IDR', width: 'quarter' },
-    { name: 'base_price_quad', label: 'Harga Quad (Sekamar 4)', type: 'number', required: true, width: 'quarter' },
-    { name: 'base_price_triple', label: 'Harga Triple (Sekamar 3)', type: 'number', width: 'quarter' },
-    { name: 'base_price_double', label: 'Harga Double (Sekamar 2)', type: 'number', width: 'quarter' },
-    { name: 'down_payment_amount', label: 'Minimal DP', type: 'number', width: 'half' },
-
-    { section: 'Detail & Fasilitas' },
-    { name: 'description', label: 'Deskripsi Singkat', type: 'textarea', width: 'full' },
-    { name: 'included_features', label: 'Termasuk (Include)', type: 'textarea', placeholder: 'Tiket PP, Visa, Makan 3x...', width: 'half' },
-    { name: 'excluded_features', label: 'Tidak Termasuk (Exclude)', type: 'textarea', placeholder: 'Paspor, Vaksin, Keperluan Pribadi...', width: 'half' },
-    { name: 'terms_conditions', label: 'Syarat & Ketentuan', type: 'textarea', width: 'full' },
+    // 1. State Inisialisasi Selalu Array Kosong []
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(true);
     
-    { section: 'Media & Status' },
-    { name: 'image_url', label: 'URL Gambar Banner', type: 'url', width: 'half' },
-    { name: 'brochure_pdf', label: 'URL E-Brochure (PDF)', type: 'url', width: 'half' },
-    { 
-      name: 'status', 
-      label: 'Status Publikasi', 
-      type: 'select', 
-      options: [{value: 'active', label: 'Aktif (Tampil)'}, {value: 'draft', label: 'Draft'}, {value: 'archived', label: 'Arsip'}], 
-      defaultValue: 'active',
-      width: 'full' 
-    },
-  ];
+    // State untuk data master (dropdown)
+    const [masters, setMasters] = useState({
+        categories: [],
+        airlines: [],
+        hotels: []
+    });
 
-  return (
-    <CrudTable
-      title="Katalog Paket Umrah & Haji"
-      endpoint="/packages"
-      data={tableData} // PERBAIKAN: Kirim data eksplisit ke CrudTable
-      loading={loading} // PERBAIKAN: Kirim status loading
-      onDataLoaded={fetchTableData} // Callback untuk refresh data setelah add/edit/delete (jika didukung CrudTable)
-      columns={columns}
-      formFields={formFields}
-      searchPlaceholder="Cari nama paket..."
-    />
-  );
+    // 2. Fetch Function yang Robust
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            // Fetch Data Utama
+            const result = await api.get('/packages');
+            // Pastikan result selalu array
+            setData(Array.isArray(result) ? result : []);
+        } catch (error) {
+            console.error("Error fetching packages:", error);
+            setData([]); // Fallback
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // 3. Fetch Master Data (Hanya sekali saat mount)
+    useEffect(() => {
+        const fetchMasters = async () => {
+            try {
+                // Gunakan Promise.allSettled agar jika satu gagal, yang lain tetap jalan
+                const results = await Promise.allSettled([
+                    api.get('/package-categories'),
+                    api.get('/masters?type=airlines'),
+                    api.get('/masters?type=hotels')
+                ]);
+
+                // Helper untuk ambil value safely
+                const getValue = (res) => (res.status === 'fulfilled' && Array.isArray(res.value)) ? res.value : [];
+
+                setMasters({
+                    categories: getValue(results[0]),
+                    airlines: getValue(results[1]),
+                    hotels: getValue(results[2])
+                });
+            } catch (e) {
+                console.error("Master data error:", e);
+            }
+        };
+
+        fetchData();
+        fetchMasters();
+    }, [fetchData]);
+
+    // 4. Definisi Kolom
+    const columns = [
+        { 
+            key: 'name', 
+            label: 'Nama Paket',
+            render: (val, row) => (
+                <div>
+                    <div className="font-bold">{val}</div>
+                    <div className="text-xs text-gray-500">{row?.duration_days || 0} Hari</div>
+                </div>
+            )
+        },
+        { 
+            key: 'category_name', 
+            label: 'Kategori',
+            render: (val) => <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">{val || 'Umum'}</span>
+        },
+        { 
+            key: 'base_price_quad', 
+            label: 'Harga (Quad)',
+            render: (val) => <span className="font-mono font-medium">{val ? `Rp ${parseInt(val).toLocaleString('id-ID')}` : '-'}</span>
+        },
+        { 
+            key: 'status', 
+            label: 'Status',
+            render: (val) => {
+                const color = val === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800';
+                return <span className={`px-2 py-1 rounded text-xs uppercase ${color}`}>{val || '-'}</span>;
+            }
+        }
+    ];
+
+    // 5. Definisi Form Fields (Dengan Safe Options)
+    const formFields = [
+        { name: 'name', label: 'Nama Paket', type: 'text', required: true, width: 'half' },
+        { 
+            name: 'category_id', 
+            label: 'Kategori', 
+            type: 'select', 
+            // Pastikan options selalu array, jangan biarkan map berjalan di undefined
+            options: (masters.categories || []).map(c => ({ value: c.id, label: c.name })),
+            width: 'half'
+        },
+        { name: 'base_price_quad', label: 'Harga Quad', type: 'number', width: 'half' },
+        { name: 'status', label: 'Status', type: 'select', options: [{value: 'active', label: 'Active'}, {value: 'draft', label: 'Draft'}], width: 'half' }
+    ];
+
+    return (
+        <div className="p-6">
+            <CrudTable
+                title="Manajemen Paket Umrah"
+                columns={columns}
+                data={data}           // Data yang dikirim sudah dijamin array di state
+                loading={loading}
+                onRefresh={fetchData}
+                formFields={formFields}
+                onCreate={() => console.log("Create clicked")}
+                onEdit={(row) => console.log("Edit clicked", row)}
+                onDelete={(row) => console.log("Delete clicked", row)}
+            />
+        </div>
+    );
 };
 
 export default Packages;

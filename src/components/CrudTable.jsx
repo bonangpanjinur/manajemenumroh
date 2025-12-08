@@ -1,140 +1,135 @@
 import React from 'react';
-import { Edit, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
-import Spinner from './Spinner.jsx'; 
+import { Edit, Trash2, Plus, RefreshCw } from 'lucide-react';
+import Spinner from './Spinner'; // Pastikan file Spinner ada
 
 const CrudTable = ({
-    columns,
-    data = [],
-    loading,
-    sortBy,
-    onSort,
+    title = "Data Table",
+    columns = [],         // Default array kosong
+    data = [],            // Default array kosong
+    loading = false,
+    onCreate,
     onEdit,
     onDelete,
-    renderRowActions,
-    userCapabilities = [],
-    editCapability,
-    deleteCapability,
-    formFields, // Ditambahkan agar tidak warning jika dipass
-    searchPlaceholder, // Ditambahkan
-    onDataLoaded, // Ditambahkan
-    createEndpoint, // Ditambahkan
-    title // Ditambahkan
+    onRefresh,
+    searchPlaceholder = "Cari data...",
+    formFields = []       // Default array kosong
 }) => {
-
-    // PERBAIKAN 1: Pastikan data selalu array
+    // 1. Validasi Props (Super Defensive)
+    const safeColumns = Array.isArray(columns) ? columns : [];
     const safeData = Array.isArray(data) ? data : [];
     
-    // PERBAIKAN 2: Pastikan columns selalu array
-    const safeColumns = Array.isArray(columns) ? columns : [];
-
-    const canPerformAction = (capability) => {
-        if (!capability) return true;
-        if (!userCapabilities) return false;
-        if (userCapabilities === 'super_admin' || (Array.isArray(userCapabilities) && userCapabilities.includes('manage_options'))) return true;
-        return Array.isArray(userCapabilities) && userCapabilities.includes(capability);
-    };
-    
-    const canEdit = canPerformAction(editCapability);
-    const canDelete = canPerformAction(deleteCapability);
-
+    // 2. Render Loading State
     if (loading && safeData.length === 0) {
         return (
-            <div className="flex justify-center items-center p-12 bg-white rounded-lg shadow">
-                <Spinner text="Sedang memuat data..." />
-            </div>
-        );
-    }
-
-    if (safeData.length === 0) {
-        return (
-            <div className="text-center p-12 bg-white rounded-lg shadow border border-gray-100">
-                <p className="text-gray-500">Tidak ada data ditemukan.</p>
+            <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200 text-center">
+                <Spinner text="Memuat data..." />
             </div>
         );
     }
 
     return (
-        <div className="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                    <tr>
-                        {/* PERBAIKAN 3: Gunakan safeColumns untuk mencegah error map of undefined */}
-                        {safeColumns.map((col) => (
-                            <th
-                                key={col.accessor || col.key || col.header || Math.random()} 
-                                scope="col"
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                                onClick={() => col.sortable && onSort && onSort(col.accessor || col.key)}
-                            >
-                                <div className="flex items-center gap-1">
-                                    {col.Header || col.header || col.label}
-                                    {col.sortable && sortBy && (
-                                        <span className="inline-block">
-                                            {sortBy.field === (col.accessor || col.key) ? (
-                                                sortBy.order === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
-                                            ) : (
-                                                <ArrowUp size={14} className="text-gray-300" />
-                                            )}
-                                        </span>
-                                    )}
-                                </div>
-                            </th>
-                        ))}
-                        {(onEdit || onDelete || renderRowActions) && (
-                            <th scope="col" className="relative px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Aksi
-                            </th>
-                        )}
-                    </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                    {loading && (
-                        <tr>
-                            <td colSpan={safeColumns.length + 1} className="p-2 bg-blue-50">
-                                <div className="flex justify-center items-center text-blue-600 text-xs">
-                                    <Spinner size={16} text="Memperbarui data..." />
-                                </div>
-                            </td>
-                        </tr>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full">
+            {/* Header Section */}
+            <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <h2 className="text-lg font-bold text-gray-800">{title}</h2>
+                
+                <div className="flex gap-2">
+                    {onRefresh && (
+                        <button 
+                            onClick={onRefresh} 
+                            disabled={loading}
+                            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="Refresh Data"
+                        >
+                            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+                        </button>
                     )}
-                    {safeData.map((item, index) => (
-                        <tr key={item.id || index} className="hover:bg-gray-50 transition-colors">
-                            {safeColumns.map((col) => (
-                                <td key={col.accessor || col.key || index} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-700 ${col.className || ''}`}>
-                                    {col.render 
-                                        ? col.render(item[col.accessor || col.key], item) // Pass value and full item
-                                        : (item[col.accessor || col.key] !== undefined && item[col.accessor || col.key] !== null ? item[col.accessor || col.key] : '-')}
-                                </td>
+                    
+                    {onCreate && (
+                        <button 
+                            onClick={onCreate}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-medium"
+                        >
+                            <Plus size={16} />
+                            <span>Tambah Baru</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Table Section */}
+            <div className="overflow-x-auto flex-grow">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            {/* Render Columns - AMAN DARI CRASH */}
+                            {safeColumns.map((col, idx) => (
+                                <th 
+                                    key={col.key || idx}
+                                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                >
+                                    {col.label || col.header || '-'}
+                                </th>
                             ))}
-                            {(onEdit || onDelete || renderRowActions) && (
-                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
-                                    {renderRowActions && renderRowActions(item)}
-                                    
-                                    {onEdit && canEdit && (
-                                        <button 
-                                            onClick={() => onEdit(item)} 
-                                            className="text-blue-600 hover:text-blue-900 transition-colors"
-                                            title="Edit"
-                                        >
-                                            <Edit size={18} />
-                                        </button>
-                                    )}
-                                    
-                                    {onDelete && canDelete && (
-                                        <button 
-                                            onClick={() => onDelete(item)} 
-                                            className="text-red-600 hover:text-red-900 transition-colors"
-                                            title="Hapus"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    )}
-                                </td>
+                            {(onEdit || onDelete) && (
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Aksi
+                                </th>
                             )}
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {/* Jika Data Kosong */}
+                        {safeData.length === 0 ? (
+                            <tr>
+                                <td colSpan={safeColumns.length + (onEdit || onDelete ? 1 : 0)} className="px-6 py-12 text-center text-gray-500">
+                                    {loading ? 'Sedang memuat ulang...' : 'Tidak ada data ditemukan.'}
+                                </td>
+                            </tr>
+                        ) : (
+                            // Render Rows - AMAN DARI CRASH
+                            safeData.map((row, rowIdx) => (
+                                <tr key={row.id || rowIdx} className="hover:bg-gray-50 transition-colors">
+                                    {safeColumns.map((col, colIdx) => (
+                                        <td key={`${rowIdx}-${colIdx}`} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                            {/* Render Cell Logic */}
+                                            {col.render 
+                                                ? col.render(row[col.key], row) // Custom render
+                                                : (row[col.key] !== undefined && row[col.key] !== null ? row[col.key] : '-') // Default render
+                                            }
+                                        </td>
+                                    ))}
+                                    
+                                    {(onEdit || onDelete) && (
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <div className="flex justify-end gap-2">
+                                                {onEdit && (
+                                                    <button 
+                                                        onClick={() => onEdit(row)}
+                                                        className="text-indigo-600 hover:text-indigo-900"
+                                                        title="Edit"
+                                                    >
+                                                        <Edit size={18} />
+                                                    </button>
+                                                )}
+                                                {onDelete && (
+                                                    <button 
+                                                        onClick={() => onDelete(row)}
+                                                        className="text-red-600 hover:text-red-900"
+                                                        title="Hapus"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    )}
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 };

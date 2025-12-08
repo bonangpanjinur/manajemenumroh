@@ -1,67 +1,100 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import CrudTable from '../components/CrudTable';
+import { api } from '../utils/api';
 
 const Jamaah = () => {
-  const columns = [
-    { 
-      key: 'full_name', 
-      label: 'Nama Jamaah',
-      render: (val, row) => (
-        <div>
-          <div className="font-bold text-gray-800">{val}</div>
-          <div className="text-xs text-gray-500">{row.nik || 'No NIK -'}</div>
+    // 1. Safe Initialization
+    const [data, setData] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    // 2. Safe Fetching
+    const fetchJamaah = useCallback(async () => {
+        setLoading(true);
+        try {
+            const response = await api.get('/jamaah');
+            // Pastikan selalu array
+            setData(Array.isArray(response) ? response : []);
+        } catch (error) {
+            console.error("Error fetching jamaah:", error);
+            setData([]); // Fallback array kosong
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchJamaah();
+    }, [fetchJamaah]);
+
+    const columns = [
+        { 
+            key: 'name', 
+            label: 'Nama Lengkap',
+            render: (val, row) => (
+                <div>
+                    <div className="font-bold text-gray-900">{val}</div>
+                    <div className="text-xs text-gray-500">NIK: {row.nik || '-'}</div>
+                </div>
+            )
+        },
+        { 
+            key: 'passport_number', 
+            label: 'Paspor',
+            render: (val) => val ? <span className="font-mono text-blue-600">{val}</span> : <span className="text-red-400 text-xs italic">Belum ada</span>
+        },
+        { 
+            key: 'phone', 
+            label: 'Kontak',
+            render: (val) => val ? (
+                <a href={`https://wa.me/${val.replace(/^0/, '62')}`} target="_blank" rel="noreferrer" className="text-green-600 hover:underline flex items-center gap-1">
+                    📱 {val}
+                </a>
+            ) : '-'
+        },
+        { key: 'city', label: 'Domisili' },
+        { 
+            key: 'status', 
+            label: 'Status', 
+            render: (val) => val === 'active' 
+                ? <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Aktif</span> 
+                : <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded-full text-xs">Arsip</span>
+        }
+    ];
+
+    // Form tanpa dropdown eksternal pun tetap perlu dijaga
+    const formFields = [
+        { section: 'Identitas Pribadi' },
+        { name: 'name', label: 'Nama Lengkap (Sesuai KTP)', type: 'text', required: true, width: 'full' },
+        { name: 'nik', label: 'NIK / No. KTP', type: 'text', required: true, width: 'half' },
+        { name: 'gender', label: 'Jenis Kelamin', type: 'select', options: [{value: 'L', label: 'Laki-laki'}, {value: 'P', label: 'Perempuan'}], width: 'half' },
+        
+        { section: 'Dokumen Perjalanan' },
+        { name: 'passport_number', label: 'Nomor Paspor', type: 'text', width: 'half' },
+        { name: 'passport_expiry', label: 'Masa Berlaku Paspor', type: 'date', width: 'half' },
+        
+        { section: 'Kontak & Alamat' },
+        { name: 'phone', label: 'Nomor WhatsApp', type: 'text', required: true, width: 'half', placeholder: '0812...' },
+        { name: 'email', label: 'Email (Opsional)', type: 'email', width: 'half' },
+        { name: 'address', label: 'Alamat Lengkap', type: 'textarea', width: 'full' },
+        { name: 'city', label: 'Kota / Kabupaten', type: 'text', width: 'half' },
+        
+        { section: 'Lainnya' },
+        { name: 'notes', label: 'Catatan Kesehatan / Khusus', type: 'textarea', width: 'full' }
+    ];
+
+    return (
+        <div className="p-6">
+            <CrudTable
+                title="Database Jamaah"
+                data={data}
+                columns={columns}
+                loading={loading}
+                onRefresh={fetchJamaah}
+                formFields={formFields}
+                searchPlaceholder="Cari nama, paspor, atau kota..."
+            />
         </div>
-      )
-    },
-    { 
-      key: 'gender', 
-      label: 'JK', 
-      render: (val) => val === 'L' ? <span className="bg-blue-100 text-blue-800 px-2 rounded text-xs">Laki-laki</span> : <span className="bg-pink-100 text-pink-800 px-2 rounded text-xs">Perempuan</span> 
-    },
-    { key: 'phone', label: 'No. HP', render: (val) => val ? val : '-' },
-    { key: 'passport_number', label: 'No. Paspor', render: (val) => val ? <span className="font-mono text-purple-700">{val}</span> : <span className="text-red-400 text-xs">Belum Ada</span> },
-    { key: 'city', label: 'Kota Domisili' },
-    { 
-      key: 'status', 
-      label: 'Status',
-      render: (val) => val === 'berangkat' ? <span className="bg-green-500 text-white px-2 py-0.5 rounded text-xs">BERANGKAT</span> : <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">{val.toUpperCase()}</span>
-    }
-  ];
-
-  const formFields = [
-    { section: 'Identitas Pribadi' },
-    { name: 'full_name', label: 'Nama Lengkap (Sesuai KTP)', type: 'text', required: true, width: 'half' },
-    { name: 'full_name_ar', label: 'Nama dalam Bahasa Arab', type: 'text', width: 'half' },
-    { name: 'nik', label: 'Nomor Induk Kependudukan (NIK)', type: 'text', required: true, width: 'half' },
-    { name: 'gender', label: 'Jenis Kelamin', type: 'select', options: [{value: 'L', label: 'Laki-laki'}, {value: 'P', label: 'Perempuan'}], required: true, width: 'quarter' },
-    { name: 'clothing_size', label: 'Ukuran Baju (Batik/Seragam)', type: 'select', options: ['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'].map(s => ({value:s, label:s})), width: 'quarter' },
-    
-    { section: 'Kontak & Alamat' },
-    { name: 'phone', label: 'No. WhatsApp Aktif', type: 'tel', required: true, width: 'half' },
-    { name: 'email', label: 'Alamat Email', type: 'email', width: 'half' },
-    { name: 'city', label: 'Kota Domisili', type: 'text', width: 'half' },
-    { name: 'address', label: 'Alamat Lengkap', type: 'textarea', width: 'half' },
-
-    { section: 'Dokumen Perjalanan (Paspor)' },
-    { name: 'passport_number', label: 'Nomor Paspor', type: 'text', width: 'third' },
-    { name: 'scan_passport', label: 'URL Scan Paspor', type: 'url', width: 'third', placeholder: 'https://...' },
-    { name: 'scan_photo', label: 'URL Pasfoto 4x6', type: 'url', width: 'third', placeholder: 'https://...' },
-
-    { section: 'Data Keluarga & Kesehatan' },
-    { name: 'father_name', label: 'Nama Ayah Kandung', type: 'text', width: 'half' },
-    { name: 'spouse_name', label: 'Nama Pasangan (Suami/Istri)', type: 'text', width: 'half' },
-    { name: 'disease_history', label: 'Riwayat Penyakit (Penting)', type: 'textarea', placeholder: 'Jantung, Diabetes, Asma, dll. Tulis (-) jika sehat.', width: 'full' },
-  ];
-
-  return (
-    <CrudTable
-      title="Database Jamaah"
-      endpoint="/jamaah"
-      columns={columns}
-      formFields={formFields}
-      searchPlaceholder="Cari nama, NIK, atau paspor..."
-    />
-  );
+    );
 };
 
 export default Jamaah;
