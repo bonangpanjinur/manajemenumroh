@@ -1,300 +1,171 @@
 import React, { useState, useEffect } from 'react';
-import Layout from '../components/Layout';
 import CrudTable from '../components/CrudTable';
-import Modal from '../components/Modal';
-import SearchInput from '../components/SearchInput';
-import useCRUD from '../hooks/useCRUD';
-import api from '../utils/api';
-import { formatCurrency, formatDate } from '../utils/formatters';
-import { Plus, Trash, Calendar, Search } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { api } from '../utils/api';
+import { formatDate, formatCurrency } from '../utils/formatters';
 
 const Bookings = () => {
-    // Menggunakan endpoint bookings
-    const { data, loading, fetchData } = useCRUD('umh/v1/bookings');
-    
-    // --- STATE UNTUK MODAL BOOKING BARU ---
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [step, setStep] = useState(1); // 1: Pilih Paket, 2: Input Jemaah, 3: Konfirmasi
-    
-    // Data Master
-    const [departures, setDepartures] = useState([]);
-    const [agents, setAgents] = useState([]);
-    
-    // Form State
-    const [selectedDeparture, setSelectedDeparture] = useState(null);
-    const [selectedAgent, setSelectedAgent] = useState(null);
-    const [passengers, setPassengers] = useState([]); 
-    const [contactInfo, setContactInfo] = useState({ name: '', phone: '', email: '' });
+  const [departures, setDepartures] = useState([]);
+  const [agents, setAgents] = useState([]);
 
-    // Search Jamaah
-    const [jamaahSearch, setJamaahSearch] = useState('');
-    const [jamaahResults, setJamaahResults] = useState([]);
-    const [isSearchingJamaah, setIsSearchingJamaah] = useState(false);
+  // Fetch Data Referensi untuk Dropdown
+  useEffect(() => {
+    const fetchRefs = async () => {
+      try {
+        // Asumsi endpoint ini ada untuk mengambil list ringkas
+        const depData = await api.get('/departures?status=open');
+        const agtData = await api.get('/agents?status=active');
+        
+        if (depData) setDepartures(depData);
+        if (agtData) setAgents(agtData);
+      } catch (e) {
+        console.error("Gagal mengambil data referensi", e);
+      }
+    };
+    fetchRefs();
+  }, []);
 
-    useEffect(() => {
-        fetchData();
-        // Load Departures yang 'open'
-        const loadInitData = async () => {
-            try {
-                const [deptRes, agentRes] = await Promise.all([
-                    api.get('umh/v1/departures', { params: { status: 'open' } }),
-                    api.get('umh/v1/agents', { params: { status: 'active' } })
-                ]);
-                setDepartures(deptRes.data || deptRes || []);
-                setAgents(agentRes.data || agentRes || []);
-            } catch (e) { console.error(e); }
+  const columns = [
+    { key: 'booking_code', label: 'Kode Booking', render: (val) => <span className="font-mono font-bold">{val}</span> },
+    { key: 'contact_name', label: 'Nama Kontak' },
+    { 
+      key: 'departure_date', 
+      label: 'Keberangkatan', 
+      render: (_, row) => (
+        <div className="flex flex-col">
+           <span className="text-xs font-semibold">{row.departure_name || `Jadwal #${row.departure_id}`}</span>
+           <span className="text-xs text-gray-500">{formatDate(row.departure_date)}</span>
+        </div>
+      )
+    },
+    { 
+      key: 'total_pax', 
+      label: 'Pax',
+      render: (val) => <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold">{val} Orang</span>
+    },
+    { 
+      key: 'total_price', 
+      label: 'Total Tagihan', 
+      render: (val) => formatCurrency(val) 
+    },
+    { 
+      key: 'payment_status', 
+      label: 'Status Bayar',
+      render: (val) => {
+        const colors = {
+          unpaid: 'bg-red-100 text-red-800',
+          dp: 'bg-yellow-100 text-yellow-800',
+          partial: 'bg-orange-100 text-orange-800',
+          paid: 'bg-green-100 text-green-800',
+          refunded: 'bg-gray-200 text-gray-600',
+          overdue: 'bg-red-900 text-white'
         };
-        loadInitData();
-    }, []);
+        const labels = {
+          unpaid: 'Belum Bayar',
+          dp: 'Sudah DP',
+          partial: 'Cicilan',
+          paid: 'Lunas',
+          refunded: 'Refund',
+          overdue: 'Jatuh Tempo'
+        };
+        return <span className={`px-2 py-1 rounded text-xs ${colors[val] || 'bg-gray-100'}`}>{labels[val] || val.toUpperCase()}</span>;
+      }
+    },
+    { 
+      key: 'status', 
+      label: 'Status Booking',
+      render: (val) => {
+        const colors = {
+          draft: 'bg-gray-100 text-gray-600',
+          pending: 'bg-blue-100 text-blue-800',
+          confirmed: 'bg-green-100 text-green-800',
+          completed: 'bg-purple-100 text-purple-800',
+          cancelled: 'bg-red-100 text-red-800'
+        };
+        return <span className={`px-2 py-1 rounded text-xs ${colors[val]}`}>{val.toUpperCase()}</span>;
+      }
+    },
+    { 
+      key: 'is_from_savings', 
+      label: 'Sumber',
+      render: (val) => val == 1 ? <span className="text-xs bg-teal-100 text-teal-800 px-1 rounded">Tabungan</span> : '-'
+    }
+  ];
 
-    // --- LOGIC TAMBAH PENUMPANG ---
-    const searchJamaah = async (query) => {
-        if (!query) return;
-        setIsSearchingJamaah(true);
-        try {
-            const res = await api.get('umh/v1/jamaah', { params: { search: query } });
-            setJamaahResults(res.data || res || []);
-        } catch (e) { console.error(e); }
-        setIsSearchingJamaah(false);
-    };
+  const formFields = [
+    { section: 'Informasi Keberangkatan & Agen' },
+    { 
+      name: 'departure_id', 
+      label: 'Pilih Jadwal Keberangkatan', 
+      type: 'select', 
+      options: departures.map(d => ({ value: d.id, label: `${d.package_name || 'Paket'} - ${formatDate(d.departure_date)} (Sisa: ${d.available_seats})` })),
+      required: true, 
+      width: 'half' 
+    },
+    { 
+      name: 'agent_id', 
+      label: 'Agen / Referal (Opsional)', 
+      type: 'select', 
+      options: [{value: '', label: '- Tanpa Agen -'}, ...agents.map(a => ({ value: a.id, label: `${a.name} (${a.code})` }))],
+      width: 'half' 
+    },
 
-    const addPassenger = (jamaah) => {
-        // Cek duplikat di list sementara
-        if (passengers.find(p => p.jamaah_id === jamaah.id)) {
-            toast.error("Jemaah ini sudah ada di list");
-            return;
-        }
-        
-        // Harga default dari paket
-        let defaultPrice = 0;
-        if (selectedDeparture) {
-            defaultPrice = parseFloat(selectedDeparture.price_quad || selectedDeparture.base_price || 0);
-        }
+    { section: 'Data Pemesan (Contact Person)' },
+    { name: 'contact_name', label: 'Nama Lengkap', type: 'text', required: true, width: 'half' },
+    { name: 'contact_phone', label: 'No. Handphone/WA', type: 'tel', required: true, width: 'half' },
+    { name: 'contact_email', label: 'Alamat Email', type: 'email', width: 'half' },
+    { name: 'user_id', label: 'ID User (Jika Terdaftar)', type: 'number', width: 'half', placeholder: 'Kosongkan jika tamu' },
+    
+    { section: 'Detail Pemesanan' },
+    { name: 'total_pax', label: 'Jumlah Jamaah (Pax)', type: 'number', required: true, defaultValue: 1, width: 'third' },
+    { name: 'currency', label: 'Mata Uang', type: 'select', options: [{value: 'IDR', label: 'IDR'}, {value: 'USD', label: 'USD'}], defaultValue: 'IDR', width: 'third' },
+    { name: 'total_price', label: 'Total Harga Paket', type: 'number', required: true, width: 'third' },
+    { name: 'discount_amount', label: 'Diskon (Jika ada)', type: 'number', defaultValue: 0, width: 'half' },
+    { name: 'coupon_id', label: 'ID Kupon', type: 'number', width: 'half' },
 
-        setPassengers(prev => [...prev, {
-            jamaah_id: jamaah.id,
-            full_name: jamaah.full_name,
-            nik: jamaah.nik,
-            passport: jamaah.passport_number,
-            package_type: 'Quad', // Default
-            price: defaultPrice
-        }]);
-        setJamaahResults([]); // Reset pencarian
-        setJamaahSearch('');
-    };
+    { section: 'Status & Pembayaran' },
+    { 
+      name: 'status', 
+      label: 'Status Booking', 
+      type: 'select', 
+      options: [
+        { value: 'draft', label: 'Draft' },
+        { value: 'pending', label: 'Pending Confirmation' },
+        { value: 'confirmed', label: 'Confirmed (Seat Secured)' },
+        { value: 'completed', label: 'Completed (Selesai)' },
+        { value: 'cancelled', label: 'Cancelled' }
+      ],
+      defaultValue: 'pending',
+      width: 'half'
+    },
+    { 
+      name: 'payment_status', 
+      label: 'Status Pembayaran', 
+      type: 'select', 
+      options: [
+        { value: 'unpaid', label: 'Belum Bayar' },
+        { value: 'dp', label: 'Sudah DP' },
+        { value: 'partial', label: 'Cicilan Berjalan' },
+        { value: 'paid', label: 'Lunas' },
+        { value: 'refunded', label: 'Refunded' }
+      ],
+      defaultValue: 'unpaid',
+      width: 'half'
+    },
+    
+    { section: 'Lain-lain' },
+    { name: 'notes', label: 'Catatan Internal (Staff Only)', type: 'textarea', width: 'full' },
+  ];
 
-    const updatePassenger = (idx, field, val) => {
-        const newPax = [...passengers];
-        newPax[idx][field] = val;
-        
-        // Update harga otomatis jika tipe kamar berubah
-        if (field === 'package_type' && selectedDeparture) {
-            let price = 0;
-            if (val === 'Quad') price = parseFloat(selectedDeparture.price_quad);
-            else if (val === 'Triple') price = parseFloat(selectedDeparture.price_triple);
-            else if (val === 'Double') price = parseFloat(selectedDeparture.price_double);
-            newPax[idx].price = price || newPax[idx].price;
-        }
-        setPassengers(newPax);
-    };
-
-    const removePassenger = (idx) => {
-        setPassengers(prev => prev.filter((_, i) => i !== idx));
-    };
-
-    // --- SUBMIT BOOKING ---
-    const handleSubmitBooking = async () => {
-        if (!selectedDeparture) return toast.error("Pilih jadwal keberangkatan");
-        if (passengers.length === 0) return toast.error("Minimal 1 penumpang");
-        if (!contactInfo.name || !contactInfo.phone) return toast.error("Lengkapi data kontak");
-
-        try {
-            const payload = {
-                departure_id: selectedDeparture.id,
-                agent_id: selectedAgent,
-                passengers: passengers.map(p => ({
-                    jamaah_id: p.jamaah_id,
-                    package_type: p.package_type,
-                    price: p.price
-                })),
-                contact_name: contactInfo.name,
-                contact_phone: contactInfo.phone,
-                contact_email: contactInfo.email
-            };
-
-            await api.post('umh/v1/bookings', payload);
-            toast.success("Booking berhasil dibuat!");
-            setIsModalOpen(false);
-            fetchData();
-            // Reset
-            setPassengers([]);
-            setStep(1);
-            setSelectedDeparture(null);
-        } catch (err) {
-            toast.error("Gagal membuat booking: " + err.message);
-        }
-    };
-
-    const columns = [
-        { header: 'Kode Booking', accessor: 'booking_code', render: r => (
-            <div>
-                <div className="font-bold text-blue-600">{r.booking_code}</div>
-                <div className="text-xs text-gray-500">{formatDate(r.created_at)}</div>
-            </div>
-        )},
-        { header: 'Paket', accessor: 'package_name', render: r => (
-            <div>
-                <div className="font-medium">{r.package_name}</div>
-                <div className="text-xs text-gray-500 flex items-center gap-1">
-                    <Calendar size={10}/> {formatDate(r.departure_date)}
-                </div>
-            </div>
-        )},
-        { header: 'Kontak', accessor: 'contact_name', render: r => (
-            <div>
-                <div className="text-sm font-medium">{r.contact_name}</div>
-                <div className="text-xs text-gray-500">{r.contact_phone}</div>
-            </div>
-        )},
-        { header: 'Jemaah', accessor: 'total_pax', render: r => (
-            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold">{r.total_pax} Pax</span>
-        )},
-        { header: 'Tagihan', accessor: 'total_price', render: r => (
-            <div>
-                <div className="font-bold">{formatCurrency(r.total_price)}</div>
-                <div className={`text-[10px] uppercase font-bold ${r.payment_status === 'paid' ? 'text-green-600' : 'text-orange-600'}`}>
-                    {r.payment_status === 'unpaid' ? 'Belum Bayar' : r.payment_status}
-                </div>
-            </div>
-        )},
-    ];
-
-    return (
-        <Layout title="Transaksi Booking">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex justify-between items-center">
-                <SearchInput placeholder="Cari kode booking..." />
-                <button onClick={() => setIsModalOpen(true)} className="btn-primary flex items-center gap-2">
-                    <Plus size={18}/> Booking Baru
-                </button>
-            </div>
-
-            <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
-                <CrudTable columns={columns} data={data} loading={loading} actionLabel="Detail" />
-            </div>
-
-            {/* MODAL WIZARD */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Buat Booking Baru" size="max-w-5xl">
-                {/* WIZARD HEADER */}
-                <div className="flex items-center justify-center mb-6">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step>=1 ? 'bg-blue-600 text-white':'bg-gray-200'}`}>1</div>
-                    <div className="w-16 h-1 bg-gray-200 mx-2"><div className={`h-full bg-blue-600 transition-all ${step>=2?'w-full':'w-0'}`}></div></div>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step>=2 ? 'bg-blue-600 text-white':'bg-gray-200'}`}>2</div>
-                    <div className="w-16 h-1 bg-gray-200 mx-2"><div className={`h-full bg-blue-600 transition-all ${step>=3?'w-full':'w-0'}`}></div></div>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step>=3 ? 'bg-blue-600 text-white':'bg-gray-200'}`}>3</div>
-                </div>
-
-                <div className="min-h-[300px]">
-                    {/* STEP 1: PILIH PAKET */}
-                    {step === 1 && (
-                        <div className="space-y-4">
-                            <h3 className="font-bold text-lg mb-4">Pilih Jadwal Keberangkatan</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[40vh] overflow-y-auto custom-scrollbar p-1">
-                                {departures.map(dept => (
-                                    <div key={dept.id} 
-                                        onClick={() => setSelectedDeparture(dept)}
-                                        className={`border p-4 rounded-xl cursor-pointer hover:border-blue-500 transition ${selectedDeparture?.id === dept.id ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-200' : 'bg-white'}`}>
-                                        <div className="font-bold text-gray-800">{dept.package_name}</div>
-                                        <div className="text-sm text-gray-600 flex items-center gap-2 mt-1">
-                                            <Calendar size={14}/> {formatDate(dept.departure_date)}
-                                        </div>
-                                        <div className="mt-2 flex justify-between items-end">
-                                            <div className="text-xs bg-gray-200 px-2 py-1 rounded">Sisa Seat: {dept.available_seats}</div>
-                                            <div className="font-bold text-blue-700">{formatCurrency(dept.price_quad || dept.base_price)}</div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* STEP 2: INPUT JEMAAH */}
-                    {step === 2 && (
-                        <div className="space-y-4">
-                            <h3 className="font-bold text-lg mb-4">Data Jemaah</h3>
-                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
-                                <div className="flex gap-2">
-                                    <input 
-                                        className="input-field" 
-                                        placeholder="Cari nama / NIK / Paspor..." 
-                                        value={jamaahSearch}
-                                        onChange={e => setJamaahSearch(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && searchJamaah(jamaahSearch)}
-                                    />
-                                    <button onClick={() => searchJamaah(jamaahSearch)} className="btn-secondary"><Search size={18}/></button>
-                                </div>
-                                {jamaahResults.length > 0 && (
-                                    <div className="mt-2 bg-white border rounded shadow-sm max-h-40 overflow-y-auto">
-                                        {jamaahResults.map(j => (
-                                            <div key={j.id} onClick={() => addPassenger(j)} className="p-2 hover:bg-blue-50 cursor-pointer flex justify-between items-center border-b">
-                                                <div className="text-sm font-bold">{j.full_name}</div>
-                                                <Plus size={16} className="text-blue-600"/>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="space-y-2 max-h-[30vh] overflow-y-auto custom-scrollbar">
-                                {passengers.map((pax, idx) => (
-                                    <div key={idx} className="flex gap-3 items-center border p-3 rounded-lg bg-white">
-                                        <div className="flex-1 font-bold text-sm">{pax.full_name}</div>
-                                        <select 
-                                            className="input-field w-24 text-xs py-1" 
-                                            value={pax.package_type} 
-                                            onChange={e => updatePassenger(idx, 'package_type', e.target.value)}
-                                        >
-                                            <option value="Quad">Quad</option>
-                                            <option value="Triple">Triple</option>
-                                            <option value="Double">Double</option>
-                                        </select>
-                                        <div className="w-32 font-bold text-sm text-right">{formatCurrency(pax.price)}</div>
-                                        <button onClick={() => removePassenger(idx)} className="text-red-500 p-1"><Trash size={16}/></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* STEP 3: KONFIRMASI */}
-                    {step === 3 && (
-                        <div className="space-y-4">
-                            <h3 className="font-bold text-lg mb-4">Konfirmasi</h3>
-                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4">
-                                <div className="flex justify-between text-lg font-bold text-blue-900">
-                                    <span>Total Tagihan:</span>
-                                    <span>{formatCurrency(passengers.reduce((acc, curr) => acc + curr.price, 0))}</span>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="label">Nama Kontak</label><input className="input-field" value={contactInfo.name} onChange={e => setContactInfo({...contactInfo, name: e.target.value})} placeholder="Misal: Budi Santoso" /></div>
-                                <div><label className="label">No. WhatsApp</label><input className="input-field" value={contactInfo.phone} onChange={e => setContactInfo({...contactInfo, phone: e.target.value})} placeholder="0812..." /></div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex justify-between mt-6 pt-4 border-t">
-                    <button onClick={() => setStep(s => Math.max(1, s - 1))} disabled={step === 1} className="btn-secondary">Kembali</button>
-                    {step < 3 ? (
-                        <button onClick={() => setStep(s => s + 1)} className="btn-primary">Lanjut</button>
-                    ) : (
-                        <button onClick={handleSubmitBooking} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold">Buat Booking</button>
-                    )}
-                </div>
-            </Modal>
-        </Layout>
-    );
+  return (
+    <CrudTable
+      title="Data Transaksi Booking"
+      endpoint="/bookings"
+      columns={columns}
+      formFields={formFields}
+      searchPlaceholder="Cari kode booking, nama kontak..."
+      allowDelete={true} // Hati-hati delete booking
+    />
+  );
 };
 
 export default Bookings;

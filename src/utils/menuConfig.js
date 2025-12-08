@@ -1,49 +1,34 @@
 import { 
-    LayoutDashboard, Users, Package, Calendar, 
-    ShoppingCart, Truck, Briefcase, 
-    Megaphone, DollarSign, Settings, 
-    Shield, Layers, Database
+  Home, Users, Briefcase, Calendar, FileText, 
+  DollarSign, Truck, Megaphone, Settings, CheckSquare,
+  CreditCard, Shield, UserPlus, Heart, MessageSquare
 } from 'lucide-react';
 
 export const menuItems = [
-    {
-        category: 'Utama',
-        items: [
-            { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-            { path: '/bookings', label: 'Transaksi Booking', icon: ShoppingCart },
-        ]
-    },
-    {
-        category: 'Produk & Layanan',
-        items: [
-            { path: '/packages', label: 'Katalog Paket', icon: Package },
-            { path: '/departures', label: 'Jadwal Keberangkatan', icon: Calendar },
-            { path: '/package-categories', label: 'Kategori Paket', icon: Layers },
-        ]
-    },
-    {
-        category: 'Operasional',
-        items: [
-            { path: '/jamaah', label: 'Data Master Jemaah', icon: Users },
-            { path: '/logistics', label: 'Logistik & Gudang', icon: Truck },
-            { path: '/marketing', label: 'Marketing & Leads', icon: Megaphone },
-        ]
-    },
-    {
-        category: 'Back Office',
-        items: [
-            { path: '/finance', label: 'Keuangan', icon: DollarSign },
-            { path: '/hr', label: 'HR & Karyawan', icon: Briefcase },
-            { path: '/agents', label: 'Kemitraan (Agen)', icon: Users }, // Icon sama gpp, konteks beda
-        ]
-    },
-    {
-        category: 'Sistem',
-        items: [
-            { path: '/masters', label: 'Data Master (Hotel/Pesawat)', icon: Database },
-            { path: '/users', label: 'Manajemen User', icon: Shield },
-            { path: '/roles', label: 'Hak Akses (Role)', icon: Shield },
-            { path: '/settings', label: 'Pengaturan', icon: Settings },
-        ]
-    }
+  { path: '/', label: 'Dashboard', icon: Home },
+  
+  { section: 'Produk & Layanan' },
+  { path: '/packages', label: 'Paket Umrah', icon: Briefcase },
+  { path: '/departures', label: 'Jadwal Keberangkatan', icon: Calendar },
+  { path: '/private-umrah', label: 'Private / Custom', icon: Shield }, // NEW
+  { path: '/badal', label: 'Badal Umrah', icon: Heart }, // NEW
+  
+  { section: 'Transaksi' },
+  { path: '/bookings', label: 'Data Booking', icon: FileText },
+  { path: '/savings', label: 'Tabungan Umrah', icon: CreditCard }, // NEW
+  { path: '/finance', label: 'Keuangan', icon: DollarSign },
+  
+  { section: 'Operasional' },
+  { path: '/jamaah', label: 'Data Jamaah', icon: Users },
+  { path: '/mutawwif', label: 'Mutawwif', icon: UserPlus }, // NEW
+  { path: '/manasik', label: 'Manasik', icon: CheckSquare }, // NEW
+  { path: '/logistics', label: 'Logistik', icon: Truck },
+  
+  { section: 'Lainnya' },
+  { path: '/marketing', label: 'Marketing', icon: Megaphone },
+  { path: '/agents', label: 'Keagenan', icon: Users },
+  { path: '/hr', label: 'SDM / HR', icon: Users },
+  { path: '/support', label: 'Support & Tiket', icon: MessageSquare }, // NEW
+  { path: '/masters', label: 'Data Master', icon: Settings },
+  { path: '/settings', label: 'Pengaturan', icon: Settings },
 ];

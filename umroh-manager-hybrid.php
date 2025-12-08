@@ -1,127 +1,75 @@
 <?php
 /**
- * Plugin Name: Manajemen Travel Umroh & Haji (Enterprise V4.0)
- * Plugin URI:  https://umrohweb.site
- * Description: Sistem Manajemen Travel Umroh Terpadu dengan React Dashboard, Booking Engine, HR, dan Finance.
- * Version:     4.0.1
- * Author:      Bonang Panji Nur
- * Author URI:  https://bonangpanjinur.com
- * License:     GPL v2 or later
- * Text Domain: umroh-manager
+ * Plugin Name: Umroh Manager Hybrid Enterprise
+ * Description: Sistem Manajemen Travel Umrah Terlengkap (Core + HR + Agen + Private + Tabungan)
+ * Version: 6.1.0
+ * Author: Bonang Panji Nur
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
+// 1. Define Constants
 define('UMH_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('UMH_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('UMH_VERSION', '4.0.1');
+define('UMH_DB_VERSION', '6.1.0');
 
-require_once UMH_PLUGIN_DIR . 'includes/utils.php';
+// 2. Include Core Files
 require_once UMH_PLUGIN_DIR . 'includes/db-schema.php';
-require_once UMH_PLUGIN_DIR . 'includes/cors.php';
 require_once UMH_PLUGIN_DIR . 'includes/class-umh-api-loader.php';
-require_once UMH_PLUGIN_DIR . 'includes/admin-login-customizer.php'; 
 
+// 3. Activation Hook (Membuat Tabel Database)
 register_activation_hook(__FILE__, 'umh_activate_plugin');
 
 function umh_activate_plugin() {
-    if (function_exists('umh_create_tables')) {
+    // Panggil fungsi pembuatan tabel dari db-schema.php
+    umh_create_tables();
+    
+    // Set role capabilities jika perlu (opsional)
+    umh_setup_roles();
+}
+
+function umh_setup_roles() {
+    add_role('umh_agent', 'Travel Agent', array('read' => true));
+    add_role('umh_staff', 'Travel Staff', array('read' => true, 'edit_posts' => true));
+}
+
+// 4. Check DB Update on Load
+add_action('plugins_loaded', 'umh_check_db_update');
+function umh_check_db_update() {
+    if (get_option('umh_db_version') != UMH_DB_VERSION) {
         umh_create_tables();
     }
-    
-    $role = get_role('administrator');
-    if ($role) {
-        $role->add_cap('manage_umroh');
-    }
 }
 
-function umh_init_api() {
-    $api_loader = new UMH_API_Loader();
-    $api_loader->init();
-}
-add_action('plugins_loaded', 'umh_init_api');
+// 5. Initialize API
+$api_loader = new UMH_API_Loader();
+$api_loader->init();
 
-function umh_admin_menu() {
-    $hook = add_menu_page(
-        'Manajemen Travel',
-        'Manajemen Travel',
+// 6. Admin Scripts & Styles (Optional)
+add_action('admin_enqueue_scripts', 'umh_admin_scripts');
+function umh_admin_scripts() {
+    // wp_enqueue_style('umh-admin', UMH_PLUGIN_URL . 'assets/css/admin.css');
+}
+
+// 7. React Dashboard Integration (Placeholder)
+// Fungsi ini akan memuat file build React di halaman admin
+add_action('admin_menu', 'umh_register_admin_page');
+function umh_register_admin_page() {
+    add_menu_page(
+        'Umroh Manager',
+        'Umroh Manager',
         'manage_options',
         'umroh-manager',
         'umh_render_react_app',
         'dashicons-palmtree',
         2
     );
-    
-    // Tambahkan action untuk load script hanya di halaman ini
-    add_action("load-$hook", 'umh_hide_wp_admin_ui');
-}
-add_action('admin_menu', 'umh_admin_menu');
-
-// Fungsi menyembunyikan UI WordPress agar App terasa Native/Immersive
-function umh_hide_wp_admin_ui() {
-    // CSS untuk menyembunyikan Admin Bar dan Sidebar WP
-    add_action('admin_head', function() {
-        echo '<style>
-            /* Sembunyikan Admin Bar Atas */
-            #wpadminbar { display: none !important; }
-            html.wp-toolbar { padding-top: 0 !important; }
-            
-            /* Sembunyikan Admin Menu Kiri */
-            #adminmenumain, #adminmenuback, #adminmenuwrap { display: none !important; }
-            #wpcontent, #wpfooter { margin-left: 0 !important; padding: 0 !important; }
-            
-            /* Reset Layout agar Full Screen */
-            .update-nag, .notice, #wpbody-content > .wrap > h1 { display: none !important; }
-            #wpbody-content { padding-bottom: 0 !important; }
-            
-            /* App Container Full Height */
-            #umh-app-root {
-                height: 100vh;
-                width: 100vw;
-                overflow: hidden; /* Scroll dihandle oleh React */
-                background-color: #f3f4f6; /* Tailwind bg-gray-50 */
-                position: fixed;
-                top: 0;
-                left: 0;
-                z-index: 9999;
-            }
-        </style>';
-    });
 }
 
 function umh_render_react_app() {
-    echo '<div id="umh-app-root"></div>';
+    echo '<div id="umroh-manager-root"></div>';
+    // Logic untuk load script React (build/index.js) akan ditambahkan saat setup Frontend
 }
-
-function umh_enqueue_admin_scripts($hook) {
-    if ($hook !== 'toplevel_page_umroh-manager') {
-        return;
-    }
-
-    $asset_file = include(UMH_PLUGIN_DIR . 'build/index.asset.php');
-
-    wp_enqueue_script(
-        'umh-react-app',
-        UMH_PLUGIN_URL . 'build/index.js',
-        $asset_file['dependencies'],
-        $asset_file['version'],
-        true
-    );
-
-    wp_enqueue_style(
-        'umh-react-style',
-        UMH_PLUGIN_URL . 'build/index.css',
-        [],
-        $asset_file['version']
-    );
-
-    wp_localize_script('umh-react-app', 'umh_vars', [
-        'nonce' => wp_create_nonce('wp_rest'),
-        'api_url' => get_rest_url(null, 'umh/v1/'),
-        'user_id' => get_current_user_id(),
-        'site_url' => site_url()
-    ]);
-}
-add_action('admin_enqueue_scripts', 'umh_enqueue_admin_scripts');
+?>

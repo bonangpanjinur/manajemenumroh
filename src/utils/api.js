@@ -1,92 +1,42 @@
-/**
- * Utility API Wrapper untuk WordPress REST API
- * Menangani Header, Nonce, dan Upload File
- */
+const API_BASE = '/wp-json/umh/v1';
 
-// Base URL API WordPress (Sesuaikan jika path WP Anda berbeda)
-// Biasanya: /wp-json/
-const BASE_URL = '/wp-json'; 
+async function request(endpoint, options = {}) {
+  // Ambil Nonce dari setting global WP jika ada (untuk keamanan)
+  const nonce = window.umh_settings?.nonce || window.wpApiSettings?.nonce || '';
 
-// Ambil Nonce dari global variable (biasanya disuntikkan oleh wp_localize_script di PHP)
-// Jika running di localhost React (npm start), kita butuh mock atau proxy.
-// Di production (dalam WP Admin), `umh_vars.nonce` pasti ada.
-const getNonce = () => {
-    return window.umh_vars ? window.umh_vars.nonce : ''; 
-};
-
-const headers = {
-    'X-WP-Nonce': getNonce(),
+  const headers = {
     'Content-Type': 'application/json',
-};
+    'X-WP-Nonce': nonce,
+    ...options.headers,
+  };
 
-const handleResponse = async (response) => {
-    const text = await response.text();
-    let data;
-    try {
-        data = JSON.parse(text);
-    } catch (e) {
-        data = { success: false, message: text || response.statusText };
-    }
+  const config = {
+    ...options,
+    headers,
+  };
 
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, config);
+    
     if (!response.ok) {
-        const error = (data && data.message) || response.statusText;
-        throw new Error(error);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || response.statusText || 'API Request Failed');
     }
-    return data;
+
+    return await response.json();
+  } catch (error) {
+    console.error('API Error:', error);
+    throw error; // Re-throw agar bisa ditangkap di komponen
+  }
+}
+
+// Export sebagai Named Export (PENTING untuk fix error build)
+export const api = {
+  get: (endpoint) => request(endpoint, { method: 'GET' }),
+  post: (endpoint, data) => request(endpoint, { method: 'POST', body: JSON.stringify(data) }),
+  put: (endpoint, data) => request(endpoint, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (endpoint) => request(endpoint, { method: 'DELETE' }),
 };
 
-const api = {
-    get: async (endpoint, options = {}) => {
-        const url = new URL(BASE_URL + '/' + endpoint, window.location.origin);
-        if (options.params) {
-            Object.keys(options.params).forEach(key => 
-                url.searchParams.append(key, options.params[key])
-            );
-        }
-        const res = await fetch(url, { ...options, headers: { 'X-WP-Nonce': getNonce() } });
-        return handleResponse(res);
-    },
-
-    post: async (endpoint, body) => {
-        const res = await fetch(`${BASE_URL}/${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': getNonce() },
-            body: JSON.stringify(body),
-        });
-        return handleResponse(res);
-    },
-
-    put: async (endpoint, body) => {
-        const res = await fetch(`${BASE_URL}/${endpoint}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': getNonce() },
-            body: JSON.stringify(body),
-        });
-        return handleResponse(res);
-    },
-
-    delete: async (endpoint) => {
-        const res = await fetch(`${BASE_URL}/${endpoint}`, {
-            method: 'DELETE',
-            headers: { 'X-WP-Nonce': getNonce() },
-        });
-        return handleResponse(res);
-    },
-
-    // Fungsi Khusus Upload File
-    upload: async (file, fieldName = 'file', relatedId = null) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        if (relatedId) formData.append('post_id', relatedId);
-
-        // Jangan set Content-Type header manual saat upload, biarkan browser set boundary-nya
-        const res = await fetch(`${BASE_URL}/umh/v1/upload`, {
-            method: 'POST',
-            headers: { 'X-WP-Nonce': getNonce() },
-            body: formData,
-        });
-        return handleResponse(res);
-    }
-};
-
+// Export default juga disediakan untuk kompatibilitas
 export default api;

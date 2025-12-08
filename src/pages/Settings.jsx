@@ -1,207 +1,199 @@
 import React, { useState, useEffect } from 'react';
-import Layout from '../components/Layout';
-import api from '../utils/api';
-import { Save, Globe, Bell, CreditCard, Database, Upload } from 'lucide-react';
-import toast from 'react-hot-toast';
+import CrudTable from '../components/CrudTable';
+import { api } from '../utils/api';
 
-const Settings = () => {
-    const [activeTab, setActiveTab] = useState('general');
-    const [loading, setLoading] = useState(false);
-    
-    // State untuk semua setting
-    const [settings, setSettings] = useState({
-        company_name: 'Berkah Tours & Travel',
-        license_number: '',
-        address: '',
-        phone: '',
-        email: '',
-        website: '',
-        logo_url: '',
-        
-        // WhatsApp Gateway (Misal: Fonnte/Wablas)
-        wa_api_url: '',
-        wa_api_key: '',
-        
-        // Payment Gateway (Misal: Midtrans/Xendit)
-        payment_gateway: 'manual', // manual, midtrans, xendit
-        midtrans_server_key: '',
-        midtrans_client_key: '',
-        
-        // System
-        currency: 'IDR',
-        timezone: 'Asia/Jakarta'
-    });
+const Tabs = ({ activeTab, setActiveTab }) => (
+  <div className="flex border-b border-gray-200 mb-6 overflow-x-auto">
+    {[
+      { id: 'company', label: 'Profil Perusahaan' },
+      { id: 'finance', label: 'Konfigurasi Keuangan' },
+      { id: 'templates', label: 'Template Notifikasi' },
+      { id: 'system', label: 'System & API' }
+    ].map((tab) => (
+      <button
+        key={tab.id}
+        className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
+          activeTab === tab.id 
+            ? 'border-blue-600 text-blue-600' 
+            : 'border-transparent text-gray-500 hover:text-gray-700'
+        }`}
+        onClick={() => setActiveTab(tab.id)}
+      >
+        {tab.label}
+      </button>
+    ))}
+  </div>
+);
 
-    // Load Settings saat pertama kali buka
-    useEffect(() => {
-        // Simulasi fetch setting dari API (Nanti backend perlu endpoint GET /settings)
-        // api.get('umh/v1/settings').then(res => setSettings(res.data));
-    }, []);
+const SettingsForm = ({ fields, initialData, onSubmit }) => {
+  const [formData, setFormData] = useState(initialData || {});
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setSettings(prev => ({ ...prev, [name]: value }));
-    };
+  useEffect(() => {
+    if (initialData) setFormData(initialData);
+  }, [initialData]);
 
-    const handleSave = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        try {
-            // Simulasi simpan ke API (Backend perlu endpoint POST /settings)
-            // await api.post('umh/v1/settings', settings);
-            
-            // Mock success
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            toast.success("Pengaturan berhasil disimpan!");
-        } catch (err) {
-            toast.error("Gagal menyimpan pengaturan");
-        } finally {
-            setLoading(false);
-        }
-    };
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
 
-    return (
-        <Layout title="Konfigurasi Sistem">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                
-                {/* Sidebar Nav Settings */}
-                <div className="md:col-span-1 space-y-2">
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                        <NavButton id="general" label="Info Perusahaan" icon={Globe} active={activeTab} set={setActiveTab} />
-                        <NavButton id="whatsapp" label="Notifikasi WA" icon={Bell} active={activeTab} set={setActiveTab} />
-                        <NavButton id="payment" label="Integrasi Pembayaran" icon={CreditCard} active={activeTab} set={setActiveTab} />
-                        <NavButton id="system" label="Backup & System" icon={Database} active={activeTab} set={setActiveTab} />
-                    </div>
-                </div>
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage(null);
+    try {
+      await onSubmit(formData);
+      setMessage({ type: 'success', text: 'Pengaturan berhasil disimpan!' });
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Gagal menyimpan pengaturan.' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-                {/* Content Area */}
-                <div className="md:col-span-3">
-                    <form onSubmit={handleSave} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
-                        
-                        {/* TAB 1: GENERAL INFO */}
-                        {activeTab === 'general' && (
-                            <div className="space-y-5 animate-fade-in">
-                                <h3 className="font-bold text-gray-800 border-b pb-3 mb-4">Profil Travel Agent</h3>
-                                
-                                <div className="flex gap-6">
-                                    <div className="w-1/3">
-                                        <label className="label">Logo Perusahaan</label>
-                                        <div className="border-2 border-dashed border-gray-300 rounded-lg h-40 flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:bg-gray-50 transition">
-                                            {settings.logo_url ? (
-                                                <img src={settings.logo_url} alt="Logo" className="h-full object-contain" />
-                                            ) : (
-                                                <>
-                                                    <Upload size={24} />
-                                                    <span className="text-xs mt-2">Upload Logo</span>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="w-2/3 space-y-4">
-                                        <div><label className="label">Nama Travel</label><input name="company_name" className="input-field" value={settings.company_name} onChange={handleChange} /></div>
-                                        <div><label className="label">Nomor Izin PPIU/PIHK</label><input name="license_number" className="input-field" value={settings.license_number} onChange={handleChange} placeholder="SK Kemenag No..." /></div>
-                                    </div>
-                                </div>
+  return (
+    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 max-w-4xl">
+      {message && (
+        <div className={`p-4 mb-6 rounded ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+          {message.text}
+        </div>
+      )}
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {fields.map((field) => (
+          <div key={field.name} className={field.fullWidth ? 'md:col-span-2' : ''}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
+            {field.type === 'textarea' ? (
+              <textarea
+                name={field.name}
+                value={formData[field.name] || ''}
+                onChange={handleChange}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+              />
+            ) : (
+              <input
+                type={field.type || 'text'}
+                name={field.name}
+                value={formData[field.name] || ''}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+              />
+            )}
+            {field.help && <p className="text-xs text-gray-500 mt-1">{field.help}</p>}
+          </div>
+        ))}
+      </div>
 
-                                <div><label className="label">Alamat Kantor Pusat</label><textarea name="address" className="input-field h-24" value={settings.address} onChange={handleChange}></textarea></div>
-                                
-                                <div className="grid grid-cols-3 gap-5">
-                                    <div><label className="label">Email Resmi</label><input name="email" className="input-field" value={settings.email} onChange={handleChange} /></div>
-                                    <div><label className="label">No. Telepon</label><input name="phone" className="input-field" value={settings.phone} onChange={handleChange} /></div>
-                                    <div><label className="label">Website</label><input name="website" className="input-field" value={settings.website} onChange={handleChange} /></div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* TAB 2: WHATSAPP GATEWAY */}
-                        {activeTab === 'whatsapp' && (
-                            <div className="space-y-5 animate-fade-in">
-                                <h3 className="font-bold text-gray-800 border-b pb-3 mb-4">Integrasi WhatsApp Gateway</h3>
-                                <div className="bg-green-50 p-4 rounded-lg text-sm text-green-800 border border-green-200 mb-4">
-                                    Sistem menggunakan API pihak ketiga (seperti Fonnte/Wablas) untuk mengirim notifikasi otomatis ke jemaah.
-                                </div>
-                                
-                                <div><label className="label">API URL Endpoint</label><input name="wa_api_url" className="input-field" value={settings.wa_api_url} onChange={handleChange} placeholder="https://api.whatsapp-gateway.com/send" /></div>
-                                <div><label className="label">API Key / Token</label><input name="wa_api_key" type="password" className="input-field" value={settings.wa_api_key} onChange={handleChange} /></div>
-                                
-                                <div className="pt-4">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
-                                        <span className="text-sm text-gray-700">Kirim notifikasi otomatis saat Booking dibuat</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer mt-2">
-                                        <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
-                                        <span className="text-sm text-gray-700">Kirim notifikasi pengingat pembayaran H-3</span>
-                                    </label>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* TAB 3: PAYMENT GATEWAY */}
-                        {activeTab === 'payment' && (
-                            <div className="space-y-5 animate-fade-in">
-                                <h3 className="font-bold text-gray-800 border-b pb-3 mb-4">Metode Pembayaran Online</h3>
-                                
-                                <div>
-                                    <label className="label">Pilih Provider</label>
-                                    <select name="payment_gateway" className="input-field" value={settings.payment_gateway} onChange={handleChange}>
-                                        <option value="manual">Transfer Manual (Cek Mutasi Sendiri)</option>
-                                        <option value="midtrans">Midtrans</option>
-                                        <option value="xendit">Xendit</option>
-                                        <option value="duitku">Duitku</option>
-                                    </select>
-                                </div>
-
-                                {settings.payment_gateway !== 'manual' && (
-                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
-                                        <div><label className="label">Server Key</label><input name="midtrans_server_key" className="input-field" value={settings.midtrans_server_key} onChange={handleChange} /></div>
-                                        <div><label className="label">Client Key</label><input name="midtrans_client_key" className="input-field" value={settings.midtrans_client_key} onChange={handleChange} /></div>
-                                        <div className="text-xs text-gray-500">* Dapatkan key dari dashboard provider pembayaran Anda.</div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* TAB 4: SYSTEM & BACKUP */}
-                        {activeTab === 'system' && (
-                            <div className="space-y-5 animate-fade-in">
-                                <h3 className="font-bold text-gray-800 border-b pb-3 mb-4">Pemeliharaan Sistem</h3>
-                                
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="label">Mata Uang Default</label><select name="currency" className="input-field" value={settings.currency} onChange={handleChange}><option value="IDR">IDR (Rupiah)</option><option value="USD">USD (Dolar)</option></select></div>
-                                    <div><label className="label">Zona Waktu</label><select name="timezone" className="input-field" value={settings.timezone} onChange={handleChange}><option value="Asia/Jakarta">WIB (Jakarta)</option><option value="Asia/Makassar">WITA (Makassar)</option><option value="Asia/Jayapura">WIT (Jayapura)</option></select></div>
-                                </div>
-
-                                <div className="border-t pt-4 mt-6">
-                                    <h4 className="font-bold text-red-600 mb-2">Danger Zone</h4>
-                                    <div className="flex gap-3">
-                                        <button type="button" className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50">Backup Database (SQL)</button>
-                                        <button type="button" className="px-4 py-2 border border-red-200 text-red-600 rounded text-sm hover:bg-red-50">Reset Semua Data</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="pt-6 border-t mt-8 flex justify-end">
-                            <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2 px-6 py-3 shadow-lg shadow-blue-100">
-                                {loading ? 'Menyimpan...' : <><Save size={18}/> Simpan Perubahan</>}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </Layout>
-    );
+      <div className="mt-6 flex justify-end">
+        <button
+          type="submit"
+          disabled={loading}
+          className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+        >
+          {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
+        </button>
+      </div>
+    </form>
+  );
 };
 
-const NavButton = ({ id, label, icon: Icon, active, set }) => (
-    <button 
-        type="button"
-        onClick={() => set(id)} 
-        className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors ${active === id ? 'bg-blue-50 text-blue-700 font-medium border-l-4 border-blue-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent'}`}
-    >
-        <Icon size={18} /> {label}
-    </button>
-);
+const Settings = () => {
+  const [activeTab, setActiveTab] = useState('company');
+  const [settingsData, setSettingsData] = useState({});
+
+  // Simulasi Load Data (Nanti diganti API endpoint /settings)
+  useEffect(() => {
+    // Mock data fetching
+    setSettingsData({
+      company_name: 'Berkah Travel Indonesia',
+      company_address: 'Jl. Sudirman No. 123, Jakarta',
+      company_phone: '081234567890',
+      company_email: 'info@berkahtravel.com',
+      currency: 'IDR',
+      tax_rate: '11',
+      wa_api_key: '*************',
+    });
+  }, []);
+
+  const handleSaveSettings = async (data) => {
+    // Simulasi API Call
+    console.log("Saving settings:", data);
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Fake delay
+    setSettingsData(data);
+  };
+
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-6 text-gray-800">Pengaturan Sistem</h1>
+      <Tabs activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      {activeTab === 'company' && (
+        <SettingsForm
+          initialData={settingsData}
+          onSubmit={handleSaveSettings}
+          fields={[
+            { name: 'company_name', label: 'Nama Perusahaan Travel', fullWidth: true },
+            { name: 'company_phone', label: 'No. Telepon Kantor' },
+            { name: 'company_email', label: 'Email Resmi' },
+            { name: 'company_address', label: 'Alamat Lengkap', type: 'textarea', fullWidth: true },
+            { name: 'company_logo', label: 'URL Logo Perusahaan', fullWidth: true, help: 'Masukkan URL gambar logo (rekomendasi: PNG transparan)' },
+            { name: 'license_number', label: 'Nomor Izin PPIU/PIHK', fullWidth: true }
+          ]}
+        />
+      )}
+
+      {activeTab === 'finance' && (
+        <SettingsForm
+          initialData={settingsData}
+          onSubmit={handleSaveSettings}
+          fields={[
+            { name: 'currency', label: 'Mata Uang Default', help: 'Contoh: IDR, USD' },
+            { name: 'tax_rate', label: 'Persentase Pajak (%)', type: 'number' },
+            { name: 'invoice_footer', label: 'Catatan Kaki Invoice', type: 'textarea', fullWidth: true, help: 'Teks ini akan muncul di bagian bawah setiap invoice yang dicetak.' }
+          ]}
+        />
+      )}
+
+      {activeTab === 'templates' && (
+        <CrudTable
+          title="Template Pesan Otomatis"
+          endpoint="/utils/templates"
+          columns={[
+            { key: 'name', label: 'Nama Template' },
+            { key: 'channel', label: 'Channel', render: (val) => val === 'whatsapp' ? '📱 WhatsApp' : '✉️ Email' },
+            { key: 'slug', label: 'Kode Slug' },
+            { key: 'updated_at', label: 'Terakhir Update' }
+          ]}
+          formFields={[
+            { name: 'name', label: 'Nama Template (Deskriptif)', type: 'text', required: true, width: 'full' },
+            { name: 'slug', label: 'Slug (Unik, huruf kecil)', type: 'text', required: true, width: 'half', placeholder: 'payment_success' },
+            { name: 'channel', label: 'Saluran', type: 'select', options: [{value: 'whatsapp', label: 'WhatsApp'}, {value: 'email', label: 'Email'}], width: 'half' },
+            { name: 'subject', label: 'Subjek Email (Opsional)', type: 'text', width: 'full' },
+            { name: 'content', label: 'Isi Pesan', type: 'textarea', required: true, width: 'full', placeholder: 'Halo {name}, pembayaran sebesar {amount} telah diterima...' },
+            { name: 'is_active', label: 'Status', type: 'select', options: [{value: '1', label: 'Aktif'}, {value: '0', label: 'Nonaktif'}], width: 'full' }
+          ]}
+          searchPlaceholder="Cari template..."
+        />
+      )}
+
+      {activeTab === 'system' && (
+        <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-100 text-center py-12">
+          <div className="max-w-md mx-auto">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Konfigurasi Lanjutan</h3>
+            <p className="text-gray-500 mb-6">
+              Pengaturan teknis seperti API Key WhatsApp Gateway, SMTP Email, dan Integrasi Payment Gateway dikelola melalui menu WordPress klasik untuk keamanan.
+            </p>
+            <a href="/wp-admin/admin.php?page=umroh-manager-settings" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
+              Buka Halaman Pengaturan WP
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default Settings;
