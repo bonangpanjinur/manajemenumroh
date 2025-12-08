@@ -1,59 +1,46 @@
-/* --- OVERRIDE TAMPILAN WORDPRESS --- */
+/* --- ADMIN STYLE CSS - IMMERSIVE MODE --- */
 
-/* 1. Sembunyikan Admin Bar (Top Bar Hitam) */
-#wpadminbar {
-    display: none !important;
+/* Teknik: FORCE FULLSCREEN OVERLAY 
+   Membuat container aplikasi React menutupi seluruh UI WordPress (Admin Bar & Menu)
+   dengan memosisikannya secara 'fixed' di atas segalanya.
+*/
+
+#umroh-manager-app {
+    position: fixed;      /* Kunci posisi relatif terhadap viewport browser */
+    top: 0;
+    left: 0;
+    width: 100vw;         /* 100% Lebar Viewport */
+    height: 100vh;        /* 100% Tinggi Viewport */
+    z-index: 999999;      /* Z-Index super tinggi untuk menimpa Admin Bar WP (biasanya 99999) */
+    background-color: #f3f4f6; /* Sama dengan bg-gray-100 Tailwind */
+    overflow-y: auto;     /* Izinkan scroll vertikal di dalam aplikasi kita sendiri */
+    display: flex;
+    flex-direction: column;
 }
 
-/* 2. Sembunyikan Sidebar Menu WordPress (Kiri) */
-#adminmenumain, 
-#adminmenuback, 
-#adminmenuwrap {
-    display: none !important;
+/* Sembunyikan scrollbar pada body utama WordPress agar tidak ada scroll ganda */
+html, body {
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: 100vh !important;
 }
 
-/* 3. Sembunyikan Footer WordPress ("Thank you for creating with WordPress") */
-#wpfooter {
-    display: none !important;
-}
-
-/* 4. Reset Padding HTML (Biasanya ada padding-top 32px karena admin bar) */
-html.wp-toolbar {
-    padding-top: 0 !important;
-}
-
-/* 5. Reset Area Konten Utama WordPress */
-#wpcontent {
-    margin-left: 0 !important; /* Hilangkan margin kiri bekas sidebar */
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    height: 100vh; /* Paksa tinggi penuh */
-    background-color: #f9fafb; /* Sesuaikan dengan bg-gray-50 Tailwind */
-}
-
-/* 6. Hilangkan margin pada body content */
-#wpbody, 
-#wpbody-content {
-    padding-bottom: 0 !important;
-    float: none !important;
-    height: 100%;
-}
-
-/* 7. Sembunyikan Notifikasi/Nag WordPress yang mengganggu layout */
-.update-nag, 
-.notice, 
-.is-dismissible, 
-.error, 
+/* Sembunyikan elemen WP yang mungkin 'bocor' atau mengganggu rendering */
+#wpadminbar,
+#adminmenumain,
+#adminmenuback,
+#adminmenuwrap,
+#wpfooter,
+#wpcontent,
+.update-nag,
+.notice,
+.error,
 .updated {
     display: none !important;
 }
 
-/* --- KONTAINER APLIKASI --- */
+/* Reset font family agar tidak terpengaruh tema WP */
 #umroh-manager-app {
-    height: 100vh; /* Viewport Height penuh */
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }

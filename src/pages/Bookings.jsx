@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import CrudTable from '../components/CrudTable';
 import { api } from '../utils/api';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { UserCheck, Calendar, CreditCard, AlertCircle } from 'lucide-react';
 
 const Bookings = () => {
     // 1. Inisialisasi State yang Aman (Anti-Crash)
@@ -61,16 +62,25 @@ const Bookings = () => {
     const columns = [
         { 
             key: 'booking_code', 
-            label: 'Kode', 
-            render: (val) => <span className="font-mono text-xs font-bold bg-gray-100 px-2 py-1 rounded text-gray-600">{val || 'AUTO'}</span> 
+            label: 'Kode Booking', 
+            render: (val) => (
+                <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">
+                        {val || 'AUTO'}
+                    </span>
+                </div>
+            )
         },
         { 
             key: 'jamaah_name', 
-            label: 'Data Jamaah',
+            label: 'Jamaah',
             render: (val, row) => (
                 <div>
-                    <div className="font-bold text-gray-900">{val}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                        <UserCheck size={14} className="text-gray-400" />
+                        {val}
+                    </div>
+                    <div className="text-xs text-gray-500 ml-5">
                         {row.jamaah_phone ? `📞 ${row.jamaah_phone}` : ''}
                     </div>
                 </div>
@@ -81,16 +91,17 @@ const Bookings = () => {
             label: 'Paket & Keberangkatan',
             render: (val, row) => (
                 <div className="text-sm">
-                    <div className="text-blue-600 font-medium">{val}</div>
-                    <div className="text-xs text-gray-500 flex items-center gap-1">
-                        📅 {row.departure_date ? formatDate(row.departure_date) : '-'}
+                    <div className="font-medium text-gray-800">{val}</div>
+                    <div className="text-xs text-gray-500 flex items-center gap-1.5 mt-0.5">
+                        <Calendar size={12} />
+                        {row.departure_date ? formatDate(row.departure_date) : '-'}
                     </div>
                 </div>
             )
         },
         { 
             key: 'total_price', 
-            label: 'Status Pembayaran',
+            label: 'Pembayaran',
             render: (val, row) => {
                 const paid = parseFloat(row.paid_amount || 0);
                 const total = parseFloat(val || 0);
@@ -102,17 +113,16 @@ const Bookings = () => {
                         <div className="font-bold text-gray-800">{formatCurrency(total)}</div>
                         
                         {isPaidOff ? (
-                            <span className="inline-block mt-1 px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full font-bold">
+                            <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full font-bold border border-green-200">
                                 LUNAS
                             </span>
                         ) : (
-                            <div className="text-xs text-red-500 font-medium mt-1">
-                                Sisa: {formatCurrency(remaining)}
+                            <div className="flex flex-col items-end mt-1">
+                                <span className="text-[10px] font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100 mb-0.5">
+                                    Sisa: {formatCurrency(remaining)}
+                                </span>
+                                {paid > 0 && <span className="text-[10px] text-gray-400">Masuk: {formatCurrency(paid)}</span>}
                             </div>
-                        )}
-                        
-                        {paid > 0 && !isPaidOff && (
-                            <div className="text-[10px] text-gray-400">Sudah bayar: {formatCurrency(paid)}</div>
                         )}
                     </div>
                 )
@@ -122,23 +132,24 @@ const Bookings = () => {
             key: 'status', 
             label: 'Status', 
             render: (val) => {
-                const colors = { 
-                    confirmed: 'bg-green-50 text-green-700 border border-green-200', 
-                    pending: 'bg-yellow-50 text-yellow-700 border border-yellow-200', 
-                    cancelled: 'bg-red-50 text-red-700 border border-red-200' 
+                const styles = { 
+                    confirmed: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', icon: '✅' }, 
+                    pending: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', icon: '⏳' }, 
+                    cancelled: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: '❌' } 
                 };
+                const style = styles[val] || styles.pending;
                 return (
-                    <span className={`px-2 py-1 rounded text-xs font-medium uppercase tracking-wider ${colors[val] || 'bg-gray-100'}`}>
-                        {val}
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${style.bg} ${style.text} ${style.border} flex items-center justify-center gap-1 w-fit`}>
+                        {style.icon} {val}
                     </span>
                 );
             }
         }
     ];
 
-    // 5. Definisi Form (Sekarang dengan Field Pembayaran)
+    // 5. Definisi Form (Sekarang dengan Field Pembayaran & Info Dropdown)
     const formFields = [
-        { section: 'Data Booking' },
+        { section: 'Informasi Jamaah & Paket' },
         { 
             name: 'jamaah_id', 
             label: 'Pilih Jamaah', 
@@ -149,7 +160,8 @@ const Bookings = () => {
                 label: `${j.name} ${j.passport_number ? `(Paspor: ${j.passport_number})` : ''}` 
             })),
             required: true,
-            width: 'full'
+            width: 'full',
+            help: 'Pastikan data jamaah sudah lengkap sebelum membuat booking.'
         },
         { 
             name: 'departure_id', 
@@ -165,7 +177,7 @@ const Bookings = () => {
         },
         { 
             name: 'agent_id', 
-            label: 'Agen / Referensi (Opsional)', 
+            label: 'Agen Referensi (Opsional)', 
             type: 'select', 
             options: [{value: '', label: '- Langsung (Direct Customer) -'}, ...(masters.agents || []).map(a => ({ value: a.id, label: a.name }))],
             width: 'full'
